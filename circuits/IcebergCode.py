@@ -127,6 +127,22 @@ class IcebergCode:
         self.circuit.append(cirq.CNOT(self.qubits[-1], self.qubits[j + 1]))
         self.circuit.append(cirq.CNOT(self.qubits[i + 1], self.qubits[j + 1]))
 
+    def CZ(self, i: int, j: int):
+        """
+        Apply the Logical CZ gate to the i-th and j-th qubits.
+        """
+        if i < 0 or i >= self.k:
+            raise ValueError("Index out of range")
+        if j < 0 or j >= self.k:
+            raise ValueError("Index out of range")
+        if i == j:
+            raise ValueError("i and j must be different")
+
+        self.circuit.append(cirq.CZ(self.qubits[i + 1], self.qubits[j + 1]))
+        self.circuit.append(cirq.Z(self.qubits[-1]))
+        self.circuit.append(cirq.CZ(self.qubits[i + 1], self.qubits[-1]))
+        self.circuit.append(cirq.CZ(self.qubits[j + 1], self.qubits[-1]))
+
     def RZZ(self, i: int, j: int, rads: float):
         """
         Apply the Logical RZZ gate to the i-th and j-th qubits.

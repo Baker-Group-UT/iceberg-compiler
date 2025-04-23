@@ -58,7 +58,9 @@ print(len(circuit_2))
 print(len(circuit_2_compiled))
 circuit_2_qiskit = qiskit.QuantumCircuit.from_qasm_str(circuit_2.to_qasm())
 circuit_2_qiskit = qiskit.transpile(
-    circuit_2_qiskit, optimization_level=0, basis_gates=["x", "z", "h", "cx", "rz"]
+    circuit_2_qiskit,
+    optimization_level=0,
+    basis_gates=["x", "z", "h", "cz", "rz", "rzz"],
 )
 circuit_2_qiskit.draw()
 circuit_2_compiled = circuit_from_qasm(dumps(circuit_2_qiskit))
@@ -80,8 +82,8 @@ for moment in circuit_2_compiled:
             iceberg.Z(get_qubit_index(gate.qubits))
         elif gate.gate == cirq.H:
             iceberg.H(get_qubit_index(gate.qubits))
-        elif gate.gate == cirq.CNOT:
-            iceberg.CNOT(get_qubit_index(gate.qubits), get_qubit_index(gate.qubits, 1))
+        elif gate.gate == cirq.CZ:
+            iceberg.CZ(get_qubit_index(gate.qubits), get_qubit_index(gate.qubits, 1))
         elif isinstance(gate.gate, cirq.Rz):
             iceberg.RZ(get_qubit_index(gate.qubits), float(gate.gate._rads))
 
@@ -125,8 +127,9 @@ print(counts)
 # %%
 
 import cirq_superstaq as css
+from os.environ import get
 
-service = css.Service(api_key="<redacted>")
+service = css.Service(api_key=get("SUPERSTAQ_API"))
 # %%
 
 iceberg_superstaq = service.cq_compile(iceberg.circuit)
