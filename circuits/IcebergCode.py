@@ -14,8 +14,9 @@ class IcebergCode:
             raise ValueError("n must be even")
         self.n = n
         self.k = n - 2
-        self.data_qubits = cirq.LineQubit.range(n)
-        self.parity_qubits = cirq.LineQubit.range(2)
+        qubits = cirq.LineQubit.range(n + 2)
+        self.data_qubits = qubits[:n]
+        self.parity_qubits = qubits[n:]
         self.circuit = circuit
         self._encoded = False
         self.encode()
@@ -41,10 +42,10 @@ class IcebergCode:
             self.circuit.append(cirq.CNOT(self.data_qubits[i], self.parity_qubits[0]))
         self.circuit.append(cirq.measure(self.parity_qubits[0], key="parity_X"))
 
-        self.circuit.append(cirq.H(*self.data_qubits))
         for i in range(self.n):
+            self.circuit.append(cirq.H(self.data_qubits[i]))
             self.circuit.append(cirq.CNOT(self.data_qubits[i], self.parity_qubits[1]))
-        self.circuit.append(cirq.H(*self.data_qubits))
+            self.circuit.append(cirq.H(self.data_qubits[i]))
         self.circuit.append(cirq.measure(self.parity_qubits[1], key="parity_Z"))
 
     def measure(self):
@@ -146,15 +147,13 @@ class IcebergCode:
 
         for j in s:
             self.circuit.append(cirq.CZ(self.data_qubits[j + 1], self.data_qubits[-1]))
-            self.circuit.append(
-                cirq.H(self.data_qubits[0]), cirq.H(self.data_qubits[j + 1])
-            )
+            self.circuit.append(cirq.H(self.data_qubits[0]))
+            self.circuit.append(cirq.H(self.data_qubits[j + 1]))
             self.circuit.append(cirq.CZ(self.data_qubits[0], self.data_qubits[j + 1]))
             self.circuit.append(cirq.H(self.data_qubits[j + 1]))
             self.circuit.append(cirq.CZ(self.data_qubits[0], self.data_qubits[j + 1]))
-            self.circuit.append(
-                cirq.H(self.data_qubits[0]), cirq.H(self.data_qubits[j + 1])
-            )
+            self.circuit.append(cirq.H(self.data_qubits[0]))
+            self.circuit.append(cirq.H(self.data_qubits[j + 1]))
             self.circuit.append(cirq.CZ(self.data_qubits[j + 1], self.data_qubits[-1]))
             self.circuit.append(cirq.X(self.data_qubits[0]))
             self.circuit.append(cirq.Z(self.data_qubits[-1]))
