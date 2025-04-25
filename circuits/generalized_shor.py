@@ -4,7 +4,6 @@ from math import pi
 import matplotlib.pyplot as plt
 from circuits.IcebergCode import IcebergCode
 import qiskit
-import qiskit.circuit
 from qiskit.qasm2 import dumps
 # %%
 
@@ -127,9 +126,9 @@ print(counts)
 # %%
 
 import cirq_superstaq as css
-from os.environ import get
+from os import environ
 
-service = css.Service(api_key=get("SUPERSTAQ_API"))
+service = css.Service(api_key=environ.get("SUPERSTAQ_API"))
 # %%
 
 iceberg_superstaq = service.cq_compile(iceberg.circuit)
