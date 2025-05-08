@@ -4,3 +4,4 @@ logical_operators/main
 ~$direction.pptx
 circuits/__pycache__
 venv/
+*.png
