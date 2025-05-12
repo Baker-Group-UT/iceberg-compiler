@@ -131,17 +131,12 @@ def generate_noise_model(alpha, p_reset=0.03, p_meas=0.03, p_gate=0.001):
         ]
     )
     error_gate2 = error_gate2.tensor(error_gate2)
-    print(error_reset)
-    print(error_meas)
-    print(error_gate1)
-    print(error_gate2)
 
     noise_pauli_channel = NoiseModel()
     noise_pauli_channel.add_all_qubit_quantum_error(error_reset, "reset")
     noise_pauli_channel.add_all_qubit_quantum_error(error_meas, "measure")
     noise_pauli_channel.add_all_qubit_quantum_error(error_gate1, ["u1", "u2", "u3"])
     noise_pauli_channel.add_all_qubit_quantum_error(error_gate2, ["cx", "cz"])
-    print(noise_pauli_channel)
 
     return noise_pauli_channel
 
