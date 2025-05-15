@@ -2,14 +2,20 @@ import cirq
 from cirq.contrib.qasm_import import circuit_from_qasm
 from math import pi
 import matplotlib.pyplot as plt
-from circuits.IcebergCode import IcebergCode, IcebergGrid
-import qiskit
+from circuits.IcebergCode import CircuitClass, IcebergCode, IcebergGrid
 from qiskit.qasm2 import dumps
+from collections import defaultdict
+from circuits.random_circuit_gen import generate_noise_model
+from qiskit_aer import AerSimulator
+from qiskit import generate_preset_pass_manager, QuantumCircuit, transpile
+import numpy as np
+import cirq_superstaq as css
+from os import environ
+
+service = css.Service(api_key=environ.get("SUPERSTAQ_API"))
 # %%
 
 qubits = cirq.LineQubit.range(7)
-qubits
-# %%
 
 circuit_2 = cirq.Circuit()
 
@@ -35,9 +41,6 @@ circuit_2.append(cirq.H(qubits[2]))
 
 circuit_2.append(cirq.measure(*qubits[1:3], key="result"))
 
-circuit_2
-# %%
-
 simulator = cirq.Simulator()
 samples = simulator.run(circuit_2, repetitions=10000)
 cirq.plot_state_histogram(samples, plt.subplot())
@@ -51,12 +54,11 @@ circuit_2_compiled = cirq.optimize_for_target_gateset(
     ),
     max_num_passes=None,
 )
-# %%
 
 print(len(circuit_2))
 print(len(circuit_2_compiled))
-circuit_2_qiskit = qiskit.QuantumCircuit.from_qasm_str(circuit_2.to_qasm())
-circuit_2_qiskit = qiskit.transpile(
+circuit_2_qiskit = QuantumCircuit.from_qasm_str(circuit_2.to_qasm())
+circuit_2_qiskit = transpile(
     circuit_2_qiskit,
     optimization_level=0,
     basis_gates=["x", "z", "h", "cz", "rz", "rzz"],
@@ -89,25 +91,20 @@ for moment in circuit_2_compiled:
 len(iceberg.circuit)
 # %%
 
-iceberg_circuit_qiskit = qiskit.QuantumCircuit.from_qasm_str(iceberg.circuit.to_qasm())
-iceberg_circuit_qiskit = qiskit.transpile(
+iceberg_circuit_qiskit = QuantumCircuit.from_qasm_str(iceberg.circuit.to_qasm())
+iceberg_circuit_qiskit = transpile(
     iceberg_circuit_qiskit,
     optimization_level=3,
     basis_gates=["h", "rz", "cz"],
 )
-iceberg_circuit_qiskit.draw(output="text")
-# %%
-
-# stats
-from collections import defaultdict
+print(iceberg_circuit_qiskit.draw(output="text"))
 
 counts = defaultdict(int)
 for inst in iceberg_circuit_qiskit.data:
     counts[inst.operation.name] += 1
 print(counts)
-# %%
 
-iceberg_circuit_cztarget = qiskit.QuantumCircuit.from_qasm_str(
+iceberg_circuit_cztarget = QuantumCircuit.from_qasm_str(
     cirq.optimize_for_target_gateset(
         iceberg.circuit,
         gateset=cirq.CZTargetGateset(
@@ -116,30 +113,21 @@ iceberg_circuit_cztarget = qiskit.QuantumCircuit.from_qasm_str(
         max_num_passes=None,
     ).to_qasm()
 )
-iceberg_circuit_cztarget.draw(output="text")
-# %%
+print(iceberg_circuit_cztarget.draw(output="text"))
 
 counts = defaultdict(int)
 for inst in iceberg_circuit_cztarget.data:
     counts[inst.operation.name] += 1
 print(counts)
-# %%
-
-import cirq_superstaq as css
-from os import environ
-
-service = css.Service(api_key=environ.get("SUPERSTAQ_API"))
-# %%
 
 iceberg_superstaq = service.cq_compile(iceberg.circuit)
-# %%
 
 iceberg_superstaq_qasm = iceberg_superstaq.circuit.to_qasm()
 counts = defaultdict(int)
 counts["GR"] = iceberg_superstaq_qasm.count("GR")
 counts["CZ"] = iceberg_superstaq_qasm.count("cz")
 counts["Rz"] = iceberg_superstaq_qasm.count("rz")
-counts
+print(counts)
 # %%
 
 hadamard_test_iceberg = IcebergGrid(4, 4, cirq.Circuit(), "0+0+")
@@ -198,41 +186,36 @@ hadamard_test_iceberg.H(range(2))
 hadamard_test_iceberg.decode()
 hadamard_test_iceberg.measure()
 
-hadamard_test_iceberg.circuit
-# %%
-
-hadamard_test_iceberg_compiled = service.cq_compile(hadamard_test_iceberg.circuit)
-hadamard_test_iceberg_compiled
-# %%
-
-from circuits.random_circuit_gen import generate_noise_model
-from qiskit_aer import AerSimulator
-from qiskit import generate_preset_pass_manager, QuantumCircuit
-from collections import defaultdict
-# %%
-
-physical_hadamard_test = QuantumCircuit(4)
-physical_hadamard_test.h(0)
-physical_hadamard_test.h(3)
-physical_hadamard_test.cx(0, 2)
-physical_hadamard_test.cx(1, 3)
-physical_hadamard_test.cx(0, 1)
-physical_hadamard_test.h(0)
-physical_hadamard_test.h(1)
-physical_hadamard_test.measure_all()
+hadamard_test_physical = QuantumCircuit(4)
+hadamard_test_physical.h(0)
+hadamard_test_physical.h(3)
+hadamard_test_physical.cx(0, 2)
+hadamard_test_physical.cx(1, 3)
+hadamard_test_physical.cx(0, 1)
+hadamard_test_physical.h(0)
+hadamard_test_physical.h(1)
+hadamard_test_physical.measure_all()
 # %%
 
 
-def compute_distance(counts: dict[str, int]):
+def compute_distance(
+    counts: dict[str, int], expected_distribution: dict[str, float] | None = None
+):
+    num_bits = len(list(counts.keys())[0])
+    if expected_distribution is None:
+        expected_distribution = dict()
+        for k in counts.keys():
+            expected_distribution[k] = 1 / (2**num_bits)
     distance = 0
     shots = sum(counts.values())
-    num_bits = len(list(counts.keys())[0])
-    for v in counts.values():
-        distance += abs(v - shots / (2**num_bits))
-    return distance / shots / 2
+    for k, v in counts.items():
+        distance += abs(v / shots - expected_distribution[k])
+    return distance / 2
 
 
-def temp(alpha):
+def generate_counts(
+    iceberg_circuit: CircuitClass, physical_circuit: QuantumCircuit, alpha: float = 1.0
+):
     NUM_SHOTS = 4096
     sim_noise = AerSimulator(noise_model=generate_noise_model(alpha))
     pass_manager = generate_preset_pass_manager(
@@ -240,17 +223,15 @@ def temp(alpha):
         backend=sim_noise,
     )
     hadamard_test_iceberg_qiskit = QuantumCircuit.from_qasm_str(
-        hadamard_test_iceberg.circuit.to_qasm()
+        iceberg_circuit.circuit.to_qasm()
     )
     job = sim_noise.run(pass_manager.run(hadamard_test_iceberg_qiskit), shots=NUM_SHOTS)
     iceberg_counts = job.result().get_counts()
     hadamard_test_iceberg_qiskit.draw(output="mpl")
 
-    postselected_counts = dict()
-    valid_counts = defaultdict(int)
+    postselected_counts = defaultdict(int)
     for k, v in iceberg_counts.items():
         k = k.split(" ")
-        k_new = ""
         k_valid = ""
         valid = True
         successful = True
@@ -263,7 +244,6 @@ def temp(alpha):
                     continue
             if s.count("0") % 2 == 1:
                 successful = False
-            k_new += s
             s = int(s, 2)
             if s == 0 or s == 15:
                 k_valid += "00"
@@ -275,31 +255,26 @@ def temp(alpha):
                 k_valid += "11"
         if not valid:
             continue
-        postselected_counts[k_new] = v
         if successful:
-            valid_counts[k_valid] += v
+            postselected_counts[k_valid] += v
 
-    postselection_rate = sum(valid_counts.values()) / sum(iceberg_counts.values())
-
-    job_physical = sim_noise.run(
-        pass_manager.run(physical_hadamard_test), shots=NUM_SHOTS
+    postselection_rate = sum(postselected_counts.values()) / sum(
+        iceberg_counts.values()
     )
+
+    job_physical = sim_noise.run(pass_manager.run(physical_circuit), shots=NUM_SHOTS)
     physical_counts = job_physical.result().get_counts()
 
     return (
         postselection_rate,
-        compute_distance(valid_counts),
+        compute_distance(postselected_counts),
         compute_distance(physical_counts),
-        valid_counts,
+        postselected_counts,
         iceberg_counts,
         physical_counts,
     )
 
 
-# %%
-
-import numpy as np
-import matplotlib.pyplot as plt
 # %%
 
 alphas = np.logspace(-2, 1, 15)
@@ -308,7 +283,9 @@ postselection_rates, iceberg_distances, physical_distances = [], [], []
 for alpha in alphas:
     postselection_rate, iceberg_distance, physical_distance = 0, 0, 0
     for _ in range(num_shots):
-        psr, iced, phyd, _, _, _ = temp(alpha)
+        psr, iced, phyd, _, _, _ = generate_counts(
+            hadamard_test_iceberg, hadamard_test_physical, alpha
+        )
         postselection_rate += psr
         iceberg_distance += iced
         physical_distance += phyd
@@ -317,7 +294,6 @@ for alpha in alphas:
     physical_distances.append(1 - physical_distance / num_shots)
 # %%
 
-# plot the results
 plt.figure(figsize=(10, 6))
 plt.semilogx(
     alphas,
@@ -344,18 +320,20 @@ plt.legend()
 plt.show()
 # %%
 
-_, _, _, valid_counts, _, _ = temp(1)
-valid_counts_keys = sorted(valid_counts.keys())
-valid_counts_values = [valid_counts[k] for k in valid_counts_keys]
+_, _, _, postselected_counts, _, _ = generate_counts(
+    hadamard_test_iceberg, hadamard_test_physical
+)
+postselected_counts_keys = sorted(postselected_counts.keys())
+postselected_counts_values = [postselected_counts[k] for k in postselected_counts_keys]
 
 plt.figure(figsize=(10, 6))
 plt.bar(
-    valid_counts_keys,
-    valid_counts_values,
-    tick_label=valid_counts_keys,
+    postselected_counts_keys,
+    postselected_counts_values,
+    tick_label=postselected_counts_keys,
 )
 plt.axhline(
-    sum(valid_counts.values()) / (2 ** len(list(valid_counts.keys())[0])),
+    sum(postselected_counts.values()) / (2 ** len(list(postselected_counts.keys())[0])),
     color="red",
     linestyle="--",
     label="Postselection Rate",
