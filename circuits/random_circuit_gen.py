@@ -113,16 +113,24 @@ def generate_noise_model(alpha, p_reset=0.03, p_meas=0.03, p_gate=0.001):
     p_reset = alpha * p_reset
     p_meas = alpha * p_meas
     p_gate = alpha * p_gate
-    error_reset = pauli_error([("I", 1 - p_reset / 3), ("X", p_reset / 3)]).compose(
-        pauli_error([("I", 1 - p_reset / 3), ("Z", p_reset / 3)])
+    error_reset = pauli_error(
+        [("I", 1 - p_reset), ("X", p_reset / 3), ("Z", p_reset / 3), ("Y", p_reset / 3)]
     )
-    error_meas = pauli_error([("I", 1 - p_meas / 3), ("X", p_meas / 3)]).compose(
-        pauli_error([("I", 1 - p_meas / 3), ("Z", p_meas / 3)])
+    error_meas = pauli_error(
+        [("I", 1 - p_meas), ("X", p_meas / 3), ("Z", p_meas / 3), ("Y", p_meas / 3)]
     )
-    error_gate1 = pauli_error([("I", 1 - p_gate / 3), ("X", p_gate / 3)]).compose(
-        pauli_error([("I", 1 - p_gate / 3), ("Z", p_gate / 3)])
+    error_gate1 = pauli_error(
+        [("I", 1 - p_gate), ("X", p_gate / 3), ("Z", p_gate / 3), ("Y", p_gate / 3)]
     )
-    error_gate2 = error_gate1.tensor(error_gate1)
+    error_gate2 = pauli_error(
+        [
+            ("I", 1 - 5 * p_gate),
+            ("X", 5 * p_gate / 3),
+            ("Z", 5 * p_gate / 3),
+            ("Y", 5 * p_gate / 3),
+        ]
+    )
+    error_gate2 = error_gate2.tensor(error_gate2)
 
     noise_pauli_channel = NoiseModel()
     noise_pauli_channel.add_all_qubit_quantum_error(error_reset, "reset")
@@ -214,7 +222,7 @@ if __name__ == "__main__":
     # args = parser.parse_args()
     # print(main(args.qubits, args.depth, args.output, args.simulate, args.alpha))
 
-    alphas = np.logspace(-2, -1, 5)
+    alphas = np.logspace(-2, 1, 15)
     depths = np.linspace(0, 25, 10)
     qubits = 6
     num_shots = 10
@@ -270,6 +278,6 @@ if __name__ == "__main__":
             bbox_to_anchor=(1, 1),
         )
         plt.savefig(
-            f"circuits/success_prob_depth_alpha_{alpha}.png",
+            f"circuits/success_prob_depth_alpha_{alpha:.2f}.png",
             bbox_inches="tight",
         )
