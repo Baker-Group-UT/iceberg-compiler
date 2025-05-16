@@ -143,6 +143,7 @@ class IcebergCode(CircuitClass):
             )
             return
 
+        # @TODO: make the \ket{0^k} encoding Fault-Tolerant
         self.circuit.append(cirq.H(self.data_qubits[0]))
         for i in range(0, self.n - 1):
             self.circuit.append(cirq.CNOT(self.data_qubits[i], self.data_qubits[i + 1]))
@@ -531,6 +532,14 @@ class IcebergGrid(CircuitClass):
             raise ValueError("Index out of range")
         if i == j:
             raise ValueError("i and j must be different")
+
+        iceberg_index_i = i // self.k
+        qubit_index_i = i % self.k
+        iceberg_index_j = j // self.k
+        qubit_index_j = j % self.k
+        if iceberg_index_i == iceberg_index_j:
+            self.icebergs[iceberg_index_i].CZ(qubit_index_i, qubit_index_j)
+            return
 
         # @TODO: implement this
         raise NotImplementedError("CZ not implemented yet")
