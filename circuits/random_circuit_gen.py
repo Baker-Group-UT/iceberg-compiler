@@ -7,10 +7,9 @@ from qiskit.visualization import plot_histogram
 from qiskit_aer import AerSimulator
 from qiskit_aer.noise import pauli_error, NoiseModel
 import argparse
-from circuits.IcebergCode import IcebergCode
+from IcebergCode import IcebergCode
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-
 
 def gen_random_clifford_circ(num_qubits, depth):
     circuit = QuantumCircuit(num_qubits)
@@ -87,22 +86,22 @@ def generate_iceberg_circuit(num_qubits, circuit):
         for gate in moment:
             if gate.gate == cirq.X:
                 iceberg.X(get_qubit_index(gate.qubits))
-            elif gate.gate == cirq.Z:
-                iceberg.Z(get_qubit_index(gate.qubits))
-            elif gate.gate == cirq.S:
-                iceberg.S(get_qubit_index(gate.qubits))
+            # elif gate.gate == cirq.Z:
+            #     iceberg.Z(get_qubit_index(gate.qubits))
+            # elif gate.gate == cirq.S:
+            #     iceberg.S(get_qubit_index(gate.qubits))
             elif gate.gate == cirq.H:
                 iceberg.H(get_qubit_index(gate.qubits))
             elif gate.gate == cirq.CNOT:
                 iceberg.CNOT(
                     get_qubit_index(gate.qubits), get_qubit_index(gate.qubits, 1)
                 )
-            elif gate.gate == cirq.CZ:
-                iceberg.CZ(
-                    get_qubit_index(gate.qubits), get_qubit_index(gate.qubits, 1)
-                )
-            elif isinstance(gate.gate, cirq.Rz):
-                iceberg.RZ(get_qubit_index(gate.qubits), float(gate.gate._rads))
+            # elif gate.gate == cirq.CZ:
+            #     iceberg.CZ(
+            #         get_qubit_index(gate.qubits), get_qubit_index(gate.qubits, 1)
+            #     )
+            # elif isinstance(gate.gate, cirq.Rz):
+            #     iceberg.RZ(get_qubit_index(gate.qubits), float(gate.gate._rads))
     iceberg.decode()
     iceberg.measure()
 
