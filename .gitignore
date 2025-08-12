@@ -2,6 +2,9 @@ logical_operators/main.dSYM/Contents
 .DS_Store
 logical_operators/main
 ~$direction.pptx
-circuits/__pycache__
+__pycache__
 venv/
 *.png
+.env
+results/
+scratch/
