@@ -1,26 +1,3 @@
-# main.py
-import math
-import argparse
-import cirq
-
-# --- adjust these imports to your package structure --------------------------
-# If you put run_permutation_scan in driver.py as in the previous message:
-# If you need to step through each permutation, we also call these directly:
-import sys
-import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from permutations.permutations_analyzer import (
-    enumerate_permutations,
-    summarise_permutations,
-    build_physical_circuit,
-    print_in_windows,
-    run_permutation_scan,
-    extremal_per_codes,
-)
-import pandas as pd
-# -----------------------------------------------------------------------------
-
-# ------------------------- circuit factory fns -------------------------------
 
 def square_cluster_4():
     qA, qB, qC, qD = cirq.LineQubit.range(4)
@@ -168,13 +145,62 @@ ALL_FACTORIES = {
     "toffoli_like_snippet": toffoli_like_snippet,
 }
 
+# main.py
+import math
+import argparse
+import cirq
+import pandas as pd
+
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from permutations.permutations_analyzer import (
+    enumerate_permutations,
+    summarise_permutations,
+    build_physical_circuit,
+    print_in_windows,
+    extremal_per_codes,
+)
+
+# NEW: try both names, depending on which file you kept
+try:
+    from permutations.effectiveness_estimator import (
+        evaluate_extremals_effectiveness,
+        attach_effectiveness_columns,
+    )
+except Exception:
+    from permutations.evaluator import (
+        evaluate_extremals_effectiveness,
+        attach_effectiveness_columns,
+    )
+
+# ----------------------------- circuit factories (unchanged) ------------------
+# ... [your factory functions here unchanged] ...
+# ------------------------------------------------------------------------------
+
+ALL_FACTORIES = {
+    "square_cluster_4": square_cluster_4,
+    "grover_3": grover_3,
+    # "random_bad_circuit_7_qubits": random_bad_circuit_7_qubits,
+    "ghz_3": ghz_3,
+    "unscalable_shor_3": shor_toy_3,
+    "half_adder": half_adder,
+    "ripple_incrementer_3": ripple_inc_3,
+    "toffoli_like_snippet": toffoli_like_snippet,
+}
+
+def _perm_key(perm):
+    return tuple(tuple(t) for t in perm)
+
 # ----------------------------- runner ----------------------------------------
 
 def step_through_permutations(item, *, n_code: int, faulty: bool, metric: str,
                               pause: bool, windows: int, lambda_codes: float):
     """
     Run search, then pause only on the extremal (best & worst) permutation
-    for each *codes shape* using extremal_per_codes.
+    for each *codes shape* using extremal_per_codes. Also compute effectiveness
+    (fidelity / logical_error_rate) on those extremals.
     """
     label  = item["label"]
     logical= item["logical"]
@@ -183,10 +209,9 @@ def step_through_permutations(item, *, n_code: int, faulty: bool, metric: str,
     print(f"\n========== {label} ==========")
     print(f"[cfg] n_code={n_code}  faulty={faulty}  metric='{metric}'  codes={codes}")
 
-    # Enumerate + summarize, so metrics/columns match the pipeline
+    # Enumerate + summarize
     perms = enumerate_permutations(codes, logical)
     print(f"[info] enumerated {len(perms)} permutations.")
-
     df = summarise_permutations(perms, logical, n_code=n_code, faulty=faulty)
     if df.empty:
         print("[warn] summary is empty; skipping.")
@@ -194,27 +219,43 @@ def step_through_permutations(item, *, n_code: int, faulty: bool, metric: str,
 
     # Ensure metric exists
     if metric not in df.columns:
-        print(f"[warn] metric '{metric}' not found in df.columns = {list(df.columns)}; defaulting to 'total_gates'")
+        print(f"[warn] metric '{metric}' not found; defaulting to 'total_gates'")
         metric = "total_gates"
 
-    # Compute extremals per codes-shape (your helper returns dict of DFs)
+    # Extremals on base metric (by codes-used bucket)
     ext = extremal_per_codes(df, metric=metric, only_ft=True, include_ties=True)
     best_df  = ext.get("best_by_codes",  pd.DataFrame())
     worst_df = ext.get("worst_by_codes", pd.DataFrame())
-
     if best_df.empty and worst_df.empty:
         print("[warn] no extremals returned; skipping.")
         return
 
-    # Determine all shapes we have results for
     key_col = "codes_shape" if "codes_shape" in df.columns else "codes"
     shapes = sorted(set(best_df.get(key_col, pd.Series(dtype=str))).union(
                     set(worst_df.get(key_col, pd.Series(dtype=str)))))
 
+    # ---------- NEW: evaluate effectiveness on extremals ----------
+    eff_df = evaluate_extremals_effectiveness(
+        df_summary=df,
+        logical_circ=logical,
+        build_fn=build_physical_circuit,
+        n_code=n_code,
+        faulty=faulty,
+        metric=metric,
+        only_ft=True,
+        include_ties=True,
+        repetitions=1_000,
+        oversample=2,
+        ch_form=False,
+        post_select=True,
+    )
+    # Merge effectiveness columns back onto the summary
+    df_with_eff = attach_effectiveness_columns(df, eff_df)
+
     print("\n[extremals] stepping through best & worst per codes-shape:")
     print("  shapes:", ", ".join(map(str, shapes)))
 
-    # Helper for printing & pausing on one permutation row
+    # Helper to show one permutation row + effectiveness
     def _show_perm(row, tag):
         perm = row["permutation"]
         show_cols = [c for c in [
@@ -222,9 +263,24 @@ def step_through_permutations(item, *, n_code: int, faulty: bool, metric: str,
             "ft_only","codes_shape","depth", metric
         ] if c in row.index]
 
+        # Lookup effectiveness for this perm (if present)
+        k = _perm_key(perm)
+        eff_row = eff_df[eff_df["perm_key"].map(_perm_key) == k] if "perm_key" in eff_df.columns else eff_df[eff_df["permutation"].map(_perm_key) == k]
+        eff_info = {}
+        if not eff_row.empty:
+            er = eff_row.iloc[0]
+            eff_info = {
+                "fidelity": float(er.get("fidelity", float("nan"))),
+                "logical_error_rate": float(er.get("logical_error_rate", float("nan"))),
+                "post_selected": bool(er.get("post_selected", True)),
+                "codes_used": int(er.get("codes_used", 0)),
+            }
+
         print("\n" + "-"*80)
         print(f"[{tag}] {row.get(key_col, 'shape=?')}  →  permutation: {perm}")
         print("[metrics]", {c: row[c] for c in show_cols})
+        if eff_info:
+            print("[effectiveness]", eff_info)
 
         variant = build_physical_circuit(perm, logical, n_code=n_code, verbose=False, faulty=faulty)
         print("[gate_count]", variant.get("gate_count"))
@@ -237,25 +293,35 @@ def step_through_permutations(item, *, n_code: int, faulty: bool, metric: str,
                 print("\n[exit] interrupted by user.")
                 raise SystemExit
 
-    # For each codes-shape, show BEST then WORST (skip duplicates)
+    # For each codes-shape, show BEST then WORST
     for shape in shapes:
-        # pick first row per shape (include_ties=True ⇒ may have several; we just take the first)
         best_row  = best_df[best_df[key_col] == shape].head(1)
         worst_row = worst_df[worst_df[key_col] == shape].head(1)
 
         if not best_row.empty:
             _show_perm(best_row.iloc[0], tag="BEST")
 
-        # Avoid repeating if the same perm is both best & worst (degenerate case)
         if not worst_row.empty:
             if best_row.empty or (worst_row.iloc[0]["permutation"] != best_row.iloc[0]["permutation"]):
                 _show_perm(worst_row.iloc[0], tag="WORST")
 
-    # Nice-to-have: print the tables once at the end for logging
+    # Print tables for logging
     print("\n[best_by_codes]")
     print(best_df)
     print("\n[worst_by_codes]")
     print(worst_df)
+
+    # ---------- NEW: print effectiveness tables ----------
+    if not eff_df.empty:
+        print("\n=== Effectiveness (fidelity) on extremal permutations ===")
+        cols = [c for c in ["permutation","codes_used","fidelity","logical_error_rate","post_selected","gate_count","total_gates"] if c in eff_df.columns]
+        print(eff_df.sort_values(["codes_used", "logical_error_rate"])[cols])
+
+        print("\n=== Summary DF with effectiveness columns (first 20) ===")
+        keep_cols = [c for c in ["permutation","fault_tolerant","total_gates","H","CNOT","RZ","SWAP",
+                                 "fidelity","logical_error_rate","post_selected"] if c in df_with_eff.columns]
+        print(df_with_eff.sort_values(["total_gates","logical_error_rate"], ascending=[True, True])
+                        [keep_cols].head(20))
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Run permutation searches and step through each permutation.")
@@ -272,7 +338,6 @@ def parse_args():
 def main():
     args = parse_args()
 
-    # Build the selected circuits
     items = []
     for name in args.circuits:
         if name not in ALL_FACTORIES:
@@ -288,7 +353,7 @@ def main():
         step_through_permutations(
             item,
             n_code=args.n_code,
-            faulty=False,
+            faulty=args.faulty,     # respect CLI flag
             metric=args.metric,
             pause=(not args.no_pause),
             windows=args.windows,

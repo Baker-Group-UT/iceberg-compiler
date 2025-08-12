@@ -6,11 +6,11 @@ import pandas as pd
 import numpy as np
 
 # sqale_sim imports – adjust if your layout differs
+from experiments_superstaq.simulation.sqale_leakage_model import SqaleLeakageModel, DEFAULT_PARAMS
 import sqale_sim as ess
 from sqale_sim.postselection import post_select_no_leak, iceberg_post_select, ordered_measurement_keys
 from sqale_sim.fidelity import bhattacharyya
 import experiments_superstaq as ess
-from experiments_superstaq.simulation.sqale_leakage_model import SqaleLeakageModel, DEFAULT_PARAMS
 
 # --- cleaning helpers -------------------------------------------------
 from iceberg.IcebergCode import BarrierGate
@@ -68,6 +68,7 @@ def _default_noise_model() -> SqaleLeakageModel:
         kw["dimension"] = len(kw["initial_state_probs"])
     return SqaleLeakageModel(**kw)
 
+
 def simulate_effectiveness_for_perm(
     permutation: List[Tuple[int, int]],
     logical_circ: cirq.Circuit,
@@ -81,43 +82,62 @@ def simulate_effectiveness_for_perm(
     ch_form: bool = False,
     post_select: bool = True,
 ) -> Dict:
-    """Build with build_fn, simulate ideal/noisy, compute fidelity."""
-    # Build the default model lazily if none was provided
+    """Compare the same physical permutation: ideal(noiseless) vs noisy, after identical post-selection."""
     if noise_model is None:
         noise_model = _default_noise_model()
-
+    print(permutation)
+    # Build the physical circuit for this permutation (translator should already decode() and append named measures)
     variant   = build_fn(permutation, logical_circ, n_code=n_code, faulty=faulty, verbose=False)
-    phys_circ = _ensure_measured(variant["circuit"])
+    phys_circ = _ensure_measured(variant["circuit"])  # safety net if anything forgot to add measures
+    stripped_circ  = _strip_barriers(phys_circ)
+
+    # Measurement ordering for post-selection
+    key_order  = ordered_measurement_keys(stripped_circ)
+    codes_used = sum(1 for k in key_order if k.startswith("data_"))
     print(phys_circ)
+    # ---------- Ideal (noiseless) physical distribution ----------
+    ideal_raw = _estimate_distribution(
+        stripped_circ,
+        repetitions=repetitions, oversample=oversample, ch_form=ch_form,
+    )
+    if post_select:
+        ideal_no_leak = post_select_no_leak(ideal_raw)   # mostly no-op for noiseless, but symmetric
+        ideal_ps      = iceberg_post_select(ideal_no_leak, key_order=key_order)
+        ideal_used    = ideal_ps
+    else:
+        ideal_used    = ideal_raw
+    print(ideal_used)
+    # ---------- Noisy physical distribution ----------
+    noisy_raw = _estimate_distribution(
+        stripped_circ.with_noise(noise_model),
+        repetitions=repetitions, oversample=oversample, ch_form=ch_form,
+    )
+    if post_select:
+        noisy_no_leak = post_select_no_leak(noisy_raw)
+        noisy_ps      = iceberg_post_select(noisy_no_leak, key_order=key_order)
+        post_selected_dist = noisy_ps
+    else:
+        post_selected_dist = noisy_raw
+    print(post_selected_dist)
+    # ---------- Fidelity ----------
+    fid = bhattacharyya(ideal_used, post_selected_dist)
 
-    sim_circ = _strip_barriers(phys_circ)
-    print(sim_circ)
-    ideal_dist = _estimate_distribution(sim_circ,
-        repetitions=repetitions, oversample=oversample, ch_form=ch_form)
-
-    noisy_circuit = sim_circ if noise_model is None else sim_circ.with_noise(noise_model)
-    noisy_dist = _estimate_distribution(noisy_circuit,
-        repetitions=repetitions, oversample=oversample, ch_form=ch_form)
-
-    used_dist = post_select_no_leak(noisy_dist) if post_select else noisy_dist
-    # add iceberg post selection here
-    iceberg_post_select(dist=used_dist, key_order=ordered_measurement_keys(circuit=sim_circ))
-
-    fid = bhattacharyya(ideal_dist, used_dist)
+    perm_key    = _perm_key(permutation)
+    gate_count  = variant.get("gate_count", {})
+    total_gates = int(sum(gate_count.values())) if gate_count else None
     print(fid)
-    perm_key = _perm_key(permutation)
-
     return {
         "permutation"        : permutation,
         "perm_key"           : perm_key,
-        "codes_used"         : _codes_used_from_perm(permutation),
+        "codes_used"         : codes_used,
         "fidelity"           : float(fid),
         "logical_error_rate" : float(1.0 - fid),
         "post_selected"      : bool(post_select),
-        "ideal_dist"         : ideal_dist,
-        "noisy_dist"         : noisy_dist,
-        "post_selected_dist" : used_dist,
-        "gate_count"         : variant.get("gate_count", {}),
+        "ideal_dist"         : ideal_used,           # post-selected (if enabled) ideal physical
+        "noisy_dist"         : noisy_raw,            # raw noisy distribution (pre-PS)
+        "post_selected_dist" : post_selected_dist,   # noisy after PS (if enabled)
+        "gate_count"         : gate_count,
+        "total_gates"        : total_gates,
         "fault_tolerant"     : variant.get("fault_tolerant", True),
     }
 
