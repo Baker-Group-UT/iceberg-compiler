@@ -1,3 +1,4 @@
+# ---------------- permutations_generator.py --------------------
 import time
 import math
 from itertools import combinations, permutations
@@ -57,13 +58,13 @@ def unique_logical_permutations(code_sizes: List[int], q: int,
             # ---- live status ----------------------------------------
             now = time.time()
             if now - last_print >= status_interval:
-                print(f"\rFound {len(reps)} unique scenarios "
+                print(f"\r[scan] Found {len(reps)} unique scenarios "
                       f"(searching ≈{est_total} permutations max)", 
                       end="", flush=True)
                 last_print = now
 
     # final status line
-    print(f"\rFound {len(reps)} unique scenarios (done)                                    ")
+    print(f"\r[scan] Found {len(reps)} unique scenarios (done)                                    ")
 
     return reps
 

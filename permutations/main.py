@@ -155,25 +155,17 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from permutations.permutations_analyzer import (
+from permutations.analysis import (
     enumerate_permutations,
     summarise_permutations,
     build_physical_circuit,
     print_in_windows,
     extremal_per_codes,
 )
-
-# NEW: try both names, depending on which file you kept
-try:
-    from permutations.effectiveness_estimator import (
-        evaluate_extremals_effectiveness,
-        attach_effectiveness_columns,
-    )
-except Exception:
-    from permutations.evaluator import (
-        evaluate_extremals_effectiveness,
-        attach_effectiveness_columns,
-    )
+from permutations.permutation_evaluator import (
+    evaluate_extremals_effectiveness,
+    attach_effectiveness_columns,
+)
 
 # ----------------------------- circuit factories (unchanged) ------------------
 # ... [your factory functions here unchanged] ...
