@@ -373,11 +373,11 @@ def run_all_permutation_effectiveness(
     # 2) evaluate every permutation
     eff_all = evaluate_permutations(
         permutations=perms,
-        logical_circ=logical,                 # baseline program for "program" compare mode
+        logical_circ=logical,
         build_fn=build_physical_circuit,
         n_code=n_code,
         faulty=faulty,
-        noise_model=None,                     # default evaluator noise model
+        noise_model=None,
         repetitions=repetitions,
         oversample=oversample,
         ch_form=ch_form,
@@ -506,7 +506,7 @@ if __name__ == "__main__":
         top_k=1,
         verbose=False,
         show_best_windows=48,
-        repetitions=1_000
+        repetitions=100
     )
 
     # Show the single best (by total_gates) from the summary DF

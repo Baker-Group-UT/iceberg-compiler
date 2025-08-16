@@ -129,7 +129,7 @@ def _apply_ps(
     no_leak = post_select_no_leak(dist)
     return iceberg_post_select(no_leak, key_order=key_order)
 
-def _simulate_with_ps(
+def simulate_with_ps(
     circ: cirq.Circuit,
     noise_model: Optional[cirq.NoiseModel],
     *,
@@ -137,6 +137,7 @@ def _simulate_with_ps(
     oversample: int,
     ch_form: bool,
     post_select: bool,
+    logical_post_select: bool = True,
 ) -> tuple[Dict[str, float], Dict[str, float], Dict[str, float], List[str], int]:
     """
     Simulate *circ* both ideal and noisy, optionally apply post-selection to both.
@@ -148,8 +149,12 @@ def _simulate_with_ps(
         stripped, noise_model,
         repetitions=repetitions, oversample=oversample, ch_form=ch_form,
     )
-    ideal_used = _apply_ps(ideal_raw, post_select=post_select, key_order=key_order)
-    noisy_used = _apply_ps(noisy_raw, post_select=post_select, key_order=key_order)
+    if logical_post_select:
+        ideal_used = _apply_ps(ideal_raw, post_select=post_select, key_order=key_order)
+        noisy_used = _apply_ps(noisy_raw, post_select=post_select, key_order=key_order)
+    else: 
+        ideal_used = ideal_raw
+        noisy_used = noisy_raw
     return ideal_used, noisy_raw, noisy_used, key_order, codes_used
 
 def _project_iceberg_to_program_dist(
@@ -229,7 +234,7 @@ def simulate_effectiveness_for_perm(
     phys_circ = variant["circuit"]
 
     # 2) Simulate (ideal & noisy) with optional PS
-    ideal_used_phys, noisy_raw_phys, noisy_used_phys, key_order, codes_used = _simulate_with_ps(
+    ideal_used_phys, noisy_raw_phys, noisy_used_phys, key_order, codes_used = simulate_with_ps(
         phys_circ, noise_model,
         repetitions=repetitions, oversample=oversample, ch_form=ch_form,
         post_select=post_select,

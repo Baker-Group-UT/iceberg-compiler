@@ -60,30 +60,34 @@ def save_permutation_run(
     base_dir: str = "results/permutations",
     extra_meta: Optional[Dict[str, Any]] = None,
     options: Optional[Dict[str, Any]] = None,
+    compress: bool = True,
 ) -> str:
     """
-    Save a complete run to results/permutations as a single .json.gz.
+    Save a complete run to results/permutations as a single .json or .json.gz.
 
     Args:
         circuit: the *program* (logical) circuit used to generate permutations.
         circuit_name: friendly name for the circuit (used in filename).
-        df: the final analysis DataFrame (will be stored losslessly).
+        df: the final analysis DataFrame (stored losslessly).
         repetitions: number of MC shots used in effectiveness simulation.
         base_dir: base folder to write into (default: results/permutations).
         extra_meta: any additional metadata to persist.
         options: optional dict of run options (n_code, faulty, metric, etc).
+        compress: if True, saves as .json.gz; if False, saves as plain .json.
 
     Returns:
         Full path to the written file.
     """
     base = _results_dir(base_dir)
     filename = _make_filename(circuit_name, repetitions)
+    if not compress and filename.endswith(".gz"):
+        filename = filename[:-3]  # drop .gz for plain json
     path = os.path.join(base, filename)
 
     # circuit payload
     circ_payload, circ_fmt = _circuit_to_openqasm(circuit)
 
-    # dataframe payload: use records for simplicity & portability
+    # dataframe payload
     df_payload = df.to_dict(orient="records")
 
     meta: Dict[str, Any] = {
@@ -96,7 +100,7 @@ def save_permutation_run(
         "extra_meta": extra_meta or {},
     }
 
-    # integrity hash across the essential parts
+    # integrity hash
     integrity_src = json.dumps(
         {
             "circuit": circ_payload,
@@ -118,8 +122,12 @@ def save_permutation_run(
         },
     }
 
-    with gzip.open(path, "wt", encoding="utf-8") as f:
-        json.dump(packed, f, ensure_ascii=False)
+    if compress:
+        with gzip.open(path, "wt", encoding="utf-8") as f:
+            json.dump(packed, f, ensure_ascii=False)
+    else:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(packed, f, ensure_ascii=False, indent=2)
 
     return path
 
