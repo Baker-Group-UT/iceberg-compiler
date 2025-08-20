@@ -52,9 +52,10 @@ def iceberg_post_select(
     """
     Collapse 4-qubit physical codewords → 2-qubit logical outcomes per Iceberg
     patch and discard any shot whose ancilla registers are non-zero.
+
+    Expects registers to be named appropriately. 00_anc, 01_anc, ... for ancilla. Data marked as data_ 
     """
     logical_dist: Dict[str, float] = {}
-    print(key_order)
 
     anc_cregs = [k for k in key_order if "_anc" in k]
     data_cregs = sorted(
@@ -106,3 +107,61 @@ def iceberg_post_select(
 
     Z = sum(logical_dist.values()) or 1.0
     return {k: v / Z for k, v in logical_dist.items()}
+
+def iceberg_kept_mass(dist: Dict[str, float], key_order: List[str]) -> float:
+    """
+    Return the total probability mass retained by Iceberg post-selection
+    (ancillas==0 and valid 4→2 codeword projection), without renormalizing.
+
+    `dist` MUST be the distribution *after* removing leakage (i.e., built from
+    raw by dropping outcomes containing '2'), and its values must still be the
+    original (pre-renormalization) probabilities.
+    """
+    if not dist:
+        return 0.0
+
+    anc_cregs = [k for k in key_order if "_anc" in str(k)]
+    data_cregs = sorted(
+        [k for k in key_order if str(k).startswith("data_")],
+        key=lambda n: int(str(n).split("_")[-1]),
+    )
+
+    def _build_regmap(bits_or_blocks: str | list[str]) -> Dict[str, str]:
+        # Simulator sometimes returns space-delimited blocks per key
+        if isinstance(bits_or_blocks, list):
+            return dict(zip(key_order, bits_or_blocks))
+        regmap: Dict[str, str] = {}
+        pos = 0
+        for k in key_order:
+            n = 1 if "_anc" in str(k) else 4
+            regmap[str(k)] = bits_or_blocks[pos : pos + n]
+            pos += n
+        return regmap
+
+    kept = 0.0
+    for outcome, p in dist.items():
+        regmap = (
+            _build_regmap(outcome.split(" "))
+            if " " in outcome
+            else _build_regmap(outcome)
+        )
+
+        # 1) ancillas must be 0
+        if any(regmap[str(a)] != "0" for a in anc_cregs):
+            continue
+
+        # 2) each data block must be a valid codeword with even parity
+        valid = True
+        for dk in data_cregs:
+            word = regmap[str(dk)]
+            if word.count("0") % 2 == 1:
+                valid = False
+                break
+            if _PHYS2LOGIC.get(word) is None:
+                valid = False
+                break
+
+        if valid:
+            kept += float(p)
+
+    return kept

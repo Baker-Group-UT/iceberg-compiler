@@ -188,6 +188,44 @@ def translate_and_apply(op: cirq.Operation,
     # ----- unsupported gate ------------------------------------------
     raise ValueError(f"Gate {op.gate} is not in the Iceberg gate-set")
 
+def _append_named_terminal_measurements(grid: IcebergGrid) -> None:
+    """
+    Append named terminal measurements that match Iceberg post-selection:
+
+      data_p        → 4 data lines for patch p
+      patch_p_anc0  → first ancilla line for patch p
+      patch_p_anc1  → second ancilla line for patch p
+
+    Assumes each patch is laid out contiguously as:
+        [data0, data1, data2, data3, anc0, anc1]
+    """
+    circ_no_meas = cirq.Circuit(
+        (op for m in grid.circuit for op in m.operations
+         if not isinstance(op.gate, cirq.MeasurementGate)),
+        strategy=cirq.InsertStrategy.NEW_THEN_INLINE,
+    )
+
+    n_data = getattr(grid, "n", 4)      # Iceberg [[4,2,2]] → 4 data lines
+    n_anc  = getattr(grid, "n_anc", 2)  # 2 ancillas
+    block  = n_data + n_anc
+
+    all_idxs = [q.x for q in circ_no_meas.all_qubits() if hasattr(q, "x")]
+    max_idx  = max(all_idxs) if all_idxs else -1
+    total_phys = max_idx + 1
+    n_patches = (total_phys + block - 1) // block  # ceil
+
+    meas_ops: list[cirq.Operation] = []
+    for p in range(n_patches):
+        base = p * block
+        data_block = [cirq.LineQubit(base + i) for i in range(n_data)]
+        anc0 = cirq.LineQubit(base + n_data + 0)
+        anc1 = cirq.LineQubit(base + n_data + 1)
+        meas_ops.append(cirq.measure(*data_block, key=f"data_{p}"))
+        meas_ops.append(cirq.measure(anc0, key=f"patch_{p}_anc0"))  # contains "_anc"
+        meas_ops.append(cirq.measure(anc1, key=f"patch_{p}_anc1"))  # contains "_anc"
+
+    grid.circuit = circ_no_meas + cirq.Circuit(cirq.Moment(meas_ops))
+
 # ---------------------------------------------------------------------
 #  Replay a full logical circuit on the grid
 # ---------------------------------------------------------------------
@@ -233,6 +271,10 @@ def replay_logical_circuit(grid: IcebergGrid,
 
         grid.barrier()
 
+    grid.decode()
+    grid.barrier()
+    _append_named_terminal_measurements(grid)
+
 
 
 
@@ -265,6 +307,7 @@ if __name__ == "__main__":
                            active_by_patch=active,
                            state_map=smap,
                            fault_log=flog)
+    print(grid.circuit)
     assert sum(isinstance(g.gate, cirq.HPowGate)
                for g in grid.circuit.all_operations()) == 5        # 1 enc + 4 HH
     assert not flog                                              # HH is FT
@@ -324,7 +367,7 @@ if __name__ == "__main__":
     replay_logical_circuit(grid, logical,
                         logical_to_patch=l2p, idx_in_patch=idxp,
                         active_by_patch=active, state_map=smap, fault_log=flog)
-    print(grid.circuit)
+
     h, cx, rz, swp = strip_encoding(grid.circuit, grid=grid)
     assert (h, cx, rz, swp) == (0, 0, 0, 0), "X / Z should not add H / CX / RZ / SWAP"
     assert not flog
