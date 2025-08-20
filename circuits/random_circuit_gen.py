@@ -7,9 +7,12 @@ from qiskit.visualization import plot_histogram
 from qiskit_aer import AerSimulator
 from qiskit_aer.noise import pauli_error, NoiseModel
 import argparse
-from IcebergCode import IcebergCode
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+
+import sys, os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from iceberg.IcebergCode import IcebergCode
 
 def gen_random_clifford_circ(num_qubits, depth):
     circuit = QuantumCircuit(num_qubits)
