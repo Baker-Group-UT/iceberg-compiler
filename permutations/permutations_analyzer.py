@@ -171,8 +171,7 @@ def summarise_permutations(perms       : List[List[Tuple[int,int]]],
                                fault_log       =fault_log,
                                faulty=faulty, verbose=verbose)
 
-        grid.measure()
-        print_in_windows(grid.circuit, window=24)
+        # print_in_windows(grid.circuit, window=24)
 
         counts = _gate_counts_minus_encoding(grid.circuit, n_codes)
         
@@ -343,7 +342,7 @@ def run_permutation_scan(
         metric="total_gates",
         only_ft=only_ft,
         include_ties=True,
-        repetitions=2_000,
+        repetitions=10_000,
         oversample=2,
         ch_form=False,
         post_select=True,
