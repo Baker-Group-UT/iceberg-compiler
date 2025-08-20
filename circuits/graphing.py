@@ -9,11 +9,11 @@ import sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from sqale_sim.fidelity import bhattacharyya
-from permutations.permutation_evaluator import (
+from permutations_old.permutation_evaluator import (
     evaluate_permutations,
     simulate_with_ps,
 )
-from permutations.pipeline import enumerate_permutations, build_physical_circuit
+from permutations_old.pipeline import enumerate_permutations, build_physical_circuit
 from experiments_superstaq.simulation.sqale_leakage_model import (
     HilbertNoiseParams,
     SqaleLeakageModel,
@@ -63,7 +63,7 @@ def simulate_physical_accuracy(
     import pandas as pd
     from cirq import DensityMatrixSimulator
     from sqale_sim.fidelity import bhattacharyya
-    from permutations.permutation_evaluator import _ensure_measured
+    from permutations_old.permutation_evaluator import _ensure_measured
 
     stripped = _ensure_measured(circuit)
 
