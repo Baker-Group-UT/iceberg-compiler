@@ -16,9 +16,8 @@ from experiments_superstaq.simulation.sqale_leakage_model import (
 )
 from experiments_superstaq.simulation.leakage_sim import estimate_distribution
 
-from .noise_models import DefaultNoiseModel
 from .config import SimulatorConfig
-from .utils import remove_leakage_states, bhattacharyya
+from .utils import remove_leakage_states, bhattacharyya, remove_barriers
 from .result_types import SqaleSimulationResult
 
 
@@ -31,26 +30,17 @@ class Simulator:
     """
 
     def __init__(self, config: Optional[SimulatorConfig] = None):
-        if config:
-            self._repetitions = config.repetitions
-            self._noiseless_repetitions = config.noiseless_repetitions
-            self._oversample = config.oversample
-            self._ch_form = config.ch_form
-            self._preserve_leakage = config.preserve_leakage
-            self._noise_model = config.noise_model
-            self._noiseless = config.noiseless
-            self._seed = config.seed
-            self._progressbar = config.progressbar
-        else:
-            self._repetitions: int = 1000
-            self._noiseless_repetitions: Optional[int] = None
-            self._oversample: int = 1
-            self._ch_form: bool = False
-            self._preserve_leakage: bool = False
-            self._noise_model: Optional[SqaleLeakageModel] = DefaultNoiseModel()
-            self._noiseless: bool = False
-            self._seed: Optional[int] = None
-            self._progressbar: bool = True
+        if config is None:
+            config = SimulatorConfig()
+        self._repetitions = config.repetitions
+        self._noiseless_repetitions = config.noiseless_repetitions
+        self._oversample = config.oversample
+        self._ch_form = config.ch_form
+        self._preserve_leakage = config.preserve_leakage
+        self._noise_model = config.noise_model
+        self._noiseless = config.noiseless
+        self._seed = config.seed
+        self._progressbar = config.progressbar
 
     # -------- Fluent Configuration Methods --------
 
@@ -115,8 +105,10 @@ class Simulator:
         Returns:
             SqaleSimulationResult: object containing post-leakage distributions and raw fidelity.
         """
+        clean_circuit = remove_barriers(circuit=circuit)
+
         ideal_raw_dist = estimate_distribution(
-            circuit,
+            clean_circuit,
             repetitions=self._noiseless_repetitions or self._repetitions,
             oversample=self._oversample,
             ch_form=self._ch_form,
@@ -125,7 +117,7 @@ class Simulator:
         )
 
         noise_model = self._noise_model
-        noisy_circuit = circuit if self._noiseless else circuit.with_noise(noise_model)
+        noisy_circuit = clean_circuit if self._noiseless else clean_circuit.with_noise(noise_model)
 
         noisy_raw_dist = estimate_distribution(
             noisy_circuit,
@@ -136,7 +128,8 @@ class Simulator:
             progressbar=self._progressbar,
         )
 
-        noisy_dist, percent_shots_kept, percent_shots_dropped = remove_leakage_states(noisy_raw_dist, track_stats=True)
+        noisy_dist, percent_shots_kept, percent_shots_dropped = remove_leakage_states(
+            noisy_raw_dist, track_stats=True)
         ideal_dist = remove_leakage_states(ideal_raw_dist)
 
         raw_fidelity = bhattacharyya(ideal_raw_dist, noisy_raw_dist)

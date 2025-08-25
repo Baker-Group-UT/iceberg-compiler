@@ -9,7 +9,7 @@ from typing import Dict, Any
 import cirq
 
 from simulator.result_types import SqaleSimulationResult
-
+from simulator.utils import remove_barriers
 
 @dataclass
 class PostselectedSimulationResult:
@@ -18,6 +18,7 @@ class PostselectedSimulationResult:
     """
     permutation: Any                    # typically List[Tuple[int, int]]
     circuit: cirq.Circuit               # translated physical circuit
+    contains_faults: bool
     raw_result: SqaleSimulationResult   # raw simulator output
 
     postselected_noisy_dist: Dict[str, float]
@@ -26,6 +27,7 @@ class PostselectedSimulationResult:
 
     logical_fidelity: float = 0.0
     logical_selection_rate: float = 0.0
+    logical_total_variation_distance: float = 0.0
     # This is the % of shots kept after physical postselection multipled by
     # the % of shots kept after logical postselection
     selection_rate_overall: float = 0.0
@@ -33,12 +35,14 @@ class PostselectedSimulationResult:
     def to_dict(self) -> dict:
         return {
             "permutation": self.permutation,
-            "circuit": cirq.to_json(self.circuit),
+            "circuit": cirq.to_json(remove_barriers(self.circuit)),
+            "contains_faults": self.contains_faults,
             "raw_result": self.raw_result.to_dict() if hasattr(self.raw_result, "to_dict") else self.raw_result,
             "postselected_noisy_dist": self.postselected_noisy_dist,
             "postselected_ideal_dist": self.postselected_ideal_dist,
             "was_postselected": self.was_postselected,
             "logical_fidelity": self.logical_fidelity,
             "logical_selection_rate": self.logical_selection_rate,
+            "logical_total_variation_distance": self.logical_total_variation_distance,
             "selection_rate_overall": self.selection_rate_overall,
         }

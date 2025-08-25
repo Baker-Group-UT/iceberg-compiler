@@ -23,63 +23,63 @@ def _ensure_codes_used_column(df: pd.DataFrame) -> pd.DataFrame:
         df["codes_used"] = df["permutation"].apply(_codes_used_from_perm)
     return df
 
-def extremal_per_codes(
-    df: pd.DataFrame,
-    *,
-    metric: str = "total_gates",
-    only_ft: bool = False,
-    include_ties: bool = True,
-) -> Dict[str, pd.DataFrame]:
-    """
-    Identifies best and worst permutations by the given metric for each code count bucket.
+# def extremal_per_codes(
+#     df: pd.DataFrame,
+#     *,
+#     metric: str = "total_gates",
+#     only_ft: bool = False,
+#     include_ties: bool = True,
+# ) -> Dict[str, pd.DataFrame]:
+#     """
+#     Identifies best and worst permutations by the given metric for each code count bucket.
 
-    Args:
-        df: Input DataFrame with simulation metrics.
-        metric: Column to rank by (e.g., 'total_gates').
-        only_ft: Whether to restrict to fault-tolerant circuits only.
-        include_ties: Whether to return all tied best/worst entries or just one.
+#     Args:
+#         df: Input DataFrame with simulation metrics.
+#         metric: Column to rank by (e.g., 'total_gates').
+#         only_ft: Whether to restrict to fault-tolerant circuits only.
+#         include_ties: Whether to return all tied best/worst entries or just one.
 
-    Returns:
-        Dictionary with 'best_by_codes' and 'worst_by_codes' DataFrames.
-    """
-    if metric not in df.columns:
-        raise ValueError(f"metric '{metric}' not found in df; have: {list(df.columns)}")
+#     Returns:
+#         Dictionary with 'best_by_codes' and 'worst_by_codes' DataFrames.
+#     """
+#     if metric not in df.columns:
+#         raise ValueError(f"metric '{metric}' not found in df; have: {list(df.columns)}")
 
-    df2 = _ensure_codes_used_column(df)
+#     df2 = _ensure_codes_used_column(df)
 
-    if only_ft:
-        if "fault_tolerant" not in df2.columns:
-            raise ValueError("only_ft=True but 'fault_tolerant' column missing")
-        df2 = df2[df2["fault_tolerant"]].copy()
+#     if only_ft:
+#         if "fault_tolerant" not in df2.columns:
+#             raise ValueError("only_ft=True but 'fault_tolerant' column missing")
+#         df2 = df2[df2["fault_tolerant"]].copy()
 
-    if df2.empty:
-        empty = df2.copy()
-        return {"best_by_codes": empty, "worst_by_codes": empty}
+#     if df2.empty:
+#         empty = df2.copy()
+#         return {"best_by_codes": empty, "worst_by_codes": empty}
 
-    mins = df2.groupby("codes_used")[metric].transform("min")
-    maxs = df2.groupby("codes_used")[metric].transform("max")
+#     mins = df2.groupby("codes_used")[metric].transform("min")
+#     maxs = df2.groupby("codes_used")[metric].transform("max")
 
-    if include_ties:
-        best = df2[df2[metric] == mins].copy()
-        worst = df2[df2[metric] == maxs].copy()
-    else:
-        best = (
-            df2.sort_values(["codes_used", metric])
-            .groupby("codes_used", as_index=False)
-            .head(1)
-            .reset_index(drop=True)
-        )
-        worst = (
-            df2.sort_values(["codes_used", metric], ascending=[True, False])
-            .groupby("codes_used", as_index=False)
-            .head(1)
-            .reset_index(drop=True)
-        )
+#     if include_ties:
+#         best = df2[df2[metric] == mins].copy()
+#         worst = df2[df2[metric] == maxs].copy()
+#     else:
+#         best = (
+#             df2.sort_values(["codes_used", metric])
+#             .groupby("codes_used", as_index=False)
+#             .head(1)
+#             .reset_index(drop=True)
+#         )
+#         worst = (
+#             df2.sort_values(["codes_used", metric], ascending=[True, False])
+#             .groupby("codes_used", as_index=False)
+#             .head(1)
+#             .reset_index(drop=True)
+#         )
 
-    return {
-        "best_by_codes": best.reset_index(drop=True),
-        "worst_by_codes": worst.reset_index(drop=True)
-    }
+#     return {
+#         "best_by_codes": best.reset_index(drop=True),
+#         "worst_by_codes": worst.reset_index(drop=True)
+#     }
 
 def add_efficiency_score(
     df: pd.DataFrame,

@@ -34,6 +34,6 @@ def apply_logical_swap(op: cirq.Operation, context: TranslationContext) -> bool:
     i0 = context.idx_in_patch[q0]
     i1 = context.idx_in_patch[q1]
     iceberg_set = context.iceberg_set
-    iceberg_set.SWAP([[patch0, i0, i1]], faulty=context.faulty)
+    iceberg_set.SWAP([[patch0, i0, i1]], fault_tolerant=context.fault_tolerant)
 
     return True

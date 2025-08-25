@@ -47,9 +47,11 @@ def result_to_row(sim_result: PostselectedSimulationResult, pipeline_config: Pip
         "logical_fidelity": sim_result.logical_fidelity,
         "logical_selection_rate": sim_result.logical_selection_rate,
         "selection_rate_overall": sim_result.selection_rate_overall,
+        "logical_total_variation_distance": sim_result.logical_total_variation_distance,
 
         # Gate metrics
         "gate_count": gate_count,
         "total_gates": total_gate_count,
-        "fault_tolerant": pipeline_config.fault_tolerant_only,
+        "contains_faults": sim_result.contains_faults,
+        "fault_tolerant": pipeline_config.fault_tolerant,
     }
