@@ -8,6 +8,9 @@ Includes helpers for creating scaled Hilbert noise parameter sets.
 
 from typing import Dict
 from math import sqrt
+
+import cirq
+from iceberg.gates import BarrierGate
 from experiments_superstaq.simulation.sqale_leakage_model import HilbertNoiseParams
 
 
@@ -116,3 +119,12 @@ def alpha_scale_noise_params(
     )
 
     return scaled
+
+def remove_barriers(circuit: cirq.Circuit) -> cirq.Circuit:
+    """
+    Returns a copy of the circuit with all BarrierGates removed.
+    """
+    return cirq.Circuit(
+        op for op in circuit.all_operations()
+        if not isinstance(op.gate, BarrierGate)
+    )

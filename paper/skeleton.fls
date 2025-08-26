@@ -1,0 +1,8 @@
+PWD /Users/5ayam5/Library/CloudStorage/GoogleDrive-sayam.sethi2@gmail.com/My Drive/UT Austin/Research/Infleqtion Collaboration/paper
+INPUT /usr/local/texlive/2025/texmf.cnf
+INPUT /usr/local/texlive/2025/texmf-dist/web2c/texmf.cnf
+INPUT /usr/local/texlive/2025/texmf-var/web2c/pdftex/pdflatex.fmt
+INPUT /Users/5ayam5/Library/CloudStorage/GoogleDrive-sayam.sethi2@gmail.com/My Drive/UT Austin/Research/Infleqtion Collaboration/paper/skeleton.tex
+OUTPUT skeleton.log
+INPUT /usr/local/texlive/2025/texmf-dist/fonts/map/fontname/texfonts.map
+INPUT /usr/local/texlive/2025/texmf-dist/fonts/tfm/public/cm/cmbx10.tfm

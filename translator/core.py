@@ -4,22 +4,23 @@ Main functionality for this package.
 """
 
 from __future__ import annotations
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from dataclasses import dataclass
 import cirq
 
 from .context import TranslationContext
 from .utils import append_named_terminal_measurements
 from .gate_handlers import translate_and_apply
+from .config import TranslatorConfig
 
 @dataclass
 class TranslationResult:
     circuit: cirq.Circuit
     permutation: List[Tuple[int, int]]
-    fault_tolerant: bool
+    contains_faults: bool
     fault_log: List[str]
     verbose: bool
-    faulty: bool
+    fault_tolerant: bool
 
 class Translation:
     def __init__(
@@ -27,16 +28,16 @@ class Translation:
         permutation: List[Tuple[int, int]],
         program_circuit: cirq.Circuit,
         *,
-        faulty: bool = False,
+        fault_tolerant: bool = False,
         verbose: bool = False,
     ):
         self.permutation = permutation
         self.program_circuit = program_circuit
-        self.faulty = faulty
+        self.fault_tolerant = fault_tolerant
         self.verbose = verbose
 
         self.context = TranslationContext.from_config(
-            permutation, program_circuit, faulty=faulty, verbose=verbose
+            permutation, program_circuit, fault_tolerant=fault_tolerant, verbose=verbose
         )
 
     def translate_gate(self, op: cirq.Operation, next_op: cirq.Operation | None = None):
@@ -58,9 +59,9 @@ class Translation:
                 consumed = self.translate_gate(op, next_op)
                 if consumed is not None:
                     skip_next = True
-        #     self.context.iceberg_set.BARRIER()
+            # self.context.iceberg_set.BARRIER()
 
-        # self.context.iceberg_set.decode()
+        self.context.iceberg_set.decode()
         # self.context.iceberg_set.BARRIER()
 
         append_named_terminal_measurements(self.context.iceberg_set)
@@ -68,23 +69,25 @@ class Translation:
         return TranslationResult(
             circuit=self.context.iceberg_set.circuit,
             permutation=self.permutation,
-            fault_tolerant=(len(self.context.fault_log) == 0),
+            contains_faults=(len(self.context.fault_log) == 0),
             fault_log=self.context.fault_log,
             verbose=self.verbose,
-            faulty=self.faulty,
+            fault_tolerant=self.fault_tolerant,
         )
 
 class Translator:
-    def __init__(self, *, faulty: bool = False, verbose: bool = False, n_code: int = 4):
-        self.faulty = faulty
-        self.verbose = verbose
-        self.n_code = n_code
+    def __init__(self, *, config: Optional[TranslatorConfig] = None):
+        if config is None:
+            config = TranslatorConfig()
+        self.fault_tolerant = config.fault_tolerant
+        self.verbose = config.verbose
+        self.n_code = config.n_code
 
     def translate(self, program_circuit: cirq.Circuit, permutation: List[Tuple[int, int]]) -> TranslationResult:
         translation = Translation(
             permutation=permutation,
             program_circuit=program_circuit,
-            faulty=self.faulty,
+            fault_tolerant=self.fault_tolerant,
             verbose=self.verbose,
         )
         return translation.translate_circuit()
