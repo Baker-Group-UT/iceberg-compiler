@@ -9,6 +9,7 @@ from __future__ import annotations
 import cirq
 from collections.abc import Iterable
 from .iceberg_module import IcebergModule
+from .gates import BarrierGate
 
 class IcebergSet:
     """
@@ -173,7 +174,7 @@ class IcebergSet:
         for p in patches:
             self.modules[p].HH()
 
-    def CNOT(self, i: int, j: int, faulty: bool = False):
+    def CNOT(self, i: int, j: int, fault_tolerant: bool = False):
         """
         Apply logical CNOT between two logical qubits (intra-module only).
         """
@@ -183,7 +184,7 @@ class IcebergSet:
         pj, qj = divmod(j, self.k)
         if pi != pj:
             raise NotImplementedError("Cross-patch CNOT not supported")
-        self.modules[pi].CNOT(qi, qj, faulty=faulty)
+        self.modules[pi].CNOT(qi, qj, fault_tolerant=fault_tolerant)
 
     def CNOT_k_Transversal(self, i: int, j: int):
         """Apply transversal CNOT across modules i → j."""
@@ -227,16 +228,16 @@ class IcebergSet:
         """(Not yet implemented) Apply logical RZZ between logical qubits."""
         raise NotImplementedError("RZZ not implemented")
 
-    def SWAP(self, swaps: list[list[int]], faulty: bool = False):
+    def SWAP(self, swaps: list[list[int]], fault_tolerant: bool = False):
         """
         Apply logical SWAP operations within patches.
 
         Each element of `swaps` is [patch_index, i, j] for logical qubit indices i and j.
         """
         for patch, i, j in swaps:
-            self.modules[patch].SWAP(i, j, faulty=faulty)
+            self.modules[patch].SWAP(i, j, fault_tolerant=fault_tolerant)
 
-    def swap(self, swaps: list[list[int]], faulty: bool = False) -> None:
+    def swap(self, swaps: list[list[int]], fault_tolerant: bool = False) -> None:
         """
         deprecated.
         """
@@ -244,18 +245,26 @@ class IcebergSet:
 
     def BARRIER(self, patches: int | Iterable[int] | None = None):
         """
-        Insert a visual barrier (||) across selected patches (or all if None).
+        Insert a visual barrier (||) across all physical qubits in selected patches,
+        or across all patches if none are specified.
         """
+        barrier_gate = BarrierGate()
         qubits = []
+
         if patches is None:
-            for m in self.modules:
-                qubits += m.data_qubits + m.parity_qubits
+            modules = self.modules
         else:
             if isinstance(patches, int):
                 patches = [patches]
-            for i in patches:
-                qubits += self.modules[i].data_qubits + self.modules[i].parity_qubits
-        self.circuit.append(cirq.Moment([cirq.GateOperation(cirq.Z, [q]) for q in qubits]))
+            modules = [self.modules[i] for i in patches]
+
+        for module in modules:
+            qubits.extend(module.data_qubits + module.parity_qubits)
+
+        self.circuit.insert(
+            len(self.circuit),
+            cirq.Moment([barrier_gate.on(q) for q in qubits])
+        )
 
     def barrier(self, patches: int | Iterable[int] | None = None) -> None:
         """

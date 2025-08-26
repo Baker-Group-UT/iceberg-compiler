@@ -78,7 +78,7 @@ def translate_and_apply(
     g_type = type(gate)
 
     if isinstance(gate, MeasurementGate) or repr(gate) == "BarrierGate()":
-        return
+        return None
 
     # --- Check for HH compound gate ---
     if isinstance(gate, HPowGate) and next_op and isinstance(next_op.gate, HPowGate):
@@ -88,7 +88,7 @@ def translate_and_apply(
     # --- Special compound handlers ---
     if g_type in TABLE_COMPLEX:
         TABLE_COMPLEX[g_type](op, context)
-        return
+        return None
 
     # --- Simple one-to-one handlers ---
     if g_type in TABLE_SIMPLE:
@@ -98,6 +98,6 @@ def translate_and_apply(
             handler(context, q)
         else:
             handler(op, context)
-        return
+        return None
 
     raise ValueError(f"Unsupported logical gate type: {g_type}")

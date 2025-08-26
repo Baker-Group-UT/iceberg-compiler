@@ -9,6 +9,7 @@ from typing import List, Tuple
 import cirq
 
 from .core import Translator, Translation, TranslationResult
+from .config import TranslatorConfig
 
 __all__ = [
     "translate_circuit",
@@ -20,14 +21,19 @@ def translate_circuit(
     program_circuit: cirq.Circuit,
     permutation: List[Tuple[int, int]],
     *,
-    faulty: bool = False,
+    fault_tolerant: bool = False,
     verbose: bool = False,
 ) -> TranslationResult:
     """
     Translates a logical circuit using the given permutation into a physical Iceberg circuit.
     Returns a TranslationResult object with the final circuit, logs, and settings.
     """
-    translator = Translator(faulty=faulty, verbose=verbose)
+    config = TranslatorConfig(
+        fault_tolerant= fault_tolerant,
+        verbose=verbose,
+        n_code=4
+    )
+    translator = Translator(config=config)
     return translator.translate(program_circuit, permutation)
 
 def translate_gate(
@@ -35,7 +41,7 @@ def translate_gate(
     permutation: List[Tuple[int, int]],
     program_circuit: cirq.Circuit,
     *,
-    faulty: bool = False,
+    fault_tolerant: bool = False,
     verbose: bool = False,
     lookahead: cirq.Operation | None = None,
 ):
@@ -45,7 +51,7 @@ def translate_gate(
     translation = Translation(
         permutation=permutation,
         program_circuit=program_circuit,
-        faulty=faulty,
+        fault_tolerant=fault_tolerant,
         verbose=verbose,
     )
     return translation.translate_gate(op, next_op=lookahead)

@@ -92,7 +92,7 @@ def place_logical_cz(
 
     # SWAP to align if valid
     if pos_a != pos_b and b_alone:
-        iceberg_set.SWAP([[patch_b, pos_b, pos_a]], faulty=context.faulty)
+        iceberg_set.SWAP([[patch_b, pos_b, pos_a]], fault_tolerant=context.fault_tolerant)
         # iceberg_set.BARRIER()
         context.idx_in_patch[q_tgt] = pos_a
         verbose_log(context.verbose, f"[swap] CZ align on target patch {patch_b}: {pos_b} ⇆ {pos_a}")
@@ -100,7 +100,7 @@ def place_logical_cz(
         return True
 
     if pos_a != pos_b and a_ok:
-        iceberg_set.SWAP([[patch_a, pos_a, pos_b]], faulty=context.faulty)
+        iceberg_set.SWAP([[patch_a, pos_a, pos_b]], fault_tolerant=context.fault_tolerant)
         # iceberg_set.BARRIER()
         context.idx_in_patch[q_ctl] = pos_b
         verbose_log(context.verbose, f"[swap] CZ align on control patch {patch_a}: {pos_a} ⇆ {pos_b}")

@@ -174,7 +174,7 @@ class IcebergModule(CircuitClass):
             self.circuit.append(cirq.H(q))
         self.circuit.append(cirq.SWAP(self.data_qubits[1], self.data_qubits[2]))
 
-    def CNOT(self, i: int, j: int, faulty: bool = False):
+    def CNOT(self, i: int, j: int, fault_tolerant: bool = False):
         """
         Apply a logical CNOT from qubit `i` → `j`.
         - Faulty mode (n=4): SWAP-only shortcut for (0→1) or (1→0)
@@ -182,7 +182,7 @@ class IcebergModule(CircuitClass):
         """
         if i == j:
             raise ValueError("control and target must differ")
-        if faulty and self.n == 4:
+        if not fault_tolerant and self.n == 4:
             if (i, j) == (0, 1):
                 self.circuit.append(cirq.SWAP(self.data_qubits[0], self.data_qubits[1]))
                 return
@@ -250,7 +250,7 @@ class IcebergModule(CircuitClass):
         for q in self.data_qubits + self.parity_qubits:
             self.circuit.append(barrier_gate.on(q))
 
-    def SWAP(self, i: int, j: int, faulty: bool = False):
+    def SWAP(self, i: int, j: int, fault_tolerant: bool = False):
         """
         Apply a logical SWAP between qubits `i` and `j`.
         - Faulty mode (n=4, {0,1}): shortcut SWAP(q1, q2)
@@ -258,10 +258,10 @@ class IcebergModule(CircuitClass):
         """
         if i == j:
             raise ValueError("Cannot swap a qubit with itself")
-        if faulty and self.n == 4 and {i, j} == {0, 1}:
+        if not fault_tolerant and self.n == 4 and {i, j} == {0, 1}:
             self.circuit.append(cirq.SWAP(self.data_qubits[1], self.data_qubits[2]))
             return
-        self.CNOT(i, j, faulty=faulty)
+        self.CNOT(i, j, fault_tolerant=fault_tolerant)
         # pylint: disable=[W1114]
-        self.CNOT(j, i, faulty=faulty)
-        self.CNOT(i, j, faulty=faulty)
+        self.CNOT(j, i, fault_tolerant=fault_tolerant)
+        self.CNOT(i, j, fault_tolerant=fault_tolerant)
