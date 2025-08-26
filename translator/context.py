@@ -26,7 +26,7 @@ class TranslationContext:
     active_by_patch: Dict[int, List[int]]
     state_map: Dict[int, str]
     fault_log: List[str]
-    faulty: bool
+    fault_tolerant: bool
     verbose: bool
 
     @classmethod
@@ -35,12 +35,13 @@ class TranslationContext:
         permutation: List[Tuple[int, int]],
         program_circuit: cirq.Circuit,
         *,
-        faulty: bool = False,
+        fault_tolerant: bool = False,
         verbose: bool = False,
     ) -> TranslationContext:
+        """Method for creating a TranslationContext"""
         mapping = mapping_for_perm(permutation, program_circuit)
         iceberg_set = IcebergSet(n_program=mapping["n_prog"], n=4, circuit=cirq.Circuit())
-        iceberg_set.encode();
+        iceberg_set.encode()
         # iceberg_set.BARRIER()
 
         return cls(
@@ -52,7 +53,7 @@ class TranslationContext:
             active_by_patch=mapping["active_by_patch"],
             state_map=mapping["state_map"],
             fault_log=[],
-            faulty=faulty,
+            fault_tolerant=fault_tolerant,
             verbose=verbose,
         )
 
@@ -62,6 +63,6 @@ class TranslationContext:
         return cls.from_config(
             translation.permutation,
             translation.program_circuit,
-            faulty=translation.faulty,
+            fault_tolerant=translation.fault_tolerant,
             verbose=translation.verbose,
         )

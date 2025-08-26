@@ -59,7 +59,7 @@ def place_logical_cnot(
 
     # Intra-patch CNOT (always valid)
     if patch_c == patch_t:
-        iceberg_set.CNOT(q_ctl, q_tgt, faulty=context.faulty)
+        iceberg_set.CNOT(q_ctl, q_tgt, fault_tolerant=context.fault_tolerant)
         return True
 
     # Extract logicals in each patch
@@ -68,7 +68,8 @@ def place_logical_cnot(
 
     # Cross-patch constraints
     control_ok = (
-        are_all_partners_zero(q_ctl, context.active_by_patch, context.logical_to_patch, context.state_map)
+        are_all_partners_zero(q_ctl, context.active_by_patch,
+                              context.logical_to_patch, context.state_map)
         or is_full_transversal(ctrls, targs, context.idx_in_patch)
     )
     target_alone = is_alone_in_patch(q_tgt, context.active_by_patch, context.logical_to_patch)
@@ -80,7 +81,7 @@ def place_logical_cnot(
 
     # Misaligned → try SWAP on target patch if solo
     if pos_c != pos_t and target_alone:
-        iceberg_set.SWAP([[patch_t, pos_t, pos_c]], faulty=context.faulty)
+        iceberg_set.SWAP([[patch_t, pos_t, pos_c]], fault_tolerant=context.fault_tolerant)
         # iceberg_set.BARRIER()
         context.idx_in_patch[q_tgt] = pos_c
         verbose_log(context.verbose, f"[swap] target patch {patch_t}: {pos_t} ⇆ {pos_c}")
@@ -89,7 +90,7 @@ def place_logical_cnot(
 
     # Misaligned → try SWAP on control patch if compatible
     if pos_c != pos_t and control_ok:
-        iceberg_set.SWAP([[patch_c, pos_c, pos_t]], faulty=context.faulty)
+        iceberg_set.SWAP([[patch_c, pos_c, pos_t]], fault_tolerant=context.fault_tolerant)
         # iceberg_set.BARRIER()
         context.idx_in_patch[q_ctl] = pos_t
         verbose_log(context.verbose, f"[swap] control patch {patch_c}: {pos_c} ⇆ {pos_t}")

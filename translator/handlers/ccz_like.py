@@ -55,14 +55,14 @@ def apply_ccz_like(
             return True
 
         if pos_p != pos_c and c_alone:
-            iceberg_set.SWAP([[patch_c, pos_c, pos_p]], faulty=context.faulty)
+            iceberg_set.SWAP([[patch_c, pos_c, pos_p]], fault_tolerant=context.fault_tolerant)
             # iceberg_set.BARRIER()
             context.idx_in_patch[c_] = pos_p
             verbose_log(context.verbose, f"[swap] {label}: target patch {patch_c} {pos_c} ⇆ {pos_p}")
             return True
 
         if pos_p != pos_c and p_ok:
-            iceberg_set.SWAP([[patch_p, pos_p, pos_c]], faulty=context.faulty)
+            iceberg_set.SWAP([[patch_p, pos_p, pos_c]], fault_tolerant=context.fault_tolerant)
             # iceberg_set.BARRIER()
             context.idx_in_patch[p] = pos_c
             verbose_log(context.verbose, f"[swap] {label}: control patch {patch_p} {pos_p} ⇆ {pos_c}")
