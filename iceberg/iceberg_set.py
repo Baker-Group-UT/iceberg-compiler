@@ -1,15 +1,17 @@
 """
-iceberg_set.py — Defines the IcebergSet class, 
-a container of multiple Iceberg quantum codes (modules) 
+iceberg_set.py — Defines the IcebergSet class,
+a container of multiple Iceberg quantum codes (modules)
 managing logical-level operations across patches.
 """
 
 from __future__ import annotations
 
 import cirq
-from collections.abc import Iterable
+from typing import Collection
 from .iceberg_module import IcebergModule
 from .gates import BarrierGate
+from .utils import SharedInt
+
 
 class IcebergSet:
     """
@@ -45,8 +47,9 @@ class IcebergSet:
         self.n = n
         self.k = n - 2
         self.num_modules = (self.n_program + self.k - 1) // self.k
+        self._n_total = SharedInt()
         self.modules = [
-            IcebergModule(n, circuit, (n + 2) * i) for i in range(self.num_modules)
+            IcebergModule(n, circuit, self._n_total) for _ in range(self.num_modules)
         ]
         self.circuit = circuit
         self._encoded = False
@@ -80,17 +83,17 @@ class IcebergSet:
 
     def initialize_arbitrary_state(
         self,
-        codes: Iterable[int] | None = None,
-        indices: Iterable[int] | None = None,
+        codes: Collection[int] | None = None,
+        indices: Collection[int] | None = None,
     ):
         """
         Initialize Haar-random logical states on selected modules/qubits.
 
         Parameters
         ----------
-        codes : Iterable[int] | None
+        codes : Collection[int] | None
             Which module indices to initialize. `None` → all.
-        indices : Iterable[int] | None
+        indices : Collection[int] | None
             Logical-qubit indices within each selected module. `None` → all.
         """
         if codes is None:
@@ -101,11 +104,11 @@ class IcebergSet:
         for i in codes:
             self.modules[i].initialize_arbitrary_state(indices)
 
-    def X(self, i: int | Iterable[int]):
+    def X(self, i: int | Collection[int]):
         """Apply logical X to specified logical qubit(s)."""
         if isinstance(i, int):
             i = [i]
-        s = [set() for _ in range(self.num_modules)]
+        s: list[set[int]] = [set() for _ in range(self.num_modules)]
         for j in i:
             if j < 0 or j >= self.n_program:
                 raise ValueError("Index out of range")
@@ -117,7 +120,7 @@ class IcebergSet:
         for patch, qset in enumerate(s):
             self.modules[patch].X(qset)
 
-    def Z(self, i: int | Iterable[int]):
+    def Z(self, i: int | Collection[int]):
         """Apply logical Z to specified logical qubit(s)."""
         if isinstance(i, int):
             i = [i]
@@ -133,7 +136,7 @@ class IcebergSet:
         for patch, qset in enumerate(s):
             self.modules[patch].Z(qset)
 
-    def S(self, i: int | Iterable[int]):
+    def S(self, i: int | Collection[int]):
         """Apply logical S to specified logical qubit(s)."""
         if isinstance(i, int):
             i = [i]
@@ -149,7 +152,7 @@ class IcebergSet:
         for patch, qset in enumerate(s):
             self.modules[patch].S(qset)
 
-    def H(self, i: int | Iterable[int]):
+    def H(self, i: int | Collection[int]):
         """Apply logical H to specified logical qubit(s)."""
         if isinstance(i, int):
             i = [i]
@@ -165,7 +168,7 @@ class IcebergSet:
         for patch, qset in enumerate(s):
             self.modules[patch].H(qset)
 
-    def HH(self, patches: int | Iterable[int]):
+    def HH(self, patches: int | Collection[int]):
         """
         Apply the HH operation (logical Hadamard followed by relabel) to selected modules.
         """
@@ -241,9 +244,11 @@ class IcebergSet:
         """
         deprecated.
         """
-        raise DeprecationWarning("The name of this function was capitalized in the refactor")
+        raise DeprecationWarning(
+            "The name of this function was capitalized in the refactor"
+        )
 
-    def BARRIER(self, patches: int | Iterable[int] | None = None):
+    def BARRIER(self, patches: int | Collection[int] | None = None):
         """
         Insert a visual barrier (||) across all physical qubits in selected patches,
         or across all patches if none are specified.
@@ -262,12 +267,14 @@ class IcebergSet:
             qubits.extend(module.data_qubits + module.parity_qubits)
 
         self.circuit.insert(
-            len(self.circuit),
-            cirq.Moment([barrier_gate.on(q) for q in qubits])
+            len(self.circuit), cirq.Moment([barrier_gate.on(q) for q in qubits])
         )
 
-    def barrier(self, patches: int | Iterable[int] | None = None) -> None:
+    def barrier(self, patches: int | Collection[int] | None = None) -> None:
         """
         deprecated.
         """
-        raise DeprecationWarning("The name of this function was capitalized in the refactor")
+        raise DeprecationWarning(
+            "The name of this function was capitalized in the refactor"
+        )
+
