@@ -65,6 +65,56 @@ def apply_iceberg_postselection(
 
     return postselected_results
 
+def apply_iceberg_postselection_against_reference(
+    translated_circuits: List,
+    ideal_result: SqaleSimulationResult,
+    noisy_results: List[SqaleSimulationResult],
+) -> List[PostselectedSimulationResult]:
+    """
+    Applies Iceberg postselection using a shared ideal result against many noisy results.
+    Useful for comparing multiple noisy runs to a single reference.
+    """
+    postselected_results = []
+
+    for t, result in zip(translated_circuits, noisy_results):
+        key_order = ordered_measurement_keys(t.circuit)
+
+        postselected_noisy_dist = iceberg_postselect(result.noisy_dist, key_order)
+
+        postselected_noisy_dist = t.mapping.reduce_distribution(postselected_noisy_dist)
+
+        logical_fid = logical_fidelity(ideal_result.ideal_dist, postselected_noisy_dist)
+        logical_sel = logical_selection_rate(result.noisy_dist, key_order)
+        logical_total_variation_distance = total_variation_distance(
+            postselected_noisy_dist, ideal_result.ideal_dist
+        )
+        selection_rate_overall = result.percent_shots_kept * logical_sel
+
+        postselected_results.append(
+            PostselectedSimulationResult(
+                permutation=t.permutation,
+                circuit=t.circuit,
+                contains_faults=t.contains_faults,
+                raw_result=result,
+                postselected_noisy_dist=postselected_noisy_dist,
+                postselected_ideal_dist=ideal_result.ideal_dist,
+                selection_rate_overall=selection_rate_overall,
+                was_postselected=True,
+                logical_fidelity=logical_fid,
+                logical_selection_rate=logical_sel,
+                logical_total_variation_distance=logical_total_variation_distance,
+            )
+        )
+    print("ideal:")
+    print(ideal_result.ideal_dist)
+    print("noisy:")
+    print(postselected_results[0].postselected_noisy_dist)
+    print(postselected_results[1].postselected_noisy_dist)
+    print(postselected_results[2].postselected_noisy_dist)
+    print(postselected_results[3].postselected_noisy_dist)
+
+    return postselected_results
+
 def calculate_metrics_for_bare_circuit(
     circuit: cirq.Circuit,
     result: SqaleSimulationResult,
@@ -95,3 +145,4 @@ def calculate_metrics_for_bare_circuit(
         logical_selection_rate=None,
         logical_total_variation_distance=logical_total_variation_distance
     )
+

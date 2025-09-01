@@ -49,7 +49,8 @@ def run_specific_scan(program_circuit: cirq.Circuit, permutations: List[List[tup
     builder.attach_dataframe(df)
     builder.attach_results([res.to_dict() for res in simulation_results])
     record = builder.finalize()
-    RunRepository(config.save_dir).save_run(record)
+    if config.save:
+        RunRepository(config.save_dir).save_run(record)
     if config.verbose:
         print(df)
 

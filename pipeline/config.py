@@ -15,6 +15,7 @@ class PipelineConfig:
     """
     fault_tolerant: bool = False
     verbose: bool = False
+    save: bool = False
     save_dir: str = "results/pipeline"
     sim_config: SimulatorConfig = field(default_factory=SimulatorConfig)
     translator_config: TranslatorConfig = field(default_factory=TranslatorConfig)

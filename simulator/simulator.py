@@ -143,3 +143,62 @@ class Simulator:
             percent_shots_kept=percent_shots_kept,
             percent_shots_dropped=percent_shots_dropped
         )
+
+    def noisy_without_comparison(self, circuit: cirq.Circuit) -> SqaleSimulationResult:
+        """
+        Run a simulation without comparing it to the ideal
+        """
+        clean_circuit = remove_barriers(circuit=circuit)
+
+        noise_model = self._noise_model
+        noisy_circuit = clean_circuit if self._noiseless else clean_circuit.with_noise(noise_model)
+
+        noisy_raw_dist = estimate_distribution(
+            noisy_circuit,
+            repetitions=self._repetitions,
+            oversample=self._oversample,
+            ch_form=self._ch_form,
+            seed=self._seed,
+            progressbar=self._progressbar,
+        )
+
+        noisy_dist, percent_shots_kept, percent_shots_dropped = remove_leakage_states(
+            noisy_raw_dist, track_stats=True)
+        
+        return SqaleSimulationResult(
+            raw_fidelity=None,
+            ideal_dist=None,
+            noisy_dist=noisy_dist,
+            ideal_raw_dist=None,
+            noisy_raw_dist=noisy_raw_dist,
+            percent_shots_kept=percent_shots_kept,
+            percent_shots_dropped=percent_shots_dropped
+        )
+    
+    def ideal_without_comparison(self, circuit: cirq.Circuit) -> SqaleSimulationResult:
+        """
+        Run an ideal simulation without comparing it to noisy.
+        """
+        clean_circuit = remove_barriers(circuit=circuit)
+
+        ideal_raw_dist = estimate_distribution(
+            clean_circuit,
+            repetitions=self._noiseless_repetitions or self._repetitions,
+            oversample=self._oversample,
+            ch_form=self._ch_form,
+            seed=self._seed,
+            progressbar=self._progressbar,
+        )
+
+
+        ideal_dist = remove_leakage_states(ideal_raw_dist)
+
+        return SqaleSimulationResult(
+            raw_fidelity=None,
+            ideal_dist=ideal_dist,
+            noisy_dist=None,
+            ideal_raw_dist=ideal_raw_dist,
+            noisy_raw_dist=None,
+            percent_shots_kept=None,
+            percent_shots_dropped=None
+        )

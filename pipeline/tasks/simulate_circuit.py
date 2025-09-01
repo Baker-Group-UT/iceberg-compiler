@@ -45,7 +45,8 @@ def simulate_circuit(circuit: cirq.Circuit, config: PipelineConfig = PipelineCon
     builder.attach_dataframe(df)
     builder.attach_results(sim_res.to_dict())
     record = builder.finalize()
-    RunRepository(config.save_dir).save_run(record)
+    if config.save:
+        RunRepository(config.save_dir).save_run(record)
     if config.verbose:
         print(df)
 
