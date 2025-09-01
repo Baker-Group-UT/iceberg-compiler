@@ -4,6 +4,7 @@ postselection.py - Applies Iceberg postselection to simulator results.
 
 from __future__ import annotations
 from typing import List
+import cirq
 
 from pipeline.analysis.result_types import PostselectedSimulationResult
 from pipeline.analysis.metrics import (
@@ -63,3 +64,34 @@ def apply_iceberg_postselection(
         )
 
     return postselected_results
+
+def calculate_metrics_for_bare_circuit(
+    circuit: cirq.Circuit,
+    result: SqaleSimulationResult,
+) -> PostselectedSimulationResult:
+    """
+    Combines raw simulator results with Iceberg postselection logic.
+
+    Returns a list of enriched PostselectedSimulationResult objects for downstream
+    dataframe creation or analysis.
+    """
+
+    logical_fid = logical_fidelity(result.ideal_dist, result.noisy_dist)
+    logical_total_variation_distance = total_variation_distance(
+        result.noisy_dist,
+        result.ideal_dist
+    )
+
+    return PostselectedSimulationResult(
+        permutation=None,
+        circuit=circuit,
+        contains_faults= None,
+        raw_result=result,
+        postselected_noisy_dist=None,
+        postselected_ideal_dist=None,
+        selection_rate_overall=None,
+        was_postselected=True,
+        logical_fidelity=logical_fid,
+        logical_selection_rate=None,
+        logical_total_variation_distance=logical_total_variation_distance
+    )

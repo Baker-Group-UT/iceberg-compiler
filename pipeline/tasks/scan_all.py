@@ -26,7 +26,7 @@ def run_full_scan(program_circuit: cirq.Circuit, config: PipelineConfig = Pipeli
     q = len(program_circuit.all_qubits())  # Assumes 1 logical qubit per Cirq qubit
     code_sets = generate_uniform_code_sets(q)
     permutations = generate_permutations(code_sets, q)
-
+    print(permutations)
     # Step 2: Translate logical to physical
     translator = Translator(config=config.translator_config)
     translated = translator.translate_batch(program_circuit, permutations)
@@ -53,7 +53,7 @@ def run_full_scan(program_circuit: cirq.Circuit, config: PipelineConfig = Pipeli
     builder.attach_dataframe(df)
     builder.attach_results([res.to_dict() for res in simulation_results])
     record = builder.finalize()
-    RunRepository(config.save_dir).save_run(record)
+    # RunRepository(config.save_dir).save_run(record)
     if config.verbose:
         print(df)
 

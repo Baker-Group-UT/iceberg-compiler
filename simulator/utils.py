@@ -11,7 +11,7 @@ from math import sqrt
 
 import cirq
 from iceberg.gates import BarrierGate
-from experiments_superstaq.simulation.sqale_leakage_model import HilbertNoiseParams
+from experiments_superstaq.simulation.sqale_leakage_model import HilbertNoiseParams, DEFAULT_PARAMS
 
 
 def remove_leakage_states(
@@ -85,8 +85,8 @@ def scale_noise_params(
     )
 
 def alpha_scale_noise_params(
-    base: HilbertNoiseParams,
-    alpha: float,
+    base: HilbertNoiseParams = DEFAULT_PARAMS,
+    alpha: float = 1.0,
 ) -> HilbertNoiseParams:
     """
     Scales all components of HilbertNoiseParams uniformly by a global alpha.
