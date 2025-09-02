@@ -5,7 +5,7 @@ run_scan.py - high level test file
 import cirq
 
 from pipeline.config import PipelineConfig
-from pipeline import run_full_scan
+from pipeline import run_full_scan, run_extremal_scan
 from repository.run_builder import RunRecord
 from simulator.config_presets import StandardSimulator
 
@@ -20,12 +20,11 @@ program_circuit = cirq.Circuit(
 
 # Create a config for Pipeline
 config = PipelineConfig(
-    sim_config=StandardSimulator(repetitions=1),
+    sim_config=StandardSimulator(repetitions=1000),
     verbose=True,
     save=False,
-    fault_tolerant=False
 )
+# .with_ft(True)
 
 # Run the full scan pipeline
-record: RunRecord = run_full_scan(program_circuit, config)
-print(record.dataframe)
+record: RunRecord = run_extremal_scan(program_circuit, config)

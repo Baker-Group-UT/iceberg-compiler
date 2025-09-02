@@ -26,10 +26,15 @@ def run_full_scan(program_circuit: cirq.Circuit, config: PipelineConfig = Pipeli
     q = len(program_circuit.all_qubits())  # Assumes 1 logical qubit per Cirq qubit
     code_sets = generate_uniform_code_sets(q)
     permutations = generate_permutations(code_sets, q)
-    print(permutations)
+
     # Step 2: Translate logical to physical
     translator = Translator(config=config.translator_config)
     translated = translator.translate_batch(program_circuit, permutations)
+
+    print(translated[0].circuit)
+    print(translated[1].circuit)
+    print(translated[2].circuit)
+    print(translated[3].circuit)
 
     # Step 3: Simulate
     sim_config = config.sim_config

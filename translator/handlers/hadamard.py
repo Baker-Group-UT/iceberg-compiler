@@ -57,7 +57,7 @@ def apply_logical_hadamard(
             return q2
 
     # --- Case 3: Fallback to non-FT H ---
-    context.iceberg_set.H(q)
+    context.iceberg_set.H(q, fault_tolerant=context.fault_tolerant)
     context.state_map[q] = "+"
     context.fault_log.append(f"non-FT H on logical {q} in patch {patch}")
     return None

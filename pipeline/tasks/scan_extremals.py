@@ -41,7 +41,6 @@ def run_extremal_scan(
         extremals_per_code=extremals_per_code,
         score_fn=lambda tr: len(tr.circuit)  # could later use total_gates or custom metric
     )
-    print(extremals[0].circuit)
 
     # Step 4: Simulate
     simulator = Simulator(config=config.sim_config)

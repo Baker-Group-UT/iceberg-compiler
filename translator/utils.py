@@ -66,31 +66,36 @@ def mapping_for_perm(
 
 def append_named_terminal_measurements(iceberg_set) -> None:
     """
-    Append terminal measurements to Iceberg iceberg_set circuit that conform to the 
-    expected labeling for post-selection and decoding.
+    Append terminal measurements to the IcebergSet circuit using module count.
 
-    Adds 3 keys per patch:
-        - data_{p}
-        - patch_{p}_anc0
-        - patch_{p}_anc1
+    For each module p in range(iceberg_set.num_modules), append:
+        - data_{p}         (measures that module's n data qubits)
+        - patch_{p}_anc0   (X-parity ancilla)
+        - patch_{p}_anc1   (Z-parity ancilla)
+
+    Any *additional* physical qubits allocated after the module blocks
+    (e.g., FT flag ancillas) are measured together into a single 'flags' register.
     """
+    # 1) Strip existing measurements to avoid duplicate-key errors
     circ_no_meas = cirq.Circuit(
         (op for m in iceberg_set.circuit for op in m.operations
          if not isinstance(op.gate, cirq.MeasurementGate)),
         strategy=cirq.InsertStrategy.NEW_THEN_INLINE,
     )
 
-    n_data = getattr(iceberg_set, "n", 4)
-    n_anc = getattr(iceberg_set, "n_anc", 2)
-    block = n_data + n_anc
+    # 2) Per-module layout
+    n_modules = getattr(iceberg_set, "num_modules", None)
+    if n_modules is None:
+        raise AttributeError("iceberg_set must have 'num_modules' (module count).")
 
-    all_idxs = [q.x for q in circ_no_meas.all_qubits() if hasattr(q, "x")]
-    max_idx = max(all_idxs) if all_idxs else -1
-    total_phys = max_idx + 1
-    n_patches = (total_phys + block - 1) // block
+    n_data = getattr(iceberg_set, "n", 4)       # physical data qubits per module
+    n_anc  = getattr(iceberg_set, "n_anc", 2)   # parity ancillas per module (default 2)
+    block  = n_data + n_anc
 
-    meas_ops: list[cirq.Operation] = []
-    for p in range(n_patches):
+    meas_ops: List[cirq.Operation] = []
+
+    # 3) Module-block measurements by index math
+    for p in range(n_modules):
         base = p * block
         data_block = [cirq.LineQubit(base + i) for i in range(n_data)]
         anc0 = cirq.LineQubit(base + n_data + 0)
@@ -99,4 +104,19 @@ def append_named_terminal_measurements(iceberg_set) -> None:
         meas_ops.append(cirq.measure(anc0, key=f"patch_{p}_anc0"))
         meas_ops.append(cirq.measure(anc1, key=f"patch_{p}_anc1"))
 
+    # 4) Collect all remaining (flag) qubits beyond the allocated module blocks
+    #    We assume modules were allocated first; any later allocations (flags)
+    #    live at indices >= n_modules * block.
+    all_qubits = sorted(
+        [q for q in circ_no_meas.all_qubits() if isinstance(q, cirq.LineQubit)],
+        key=lambda q: q.x
+    )
+    reserved_end = n_modules * block
+    flag_qubits = [q for q in all_qubits if q.x >= reserved_end]
+
+    if flag_qubits:
+        # Measure all flags into ONE register to simplify downstream handling
+        meas_ops.append(cirq.measure(*flag_qubits, key="flags"))
+
+    # 5) Rebuild circuit with terminal measurements
     iceberg_set.circuit = circ_no_meas + cirq.Circuit(cirq.Moment(meas_ops))
