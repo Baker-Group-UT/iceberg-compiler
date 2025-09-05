@@ -11,6 +11,8 @@ import cirq
 from translator.context import TranslationContext
 from translator.handlers.utils import is_patch_solo, verbose_log
 
+ENABLE_HH_MERGE = False
+
 def apply_logical_hadamard(
     op: cirq.Operation,
     context: TranslationContext,
@@ -32,32 +34,36 @@ def apply_logical_hadamard(
         If an HH merge occurred, returns the index of the consumed qubit.
         Otherwise, returns None.
     """
+    context.iceberg_set.BARRIER()
     q = op.qubits[0].x
-    patch = context.logical_to_patch[q]
+    patch, _ = context.current_pos_of(q)
 
-    # --- Case 1: Solo patch → apply FT HH ---
-    if is_patch_solo(q, context.active_by_patch, context.logical_to_patch):
-        context.iceberg_set.HH([patch])
-        context.state_map[q] = "+"
-        return
+    # FIXME: This branch is broken because HH is not working I THINK
+    # if is_patch_solo(q, context.active_by_patch, context.logical_to_patch):
+    #     context.iceberg_set.HH([patch])
+    #     context.state_map[q] = "+"
+    #     return None
 
-    # --- Case 2: Try to merge H + H = HH ---
-    if (
-        next_op
-        and isinstance(next_op.gate, cirq.HPowGate)
-        and abs(next_op.gate.exponent) % 2 == 1
-        and next_op.gate.global_shift == 0
-    ):
-        q2 = next_op.qubits[0].x
-        if q2 != q and context.logical_to_patch[q2] == patch:
-            verbose_log(context.verbose, f"[merge-HH] logical {q} & {q2} in patch {patch}")
-            context.iceberg_set.HH([patch])
-            context.state_map[q] = "+"
-            context.state_map[q2] = "+"
-            return q2
+    if ENABLE_HH_MERGE:
+        # (keep your existing HH-merge code here; currently OFF)
+        pass
+    # # Try to merge H + H -> HH *only if both H's are in the same patch*
+    # if (
+    #     next_op and isinstance(next_op.gate, cirq.HPowGate)
+    #     and abs(next_op.gate.exponent) % 2 == 1 and next_op.gate.global_shift == 0
+    # ):
+    #     q2 = next_op.qubits[0].x
+    #     patch2, _ = context.current_pos_of(q2)
+    #     if q2 != q and patch2 == patch:
+    #         context.iceberg_set.HH([patch], fault_tolerant=context.fault_tolerant)
+    #         context.state_map[q] = context.state_map[q2] = "+"
+    #         return q2
 
-    # --- Case 3: Fallback to non-FT H ---
+    # Otherwise: always perform a *single-qubit* logical H
     context.iceberg_set.H(q, fault_tolerant=context.fault_tolerant)
     context.state_map[q] = "+"
-    context.fault_log.append(f"non-FT H on logical {q} in patch {patch}")
+    if not context.fault_tolerant:
+        context.fault_log.append(f"non-FT H on logical {q} in patch {patch}")
+    context.iceberg_set.BARRIER()
+
     return None

@@ -177,11 +177,8 @@ class IcebergModule(CircuitClass):
             self.circuit.append(cirq.S(self.data_qubits[-1]))
             self._physical_two_qubit_gate(j + 1, -1, "CZ", fault_tolerant)
             self.circuit.append(cirq.S(self.data_qubits[j + 1]))
-
+            
     def H(self, i: int | Collection[int], fault_tolerant: bool = False):
-        """
-        Apply the logical H gate to logical qubit(s) `i`.
-        """
         if isinstance(i, int):
             i = [i]
         if any(j < 0 or j >= self.k for j in i):
@@ -190,17 +187,17 @@ class IcebergModule(CircuitClass):
             raise ValueError("Duplicate indices")
 
         if len(i) == self.k:
+            # Equivalent to HH
             for q in self.data_qubits:
                 self.circuit.append(cirq.H(q))
-
             if fault_tolerant:
-                self._physical_two_qubit_gate(0, -1, "CNOT", fault_tolerant)
-                self._physical_two_qubit_gate(-1, 0, "CNOT", fault_tolerant)
-                self._physical_two_qubit_gate(0, -1, "CNOT", fault_tolerant)
+                # match HH: operate on the *middle* pair (1,2) for n=4
+                self._physical_two_qubit_gate(1, 2, "CNOT", True)
+                self._physical_two_qubit_gate(2, 1, "CNOT", True)
+                self._physical_two_qubit_gate(1, 2, "CNOT", True)
             else:
-                self.circuit.append(
-                    cirq.SWAP(self.data_qubits[0], self.data_qubits[-1])
-                )
+                self.circuit.append(cirq.SWAP(self.data_qubits[1], self.data_qubits[2]))
+            return
 
         else:
             for j in i:
@@ -246,17 +243,21 @@ class IcebergModule(CircuitClass):
             raise ValueError("Index out of range")
 
         if not fault_tolerant and self.n == 4:
-            # FIXME: find a way to make this independent of n = 4
-            if (i, j) == (0, 1):
-                self.circuit.append(cirq.SWAP(self.data_qubits[0], self.data_qubits[1]))
-                return
-            elif (i, j) == (1, 0):
-                self.circuit.append(cirq.SWAP(self.data_qubits[0], self.data_qubits[2]))
-                return
-            raise NotImplementedError(
-                "Faulty CNOT only defined for (0 \to 1) or (1 \to 0)"
-            )
-
+            # FIXME: Find a way to make this actually work (sourced from Infleqtion paper)
+            # # FIXME: find a way to make this independent of n = 4
+            # if (i, j) == (0, 1):
+            #     self.circuit.append(cirq.SWAP(self.data_qubits[0], self.data_qubits[1]))
+            #     return
+            # elif (i, j) == (1, 0):
+            #     self.circuit.append(cirq.SWAP(self.data_qubits[0], self.data_qubits[2]))
+            #     return
+            # raise NotImplementedError(
+            #     "Faulty CNOT only defined for (0 \to 1) or (1 \to 0)"
+            # )
+            self.circuit.append(cirq.CNOT(self.data_qubits[i + 1], self.data_qubits[0]))
+            self.circuit.append(cirq.CNOT(self.data_qubits[-1], self.data_qubits[0]))
+            self.circuit.append(cirq.CNOT(self.data_qubits[-1], self.data_qubits[j + 1]))
+            self.circuit.append(cirq.CNOT(self.data_qubits[i + 1], self.data_qubits[j + 1]))
         else:
             self._physical_two_qubit_gate(i + 1, 0, "CNOT", fault_tolerant)
             self._physical_two_qubit_gate(-1, 0, "CNOT", fault_tolerant)

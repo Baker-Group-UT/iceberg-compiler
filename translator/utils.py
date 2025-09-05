@@ -28,7 +28,7 @@ def mapping_for_perm(
     n_code: int = 4,
 ) -> dict:
     """
-    Compute deterministic metadata to support logical→physical circuit translation.
+    Compute deterministic metadata to support logical to physical circuit translation.
     Returns:
         - phys_circ
         - patch mappings

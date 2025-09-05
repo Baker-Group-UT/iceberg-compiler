@@ -3,7 +3,8 @@ postselection.py - Applies Iceberg postselection to simulator results.
 """
 
 from __future__ import annotations
-from typing import List
+from collections import defaultdict
+from typing import Dict, List
 import cirq
 
 from pipeline.analysis.result_types import PostselectedSimulationResult
@@ -12,6 +13,8 @@ from pipeline.analysis.metrics import (
     logical_selection_rate,
     total_variation_distance
 )
+from pipeline.analysis.window_print import print_distribution
+from translator import TranslationResult, TranslationContext
 from simulator.result_types import SqaleSimulationResult
 
 from iceberg.iceberg_postselect import (
@@ -19,6 +22,51 @@ from iceberg.iceberg_postselect import (
     iceberg_postselect,
 )
 
+
+def reduce_distribution(dist: Dict[str, float], context: TranslationContext) -> Dict[str, float]:
+    """
+    Reduce a full measurement distribution down to the tracked logical states.
+
+    We keep only the bits corresponding to the *current* (dynamic) positions of the
+    tracked states in `context.state_positions`, preserving that order.
+
+    Bit index convention:
+      - For n=4 Iceberg modules we have k_log = 2 logical bits per module.
+      - The full bitstring is ordered by modules, then by slot:
+            index = patch * k_log + slot
+        e.g., for 3 modules (k_log=2): [p0s0, p0s1, p1s0, p1s1, p2s0, p2s1]
+
+    Args:
+        dist: dict mapping full bitstrings (e.g., '011100') -> probability.
+        context: TranslationContext with dynamic state tracking.
+
+    Returns:
+        dict mapping reduced bitstrings (only tracked-state bits, in state order) -> probability.
+    """
+    k = context.k_log
+    # Compute the physical bit indices (into the full bitstring) we care about,
+    # in the same order as the tracked states (A, B, C, ...).
+    kept_indices = [p * k + s for (p, s) in context.state_positions]
+
+    reduced = defaultdict(float)
+
+    # Optional sanity: infer expected full length from mapping; skip if inconsistent
+    # expected_len = context.mapping["n_codes"] * k
+    # (We won't enforce strictly, but could assert if you want strictness.)
+
+    for bitstring, prob in dist.items():
+        # Build the reduced key by selecting only the tracked-state positions
+        try:
+            key = "".join(bitstring[i] for i in kept_indices)
+        except IndexError:
+            # If something is off (e.g., bitstring shorter than expected), skip or raise
+            # Raising helps catch upstream mismatches early:
+            raise IndexError(
+                f"Bitstring length {len(bitstring)} too short for indices {kept_indices}."
+            )
+        reduced[key] += prob
+
+    return dict(reduced)
 
 def apply_iceberg_postselection(
     translated_circuits: List,
@@ -66,7 +114,7 @@ def apply_iceberg_postselection(
     return postselected_results
 
 def apply_iceberg_postselection_against_reference(
-    translated_circuits: List,
+    translated_circuits: List[TranslationResult],
     ideal_result: SqaleSimulationResult,
     noisy_results: List[SqaleSimulationResult],
 ) -> List[PostselectedSimulationResult]:
@@ -80,8 +128,7 @@ def apply_iceberg_postselection_against_reference(
         key_order = ordered_measurement_keys(t.circuit)
 
         postselected_noisy_dist = iceberg_postselect(result.noisy_dist, key_order)
-
-        postselected_noisy_dist = t.mapping.reduce_distribution(postselected_noisy_dist)
+        postselected_noisy_dist = reduce_distribution(postselected_noisy_dist, t.context)
 
         logical_fid = logical_fidelity(ideal_result.ideal_dist, postselected_noisy_dist)
         logical_sel = logical_selection_rate(result.noisy_dist, key_order)
@@ -105,13 +152,6 @@ def apply_iceberg_postselection_against_reference(
                 logical_total_variation_distance=logical_total_variation_distance,
             )
         )
-    print("ideal:")
-    print(ideal_result.ideal_dist)
-    print("noisy:")
-    print(postselected_results[0].postselected_noisy_dist)
-    print(postselected_results[1].postselected_noisy_dist)
-    print(postselected_results[2].postselected_noisy_dist)
-    print(postselected_results[3].postselected_noisy_dist)
 
     return postselected_results
 

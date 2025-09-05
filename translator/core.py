@@ -17,6 +17,7 @@ from .config import TranslatorConfig
 class TranslationResult:
     circuit: cirq.Circuit
     permutation: List[Tuple[int, int]]
+    context: TranslationContext
     contains_faults: bool
     fault_log: List[str]
     verbose: bool
@@ -69,6 +70,7 @@ class Translation:
         return TranslationResult(
             circuit=self.context.iceberg_set.circuit,
             permutation=self.permutation,
+            context=self.context,
             contains_faults=(len(self.context.fault_log) == 0),
             fault_log=self.context.fault_log,
             verbose=self.verbose,

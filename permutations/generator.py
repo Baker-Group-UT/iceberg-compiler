@@ -135,7 +135,7 @@ def generate_permutations(
                 last_print = now
 
     print(
-        f"\r[permutations] Found {len(reps)} unique assignments (done)          "
+        f"\r[permutations] Found {len(reps)} unique assignments (done)                              "
     )
 
     return reps
