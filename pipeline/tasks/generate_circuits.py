@@ -21,7 +21,7 @@ def generate_circuits(program_circuit: cirq.Circuit, config: PipelineConfig = Pi
     q = len(program_circuit.all_qubits())  # Assumes 1 logical qubit per Cirq qubit
     code_sets = generate_uniform_code_sets(q)
     permutations = generate_permutations(code_sets, q)
-    print(permutations)
+
     # Step 2: Translate logical to physical
     translator = Translator(config=config.translator_config)
     translated = translator.translate_batch(program_circuit, permutations)

@@ -40,7 +40,7 @@ def remove_leakage_states(
 
 def bhattacharyya(p: Dict[str, float], q: Dict[str, float]) -> float:
     """
-    Compute Bhattacharyya fidelity between two distributions.
+    Compute Bhattacharyya coefficient fidelity between two distributions.
 
     Args:
         p: First probability distribution.

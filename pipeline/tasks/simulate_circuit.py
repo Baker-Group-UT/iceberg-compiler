@@ -9,14 +9,10 @@ import pandas as pd
 from pipeline.config                    import PipelineConfig
 from pipeline.analysis.postselection    import calculate_metrics_for_bare_circuit
 from pipeline.analysis.result_row       import result_to_row
-from permutations.code_sets             import generate_uniform_code_sets
-from permutations.generator             import generate_permutations
-from translator.core                    import Translator
+from pipeline.analysis.print_df         import print_df_table
 from simulator.simulator                import Simulator
 from repository.run_builder             import RunBuilder
 from repository.repository              import RunRepository
-
-
 
 def simulate_circuit(circuit: cirq.Circuit, config: PipelineConfig = PipelineConfig()):
     """
@@ -48,6 +44,6 @@ def simulate_circuit(circuit: cirq.Circuit, config: PipelineConfig = PipelineCon
     if config.save:
         RunRepository(config.save_dir).save_run(record)
     if config.verbose:
-        print(df)
+        print_df_table(df)
 
     return record

@@ -7,7 +7,7 @@ import cirq
 import pandas as pd
 
 from pipeline.config                    import PipelineConfig
-from pipeline.analysis.postselection    import apply_iceberg_postselection, apply_iceberg_postselection_against_reference
+from pipeline.analysis.postselection    import postselect_against_reference
 from pipeline.analysis.result_row       import result_to_row
 from pipeline.analysis.print_df         import print_df_table
 from permutations.code_sets             import generate_uniform_code_sets
@@ -32,29 +32,19 @@ def run_full_scan(program_circuit: cirq.Circuit, config: PipelineConfig = Pipeli
     translator = Translator(config=config.translator_config)
     translated = translator.translate_batch(program_circuit, permutations)
 
-    # print(translated[0].circuit)
-    # print(translated[1].circuit)
-    # print(translated[2].circuit)
-    # print(translated[3].circuit)
-
     # # Step 3: Simulate
-    # sim_config = config.sim_config
-    # simulator = Simulator(sim_config)
-    # simulation_results = [simulator.run(t.circuit) for t in translated]
-
-    # # Step 4: Postselection
-    # simulation_results = apply_iceberg_postselection(translated, simulation_results)
-
-    # Step 3: Simulate
     simulator = Simulator(config.sim_config)
     print("Ideal reference:")
     ideal_sim_res = simulator.ideal_without_comparison(circuit=program_circuit)
     print("Noisy permutations:")
     simulation_results = [simulator.noisy_without_comparison(t.circuit) for t in translated]
 
-    # Step 4: Postselection
-    # simulation_results = apply_iceberg_postselection(translated, simulation_results)
-    simulation_results = apply_iceberg_postselection_against_reference(translated, ideal_sim_res, simulation_results)
+    # # Step 4: Postselection
+    simulation_results = postselect_against_reference(
+        translated,
+        ideal_sim_res,
+        simulation_results
+    )
 
     # Step 5: Extract DataFrame
     rows = [result_to_row(sim_res, config) for sim_res in simulation_results]

@@ -5,9 +5,10 @@ managing logical-level operations across patches.
 """
 
 from __future__ import annotations
+from typing import Collection
 
 import cirq
-from typing import Collection
+
 from .iceberg_module import IcebergModule
 from .gates import BarrierGate
 from .utils import SharedInt

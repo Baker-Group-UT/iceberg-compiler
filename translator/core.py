@@ -85,7 +85,13 @@ class Translator:
         self.verbose = config.verbose
         self.n_code = config.n_code
 
-    def translate(self, program_circuit: cirq.Circuit, permutation: List[Tuple[int, int]]) -> TranslationResult:
+    def translate(self, 
+                  program_circuit: cirq.Circuit, 
+                  permutation: List[Tuple[int, int]]
+    ) -> TranslationResult:
+        """
+        Translate a program circuit and a permutation into a physical circuit.
+        """
         translation = Translation(
             permutation=permutation,
             program_circuit=program_circuit,
@@ -94,7 +100,13 @@ class Translator:
         )
         return translation.translate_circuit()
 
-    def translate_batch(self, program_circuit: cirq.Circuit, permutations: List[List[Tuple[int, int]]]) -> List[TranslationResult]:
+    def translate_batch(self, 
+                        program_circuit: cirq.Circuit, 
+                        permutations: List[List[Tuple[int, int]]]
+    ) -> List[TranslationResult]:
+        """
+        Translate a program circuit and a list of permutations into physical circuits.
+        """
         return [
             self.translate(program_circuit, perm)
             for perm in permutations

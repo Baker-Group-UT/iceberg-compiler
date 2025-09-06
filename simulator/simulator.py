@@ -41,7 +41,7 @@ class Simulator:
         self._noiseless = config.noiseless
         self._seed = config.seed
         self._progressbar = config.progressbar
-        
+
         self._compile_with_superstaq = config.compile_with_superstaq
         self._compile_target = config.compile_target
         self._compile_enforce_canonical = config.compile_enforce_canonical
@@ -212,13 +212,12 @@ class Simulator:
             percent_shots_kept=kept,
             percent_shots_dropped=dropped,
         )
-    
+
     def ideal_without_comparison(self, circuit: cirq.Circuit) -> SqaleSimulationResult:
         """
         Run an ideal simulation without comparing it to noisy.
         """
         clean_circuit = remove_barriers(circuit=circuit)
-        print(clean_circuit)
         ideal_raw_dist = estimate_distribution(
             clean_circuit,
             repetitions=self._noiseless_repetitions or self._repetitions,

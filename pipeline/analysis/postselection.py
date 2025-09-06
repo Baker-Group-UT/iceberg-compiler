@@ -13,7 +13,6 @@ from pipeline.analysis.metrics import (
     logical_selection_rate,
     total_variation_distance
 )
-from pipeline.analysis.window_print import print_distribution
 from translator import TranslationResult, TranslationContext
 from simulator.result_types import SqaleSimulationResult
 
@@ -171,7 +170,7 @@ def apply_iceberg_postselection(
     return postselected_results
 
 # 2 SHOTS PER RUN!
-def apply_iceberg_postselection_against_reference(
+def postselect_against_reference(
     translated_circuits: List[TranslationResult],
     ideal_result: SqaleSimulationResult,
     noisy_results: List[SqaleSimulationResult],
@@ -218,10 +217,7 @@ def calculate_metrics_for_bare_circuit(
     result: SqaleSimulationResult,
 ) -> PostselectedSimulationResult:
     """
-    Combines raw simulator results with Iceberg postselection logic.
-
-    Returns a list of enriched PostselectedSimulationResult objects for downstream
-    dataframe creation or analysis.
+    Calculates the metric for circuit.
     """
 
     logical_fid = logical_fidelity(result.ideal_dist, result.noisy_dist)
@@ -243,4 +239,3 @@ def calculate_metrics_for_bare_circuit(
         logical_selection_rate=None,
         logical_total_variation_distance=logical_total_variation_distance
     )
-

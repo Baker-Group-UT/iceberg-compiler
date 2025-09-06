@@ -23,7 +23,7 @@ program_circuit = cirq.Circuit(
 
 # Create a config for Pipeline
 config = PipelineConfig(
-    sim_config=OversampledSimulator(repetitions=2_000, oversample=10),
+    sim_config=OversampledSimulator(repetitions=250, oversample=1),\
         # .with_noiseless(),
     verbose=True,
     save=True,
@@ -36,5 +36,5 @@ config = PipelineConfig(
 #                     [(0, 0), (1, 0), (2, 0)], 
 #                     # [(0, 1), (0, 0), (1, 1)],
 #                     ], config=config)
-# record: RunRecord = run_extremal_scan(program_circuit, config=config)
-record: RunRecord = run_full_scan(program_circuit, config=config)
+record: RunRecord = run_extremal_scan(program_circuit, config=config)
+# record: RunRecord = run_full_scan(program_circuit, config=config)
