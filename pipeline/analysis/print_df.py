@@ -81,8 +81,8 @@ def print_df_table(
         "logical_total_variation_distance",
         "total_gates",
         # "contains_faults",
-        "fault_tolerant",
-        "postselected_dist",
+        # "fault_tolerant",
+        # "postselected_dist",
     ]
     rename = {
         "codes_used": "# codes",
@@ -90,7 +90,7 @@ def print_df_table(
         "logical_total_variation_distance": "TVD",
         "total_gates": "gate count",
         "contains_faults": "contains faults",
-        "fault_tolerant": "fault tolerant",
+        # "fault_tolerant": "fault tolerant",
     }
 
     cols = [c for c in wanted if c in df.columns]

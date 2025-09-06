@@ -9,6 +9,7 @@ import pandas as pd
 from pipeline.config                    import PipelineConfig
 from pipeline.analysis.postselection    import apply_iceberg_postselection, apply_iceberg_postselection_against_reference
 from pipeline.analysis.result_row       import result_to_row
+from pipeline.analysis.print_df         import print_df_table
 from permutations.code_sets             import generate_uniform_code_sets
 from permutations.generator             import generate_permutations
 from translator.core                    import Translator
@@ -72,6 +73,6 @@ def run_full_scan(program_circuit: cirq.Circuit, config: PipelineConfig = Pipeli
     if config.save:
         RunRepository(config.save_dir).save_run(record)
     if config.verbose:
-        print(df)
+        print_df_table(df)
 
     return record

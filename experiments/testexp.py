@@ -7,7 +7,7 @@ import cirq
 from pipeline.config import PipelineConfig
 from pipeline import run_full_scan, run_extremal_scan, run_specific_scan
 from repository.run_builder import RunRecord
-from simulator.config_presets import StandardSimulator
+from simulator.config_presets import StandardSimulator, OversampledSimulator
 from circuits.example_circuits import ghz_3, toffoli_like_snippet
 
 
@@ -23,13 +23,18 @@ program_circuit = cirq.Circuit(
 
 # Create a config for Pipeline
 config = PipelineConfig(
-    sim_config=StandardSimulator(repetitions=500),
+    sim_config=OversampledSimulator(repetitions=2_000, oversample=10),
+        # .with_noiseless(),
     verbose=True,
-    save=False,
-)
+    save=True,
+)\
 # .with_ft(True)
 
 # Run the full scan pipeline
-# record: RunRecord = run_specific_scan(program_circuit, permutations=[[(0, 0), (1, 1)]], config=config)
+# record: RunRecord = run_specific_scan(program_circuit, 
+#     permutations=[  [(0, 0), (0, 1), (1, 0)], 
+#                     [(0, 0), (1, 0), (2, 0)], 
+#                     # [(0, 1), (0, 0), (1, 1)],
+#                     ], config=config)
 # record: RunRecord = run_extremal_scan(program_circuit, config=config)
 record: RunRecord = run_full_scan(program_circuit, config=config)

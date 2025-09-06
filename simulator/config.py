@@ -6,7 +6,7 @@ Contains multiple configs set for quick simulator setup.
 # pylint: disable=[R0902]
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Any, Self
 
 from experiments_superstaq.simulation.sqale_leakage_model import SqaleLeakageModel
 from .noise_models import DefaultNoiseModel, noise_model_to_dict
@@ -26,6 +26,13 @@ class SimulatorConfig:
     seed: Optional[int] = None
     progressbar: bool = True
 
+    # transpiling
+    compile_with_superstaq: bool = True
+    compile_target: str = "cq_hilbert_qpu"
+    compile_enforce_canonical: bool = False
+    allow_global_rotations: bool = True
+    compile_service: Optional[Any] = None
+
     def to_dict(self) -> dict:
         """
         Returns the simulator config as a dictionary.
@@ -40,4 +47,13 @@ class SimulatorConfig:
             "noiseless": self.noiseless,
             "seed": self.seed,
             "progressbar": self.progressbar,
+            "compile_with_superstaq": self.compile_with_superstaq,
+            "compile_target": self.compile_target,
+            "compile_enforce_canonical": self.compile_enforce_canonical,
+            "allow_global_rotations": self.allow_global_rotations,
+            "compile_service": self.compile_service
         }
+
+    def with_noiseless(self, noiseless: bool = True) -> Self:
+        self.noiseless = noiseless
+        return self

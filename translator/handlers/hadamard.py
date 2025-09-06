@@ -34,15 +34,14 @@ def apply_logical_hadamard(
         If an HH merge occurred, returns the index of the consumed qubit.
         Otherwise, returns None.
     """
-    context.iceberg_set.BARRIER()
     q = op.qubits[0].x
     patch, _ = context.current_pos_of(q)
 
     # FIXME: This branch is broken because HH is not working I THINK
-    # if is_patch_solo(q, context.active_by_patch, context.logical_to_patch):
-    #     context.iceberg_set.HH([patch])
-    #     context.state_map[q] = "+"
-    #     return None
+    if is_patch_solo(q, context.active_by_patch, context.logical_to_patch):
+        context.iceberg_set.HH([patch])
+        context.state_map[q] = "+"
+        return None
 
     if ENABLE_HH_MERGE:
         # (keep your existing HH-merge code here; currently OFF)
@@ -64,6 +63,4 @@ def apply_logical_hadamard(
     context.state_map[q] = "+"
     if not context.fault_tolerant:
         context.fault_log.append(f"non-FT H on logical {q} in patch {patch}")
-    context.iceberg_set.BARRIER()
-
     return None

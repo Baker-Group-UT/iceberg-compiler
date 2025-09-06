@@ -68,6 +68,63 @@ def reduce_distribution(dist: Dict[str, float], context: TranslationContext) -> 
 
     return dict(reduced)
 
+from collections import defaultdict
+from typing import Dict
+
+# NOTE: REDUCE DISTRIBUTION FOR PARALLEL CIRCUIT EXECUTION, USE CAREFULLY
+# def reduce_distribution(dist: Dict[str, float], context: "TranslationContext") -> Dict[str, float]:
+#     """
+#     Reduce a full measurement distribution down to the tracked logical states.
+
+#     Normal mode (e.g. 2-code, 4-bit case):
+#         We keep only the bits corresponding to the tracked logical states
+#         in `context.state_positions`.
+
+#     Special 6-bit mode (3-code, 6-bit case):
+#         Each full bitstring is split into two 3-bit substrings:
+#             - even indices 0,2,4  (ABC)
+#             - odd indices  1,3,5  (A'B'C')
+#         The probability mass of the 6-bit string is divided equally
+#         between these two substrings.
+#         This treats each accepted shot as yielding two samples.
+
+#     Args:
+#         dist: dict mapping full bitstrings (e.g., '011100') -> probability.
+#         context: TranslationContext with dynamic state tracking.
+
+#     Returns:
+#         dict mapping reduced bitstrings (tracked states, or pooled halves) -> probability.
+#     """
+#     k = context.k_log
+#     kept_indices = [p * k + s for (p, s) in context.state_positions]
+
+#     reduced = defaultdict(float)
+
+#     for bitstring, prob in dist.items():
+#         n = len(bitstring)
+
+#         # --- Special case: 6-bit global-pass distribution ---
+#         if n == 6:
+#             # Split into two halves: even and odd indices
+#             even_bits = "".join(bitstring[i] for i in range(0, 6, 2))
+#             odd_bits  = "".join(bitstring[i] for i in range(1, 6, 2))
+
+#             # Divide probability equally between the two
+#             reduced[even_bits] += prob / 2.0
+#             reduced[odd_bits]  += prob / 2.0
+
+#         # --- Default case: just keep tracked-state indices ---
+#         else:
+#             try:
+#                 key = "".join(bitstring[i] for i in kept_indices)
+#             except IndexError:
+#                 raise IndexError(
+#                     f"Bitstring length {n} too short for indices {kept_indices}."
+#                 )
+#             reduced[key] += prob
+            
+#     return dict(reduced)
+
 def apply_iceberg_postselection(
     translated_circuits: List,
     results: List[SqaleSimulationResult],
@@ -113,6 +170,7 @@ def apply_iceberg_postselection(
 
     return postselected_results
 
+# 2 SHOTS PER RUN!
 def apply_iceberg_postselection_against_reference(
     translated_circuits: List[TranslationResult],
     ideal_result: SqaleSimulationResult,

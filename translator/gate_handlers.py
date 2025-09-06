@@ -1,4 +1,9 @@
-# translator/gate_handlers/gate_handlers.py
+'''
+translator.gate_handlers.gate_handlers.py – Gate dispatch function.
+
+Provides `translate_and_apply`, the main entrypoint used by all circuit translators
+for applying fault-tolerant or faulty versions of logical gates on an Iceberg iceberg_set.
+'''
 
 from __future__ import annotations
 from typing import Dict, Callable
@@ -13,23 +18,40 @@ from cirq.ops import (
     SwapPowGate,
     CXPowGate,
     CZPowGate,
-    MeasurementGate,
 )
+from cirq.ops import MeasurementGate
 from iceberg.gates import BarrierGate
 
 from .context import TranslationContext
-from .handlers.hadamard import apply_logical_hadamard  # kept, but we’ll call module-level H here
+from .handlers.hadamard import apply_logical_hadamard
 from .handlers.controlled_not import apply_logical_cnot
 from .handlers.controlled_z import apply_logical_cz
-from .handlers.rz import apply_logical_rz            # update this to use current slot (see note below)
+from .handlers.rz import apply_logical_rz
 from .handlers.swap import apply_logical_swap
 
 PAULI_X_TYPE = type(cirq.X)
 PAULI_Z_TYPE = type(cirq.Z)
 
+# --- Canonical gate translation table (simple one-to-one mappings) ---
+TABLE_SIMPLE: Dict[type, tuple[str, Callable]] = {
+    PAULI_X_TYPE:         ("X", lambda ctx, q: ctx.iceberg_set.X(q)),
+    PAULI_Z_TYPE:         ("Z", lambda ctx, q: ctx.iceberg_set.Z(q)),
+    Rz:             ("RZ", apply_logical_rz),
+    ZPowGate:       ("RZ", apply_logical_rz),
+    SwapPowGate:    ("SWAP", apply_logical_swap),
+}
+
+# --- Special compound gate handlers ---
+TABLE_COMPLEX: Dict[type, Callable] = {
+    HPowGate:       apply_logical_hadamard,
+    CXPowGate:      apply_logical_cnot,
+    CZPowGate:      apply_logical_cz,
+}
+
 SKIPPED_GATES = (BarrierGate, MeasurementGate)
 
 def _rz_angle_from_gate(gate) -> float:
+    """Extracts rotation angle in radians from Rz/ZPowGate."""
     if hasattr(gate, "rads"):
         return float(gate.rads)
     if hasattr(gate, "_rads"):
@@ -38,10 +60,6 @@ def _rz_angle_from_gate(gate) -> float:
         return float(gate.exponent) * math.pi
     raise TypeError(f"Unsupported RZ gate type: {type(gate)}")
 
-def _current_patch_slot(context: TranslationContext, q_phys: int) -> tuple[int, int]:
-    """Resolve the *current* (patch, slot) for a program physical index."""
-    return context.current_pos_of(q_phys)
-
 def translate_and_apply(
     context: TranslationContext,
     op: cirq.Operation,
@@ -49,57 +67,42 @@ def translate_and_apply(
     next_op: cirq.Operation | None = None,
 ):
     """
-    Translates and applies a logical operation using the *current* address of each qubit.
-    Returns True if a lookahead gate was consumed, otherwise None.
+    Translates and applies a logical operation onto the IcebergSet circuit
+    using dispatch tables and specialized handlers.
+
+    Args:
+        context: TranslationContext holding mapping and circuit state.
+        op: Cirq Operation to be translated.
+        next_op: Optional lookahead operation (e.g., for detecting HH).
+
+    Returns:
+        True if a lookahead gate was consumed, otherwise None.
     """
     gate = op.gate
+    g_type = type(gate)
 
-    # Skip barriers/measurements at translation time
     if isinstance(gate, MeasurementGate) or repr(gate) == "BarrierGate()":
         return None
 
-    # -------- Single-qubit gates: always use current (patch,slot) --------
-    if isinstance(gate, (XPowGate, ZPowGate, Rz, HPowGate)):
-        q_phys = op.qubits[0].x
-        patch, slot = _current_patch_slot(context, q_phys)
-        mod = context.iceberg_set.modules[patch]
+    # FIXME: HH lookahead merging broken
+    # # --- Check for HH compound gate ---
+    # if isinstance(gate, HPowGate) and next_op and isinstance(next_op.gate, HPowGate):
+    #     apply_logical_hadamard(op, context, next_op)
+    #     return True
 
-        if isinstance(gate, XPowGate):
-            # Apply logical X to the *current* slot
-            mod.X(slot)
-            return None
-
-        if isinstance(gate, ZPowGate):
-            mod.Z(slot)
-            return None
-
-        if isinstance(gate, Rz) or isinstance(gate, ZPowGate):
-            # If you want RZ support via ZPowGate exponent as well:
-            theta = _rz_angle_from_gate(gate)
-            mod.RZ(slot, theta, fault_tolerant=context.fault_tolerant)
-            return None
-
-        if isinstance(gate, HPowGate):
-            # HH merge disabled; do single-qubit H at the *current* slot
-            mod.H(slot, fault_tolerant=context.fault_tolerant)
-            context.state_map[q_phys] = "+"
-            if not context.fault_tolerant:
-                context.fault_log.append(f"non-FT H on logical {q_phys} in patch {patch}")
-            return None
-
-    # -------- Two-qubit gates: delegate, but handlers must use current positions --------
-    if isinstance(gate, CXPowGate):
-        # apply_logical_cnot already reads current_pos_of(...) internally
-        apply_logical_cnot(op, context)
+    # --- Special compound handlers ---
+    if g_type in TABLE_COMPLEX:
+        TABLE_COMPLEX[g_type](op, context)
         return None
 
-    if isinstance(gate, CZPowGate):
-        apply_logical_cz(op, context)
+    # --- Simple one-to-one handlers ---
+    if g_type in TABLE_SIMPLE:
+        label, handler = TABLE_SIMPLE[g_type]
+        if label in {"X", "Z"}:
+            q = op.qubits[0].x
+            handler(context, q)
+        else:
+            handler(op, context)
         return None
 
-    if isinstance(gate, SwapPowGate):
-        # Your SWAP handler must call context.update_states_on_swap(...)
-        apply_logical_swap(op, context)
-        return None
-
-    raise ValueError(f"Unsupported logical gate type: {type(gate)}")
+    raise ValueError(f"Unsupported logical gate type: {g_type}")
