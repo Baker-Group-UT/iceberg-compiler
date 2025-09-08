@@ -18,8 +18,8 @@ def QuickSimulator():
 def StandardSimulator(repetitions: int = 1000):
     return SimulatorConfig(repetitions=repetitions)
 
-def OversampledSimulator():
-    return SimulatorConfig(repetitions=20, oversample=50)
+def OversampledSimulator(repetitions: int = 25, oversample: int = 40):
+    return SimulatorConfig(repetitions=repetitions, oversample=oversample)
 
 def FinalizedSimulator():
     return SimulatorConfig(

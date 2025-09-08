@@ -40,6 +40,29 @@ def canonical_key(assign: List[Tuple[int, int]]) -> Tuple[Tuple[int, int], ...]:
 
     return tuple(canon)
 
+def canonical_relative_index_key(assign: List[Tuple[int, int]]) -> Tuple[Tuple[int, int], ...]:
+    """
+    Canonicalize a permutation by removing patch order *and* normalizing slot indices 
+    to be relative (i.e., subtracting the minimum index used across all qubits).
+
+    Parameters
+    ----------
+    assign : List[Tuple[int, int]]
+        List of (patch_id, slot_index) assignments.
+
+    Returns
+    -------
+    Tuple[Tuple[int, int], ...]
+        Canonical representation up to patch reordering and global slot offset.
+    """
+    # Step 1: Canonicalize patch order
+    canon = canonical_key(assign)
+
+    # Step 2: Normalize slot indices (subtract global minimum)
+    min_slot = min(slot for _, slot in canon)
+    rel_indexed = tuple((patch, slot - min_slot) for patch, slot in canon)
+
+    return rel_indexed
 
 def generate_permutations(
     code_sizes: List[int],
@@ -79,7 +102,7 @@ def generate_permutations(
         for k in range(logical_capacity(n)):
             slots.append((pid, k))
 
-    reps = []
+    perms = []
     seen: set[Tuple[Tuple[int, int], ...]] = set()
     last_print = time.time()
 
@@ -95,24 +118,24 @@ def generate_permutations(
     # Main enumeration loop
     for subset in combinations(slots, q):
         for ordering in permute(subset, q):
-            sig = canonical_key(list(ordering))
+            sig = canonical_relative_index_key(list(ordering))
             if sig in seen:
                 continue
             seen.add(sig)
-            reps.append(list(ordering))
+            perms.append(list(ordering))
 
             # Live progress print
             now = time.time()
             if now - last_print >= status_interval:
                 print(
-                    f"\r[permutations] Found {len(reps)} unique assignments "
+                    f"\r[permutations] Found {len(perms)} unique assignments "
                     f"(est. max ≈ {est_total})",
                     end="", flush=True
                 )
                 last_print = now
 
     print(
-        f"\r[permutations] Found {len(reps)} unique assignments (done)          "
+        f"\r[permutations] Found {len(perms)} unique assignments (done)                              "
     )
 
-    return reps
+    return perms

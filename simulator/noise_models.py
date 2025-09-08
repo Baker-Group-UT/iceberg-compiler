@@ -7,6 +7,7 @@ Predefined leakage-aware noise models for use with the Simulator.
 
 from experiments_superstaq.simulation.sqale_leakage_model import (
     SqaleLeakageModel,
+    HilbertNoiseParams,
     DEFAULT_PARAMS,
     STOCHASTIC_PARAMS,
 )
@@ -40,3 +41,11 @@ def StochasticNoiseModel() -> SqaleLeakageModel:
     """
     params = STOCHASTIC_PARAMS.model_copy()
     return SqaleLeakageModel(**params.model_dump())
+
+def ScaledNoiseModel(noise_params: HilbertNoiseParams) -> SqaleLeakageModel:
+    """
+    Returns the stochastic variant of the SQALE leakage noise model.
+
+    Typically used for randomized benchmarking or quick sweeps.
+    """
+    return SqaleLeakageModel(**noise_params.model_dump())
