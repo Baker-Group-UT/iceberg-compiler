@@ -25,6 +25,15 @@ from .records import (
 
 @dataclass
 class RunRecord:
+    """
+    Stores a run.
+    args:
+    - manifest
+    - circuit
+    - dataframe
+    - sim_results
+    """
+
     manifest: RunManifest
     circuit: CircuitRecord
     dataframe: Optional[DataFrameRecord] = None

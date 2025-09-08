@@ -8,9 +8,10 @@ import cirq
 import pandas as pd
 
 from pipeline.config                        import PipelineConfig
-from pipeline.analysis.postselection        import apply_iceberg_postselection
+from pipeline.analysis.postselection        import postselect_against_reference
 from pipeline.analysis.result_row           import result_to_row
 from pipeline.analysis.extremal_selection   import extremal_translation_results_per_code
+from pipeline.analysis.print_df             import print_df_table
 from permutations                           import generate_permutations, generate_uniform_code_sets
 from translator                             import Translator
 from simulator                              import Simulator
@@ -41,14 +42,16 @@ def run_extremal_scan(
         extremals_per_code=extremals_per_code,
         score_fn=lambda tr: len(tr.circuit)  # could later use total_gates or custom metric
     )
-    print(extremals[0].circuit)
 
-    # Step 4: Simulate
-    simulator = Simulator(config=config.sim_config)
-    simulation_results = [simulator.run(e.circuit) for e in extremals]
+    # # Step 4: Simulate
+    simulator = Simulator(config.sim_config)
+    print("Ideal reference:")
+    ideal_sim_res = simulator.ideal_without_comparison(circuit=program_circuit)
+    print("Noisy permutations:")
+    simulation_results = [simulator.noisy_without_comparison(e.circuit) for e in extremals]
 
-    # Step 5: Postselection
-    simulation_results = apply_iceberg_postselection(extremals, simulation_results)
+    # # Step 5: Postselection
+    simulation_results = postselect_against_reference(extremals, ideal_sim_res, simulation_results)
 
     # Step 6: Extract DataFrame
     rows = [result_to_row(sim_res, config) for sim_res in simulation_results]
@@ -64,8 +67,9 @@ def run_extremal_scan(
     builder.attach_dataframe(df)
     builder.attach_results([res.to_dict() for res in simulation_results])
     record = builder.finalize()
-    RunRepository(config.save_dir).save_run(record)
+    if config.save:
+        RunRepository(config.save_dir).save_run(record)
     if config.verbose:
-        print(df)
+        print_df_table(df)
 
     return record

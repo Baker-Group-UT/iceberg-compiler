@@ -21,8 +21,12 @@ def result_to_row(sim_result: PostselectedSimulationResult, pipeline_config: Pip
     Returns:
         Dictionary containing all metrics needed for result analysis.
     """
-    perm_key = tuple(tuple(p) for p in sim_result.permutation)
-    codes_used = len({p for p, _ in sim_result.permutation})
+    if sim_result.permutation is None:
+        perm_key = "no_perm_key"
+        codes_used = -1
+    else:
+        perm_key = tuple(tuple(p) for p in sim_result.permutation)
+        codes_used = len({p for p, _ in sim_result.permutation})
 
     gate_count = extract_gate_count(sim_result.circuit)
     total_gate_count = total_gates(gate_count)

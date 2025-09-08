@@ -11,6 +11,7 @@ import math
 import cirq
 
 from cirq.ops import (
+    XPowGate,
     Rz,
     HPowGate,
     ZPowGate,
@@ -28,10 +29,13 @@ from .handlers.controlled_z import apply_logical_cz
 from .handlers.rz import apply_logical_rz
 from .handlers.swap import apply_logical_swap
 
+PAULI_X_TYPE = type(cirq.X)
+PAULI_Z_TYPE = type(cirq.Z)
+
 # --- Canonical gate translation table (simple one-to-one mappings) ---
 TABLE_SIMPLE: Dict[type, tuple[str, Callable]] = {
-    cirq.X:         ("X", lambda ctx, q: ctx.iceberg_set.X(q)),
-    cirq.Z:         ("Z", lambda ctx, q: ctx.iceberg_set.Z(q)),
+    PAULI_X_TYPE:         ("X", lambda ctx, q: ctx.iceberg_set.X(q)),
+    PAULI_Z_TYPE:         ("Z", lambda ctx, q: ctx.iceberg_set.Z(q)),
     Rz:             ("RZ", apply_logical_rz),
     ZPowGate:       ("RZ", apply_logical_rz),
     SwapPowGate:    ("SWAP", apply_logical_swap),
@@ -80,10 +84,11 @@ def translate_and_apply(
     if isinstance(gate, MeasurementGate) or repr(gate) == "BarrierGate()":
         return None
 
-    # --- Check for HH compound gate ---
-    if isinstance(gate, HPowGate) and next_op and isinstance(next_op.gate, HPowGate):
-        apply_logical_hadamard(op, context, next_op)
-        return True
+    # FIXME: HH lookahead merging broken
+    # # --- Check for HH compound gate ---
+    # if isinstance(gate, HPowGate) and next_op and isinstance(next_op.gate, HPowGate):
+    #     apply_logical_hadamard(op, context, next_op)
+    #     return True
 
     # --- Special compound handlers ---
     if g_type in TABLE_COMPLEX:

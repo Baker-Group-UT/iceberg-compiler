@@ -17,6 +17,7 @@ from .config import TranslatorConfig
 class TranslationResult:
     circuit: cirq.Circuit
     permutation: List[Tuple[int, int]]
+    context: TranslationContext
     contains_faults: bool
     fault_log: List[str]
     verbose: bool
@@ -69,6 +70,7 @@ class Translation:
         return TranslationResult(
             circuit=self.context.iceberg_set.circuit,
             permutation=self.permutation,
+            context=self.context,
             contains_faults=(len(self.context.fault_log) == 0),
             fault_log=self.context.fault_log,
             verbose=self.verbose,
@@ -83,7 +85,13 @@ class Translator:
         self.verbose = config.verbose
         self.n_code = config.n_code
 
-    def translate(self, program_circuit: cirq.Circuit, permutation: List[Tuple[int, int]]) -> TranslationResult:
+    def translate(self, 
+                  program_circuit: cirq.Circuit, 
+                  permutation: List[Tuple[int, int]]
+    ) -> TranslationResult:
+        """
+        Translate a program circuit and a permutation into a physical circuit.
+        """
         translation = Translation(
             permutation=permutation,
             program_circuit=program_circuit,
@@ -92,7 +100,13 @@ class Translator:
         )
         return translation.translate_circuit()
 
-    def translate_batch(self, program_circuit: cirq.Circuit, permutations: List[List[Tuple[int, int]]]) -> List[TranslationResult]:
+    def translate_batch(self, 
+                        program_circuit: cirq.Circuit, 
+                        permutations: List[List[Tuple[int, int]]]
+    ) -> List[TranslationResult]:
+        """
+        Translate a program circuit and a list of permutations into physical circuits.
+        """
         return [
             self.translate(program_circuit, perm)
             for perm in permutations
