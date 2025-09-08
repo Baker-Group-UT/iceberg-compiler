@@ -13,7 +13,6 @@ from .iceberg_module import IcebergModule
 from .gates import BarrierGate
 from .utils import SharedInt
 
-
 class IcebergSet:
     """
     A set of [[n, n-2, 2]] IcebergModules. Must be consistent.

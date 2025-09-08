@@ -94,7 +94,6 @@ def place_logical_cnot(
         _, pos_c2 = context.current_pos_of(q_ctl)
         _, pos_t2 = context.current_pos_of(q_tgt)
         assert pos_c2 == pos_t2, "Post-SWAP misalignment before transversal (target branch)."
-
         iceberg_set.CNOT_k_Transversal(patch_c, patch_t)
         return True
 
