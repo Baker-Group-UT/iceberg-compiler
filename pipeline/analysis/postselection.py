@@ -14,7 +14,6 @@ from pipeline.analysis.metrics import (
     total_variation_distance
 )
 from translator import TranslationResult, TranslationContext
-from simulator.result_types import SqaleSimulationResult
 
 from iceberg.iceberg_postselect import (
     ordered_measurement_keys,
