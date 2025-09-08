@@ -102,7 +102,7 @@ def generate_permutations(
         for k in range(logical_capacity(n)):
             slots.append((pid, k))
 
-    reps = []
+    perms = []
     seen: set[Tuple[Tuple[int, int], ...]] = set()
     last_print = time.time()
 
@@ -122,20 +122,20 @@ def generate_permutations(
             if sig in seen:
                 continue
             seen.add(sig)
-            reps.append(list(ordering))
+            perms.append(list(ordering))
 
             # Live progress print
             now = time.time()
             if now - last_print >= status_interval:
                 print(
-                    f"\r[permutations] Found {len(reps)} unique assignments "
+                    f"\r[permutations] Found {len(perms)} unique assignments "
                     f"(est. max ≈ {est_total})",
                     end="", flush=True
                 )
                 last_print = now
 
     print(
-        f"\r[permutations] Found {len(reps)} unique assignments (done)                              "
+        f"\r[permutations] Found {len(perms)} unique assignments (done)                              "
     )
 
-    return reps
+    return perms

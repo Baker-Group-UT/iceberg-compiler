@@ -14,13 +14,14 @@ class PipelineConfig:
     Parent config object for pipeline orchestration.
     """
     fault_tolerant: bool = False
+    fault_tolerant_chance: float = 0.0
     verbose: bool = False
     save: bool = False
     save_dir: str = "results/pipeline"
     sim_config: SimulatorConfig = field(default_factory=SimulatorConfig)
     translator_config: TranslatorConfig = field(default_factory=TranslatorConfig)
 
-    def with_ft(self, ft: bool = True): 
+    def with_ft(self, ft: bool = True, ft_chace: float = 1.0): 
         self.fault_tolerant = ft
         self.translator_config.fault_tolerant = ft
         return self

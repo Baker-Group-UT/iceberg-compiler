@@ -131,6 +131,7 @@ class Simulator:
 
     def _prep_for_sim(self, circuit: cirq.Circuit) -> cirq.Circuit:
         clean = remove_barriers(circuit=circuit)
+        return clean
         transpiled = transpile_for_sqale(
             clean,
             target=self._compile_target,

@@ -34,7 +34,7 @@ for alpha in alphas:
     # Build noise model
     scaled_params = alpha_scale_noise_params(base=DEFAULT_PARAMS, alpha=alpha)
     noise_model = ScaledNoiseModel(noise_params=scaled_params)
-    sim_config = SimulatorConfig(noise_model=noise_model, repetitions=2)
+    sim_config = SimulatorConfig(noise_model=noise_model, repetitions=2, oversample=10)
 
     # Configure pipeline
     config = PipelineConfig(
