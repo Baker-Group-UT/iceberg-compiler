@@ -23,7 +23,7 @@ class IcebergModule(CircuitClass):
         self,
         n: int,
         circuit: cirq.Circuit,
-        ids: SharedInt | None = None,
+        ids: SharedInt,
         initialize: str | None = None,
     ):
         """
