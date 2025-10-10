@@ -6,9 +6,10 @@ simulator.config_presets.py - Quick presets for the Simulator class.
 from .config import SimulatorConfig
 from .noise_models import StochasticNoiseModel
 
+
 def TestSimulator(noiseless: bool = False):
     return SimulatorConfig(
-        repetitions=1,
+        repetitions=100,
         noiseless=noiseless,
     )
 

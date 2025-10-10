@@ -11,7 +11,44 @@ import cirq
 
 from .base import CircuitClass
 from .gates import BarrierGate
-from .utils import rand_clifford_angles, SharedInt
+from .utils import SharedInt, rand_clifford_angles
+
+
+def _physical_two_qubit_gate(circuit: cirq.Circuit, ids: SharedInt, i: cirq.LineQubit, j: cirq.LineQubit, gate: str, fault_tolerant: bool = True):
+    """
+    Apply a CZ or CNOT gate between physical qubits i and j.
+    """
+    if gate not in ("CZ", "CNOT"):
+        raise ValueError("gate must be 'CZ' or 'CNOT'")
+    if fault_tolerant:
+        flag_ancillas = cirq.LineQubit.range(ids, ids + 2)
+        circuit.append(cirq.H(flag_ancillas[1]))
+        circuit.append(cirq.CNOT(i, flag_ancillas[0]))
+        if gate == "CZ":
+            circuit.append(cirq.CNOT(flag_ancillas[1], j))
+        else:
+            circuit.append(cirq.CZ(flag_ancillas[1], j))
+        if gate == "CZ":
+            circuit.append(cirq.CZ(i, j))
+        else:
+            circuit.append(cirq.CNOT(i, j))
+        circuit.append(cirq.CZ(flag_ancillas[1], i))
+        circuit.append(cirq.CNOT(i, flag_ancillas[0]))
+        if gate == "CZ":
+            circuit.append(cirq.CNOT(flag_ancillas[1], j))
+        else:
+            circuit.append(cirq.CZ(flag_ancillas[1], j))
+        circuit.append(cirq.H(flag_ancillas[1]))
+        circuit.append(cirq.measure(flag_ancillas[0], key=f"flag{ids}"))
+        circuit.append(
+            cirq.measure(flag_ancillas[1], key=f"flag{ids + 1}")
+        )
+        ids += 2
+    else:
+        if gate == "CZ":
+            circuit.append(cirq.CZ(i, j))
+        else:
+            circuit.append(cirq.CNOT(i, j))
 
 
 class IcebergModule(CircuitClass):
@@ -80,17 +117,17 @@ class IcebergModule(CircuitClass):
         - {prefix}anc1 = Z-type parity
         """
         # X-type parity
-        for dq in self.data_qubits:
-            self.circuit.append(cirq.CNOT(dq, self.parity_qubits[0]))
+        for data_qubit in self.data_qubits:
+            self.circuit.append(cirq.CNOT(data_qubit, self.parity_qubits[0]))
         self.circuit.append(
             cirq.measure(self.parity_qubits[0], key=f"{key_prefix}anc0")
         )
 
         # Z-type parity
-        for dq in self.data_qubits:
-            self.circuit.append(cirq.H(dq))
-            self.circuit.append(cirq.CNOT(dq, self.parity_qubits[1]))
-            self.circuit.append(cirq.H(dq))
+        for data_qubit in self.data_qubits:
+            self.circuit.append(cirq.H(data_qubit))
+            self.circuit.append(cirq.CNOT(data_qubit, self.parity_qubits[1]))
+            self.circuit.append(cirq.H(data_qubit))
         self.circuit.append(
             cirq.measure(self.parity_qubits[1], key=f"{key_prefix}anc1")
         )
@@ -100,44 +137,6 @@ class IcebergModule(CircuitClass):
         Measure the data qubits into a register labeled `key`.
         """
         self.circuit.append(cirq.measure(*self.data_qubits, key=key))
-
-    def _physical_two_qubit_gate(
-        self, i: int, j: int, gate: str, fault_tolerant: bool = True
-    ):
-        """
-        Apply a CZ or CNOT gate between physical qubits i and j.
-        """
-        if gate not in ("CZ", "CNOT"):
-            raise ValueError("gate must be 'CZ' or 'CNOT'")
-        if fault_tolerant:
-            flag_ancillas = cirq.LineQubit.range(self._ids, self._ids + 2)
-            self.circuit.append(cirq.H(flag_ancillas[1]))
-            self.circuit.append(cirq.CNOT(self.data_qubits[i], flag_ancillas[0]))
-            if gate == "CZ":
-                self.circuit.append(cirq.CNOT(flag_ancillas[1], self.data_qubits[j]))
-            else:
-                self.circuit.append(cirq.CZ(flag_ancillas[1], self.data_qubits[j]))
-            if gate == "CZ":
-                self.circuit.append(cirq.CZ(self.data_qubits[i], self.data_qubits[j]))
-            else:
-                self.circuit.append(cirq.CNOT(self.data_qubits[i], self.data_qubits[j]))
-            self.circuit.append(cirq.CZ(flag_ancillas[1], self.data_qubits[i]))
-            self.circuit.append(cirq.CNOT(self.data_qubits[i], flag_ancillas[0]))
-            if gate == "CZ":
-                self.circuit.append(cirq.CNOT(flag_ancillas[1], self.data_qubits[j]))
-            else:
-                self.circuit.append(cirq.CZ(flag_ancillas[1], self.data_qubits[j]))
-            self.circuit.append(cirq.H(flag_ancillas[1]))
-            self.circuit.append(cirq.measure(flag_ancillas[0], key=f"flag{self._ids}"))
-            self.circuit.append(
-                cirq.measure(flag_ancillas[1], key=f"flag{self._ids + 1}")
-            )
-            self._ids += 2
-        else:
-            if gate == "CZ":
-                self.circuit.append(cirq.CZ(self.data_qubits[i], self.data_qubits[j]))
-            else:
-                self.circuit.append(cirq.CNOT(self.data_qubits[i], self.data_qubits[j]))
 
     def X(self, i: int | Collection[int]):
         """
@@ -174,9 +173,11 @@ class IcebergModule(CircuitClass):
             if j < 0 or j >= self.k:
                 raise ValueError("Index out of range")
         for j in i:
-            self.circuit.append(cirq.S(self.data_qubits[-1]))
-            self._physical_two_qubit_gate(j + 1, -1, "CZ", fault_tolerant)
-            self.circuit.append(cirq.S(self.data_qubits[j + 1]))
+            bottom_ancilla = self.data_qubits[-1]
+            data_qubit = self.data_qubits[j + 1]
+            self.circuit.append(cirq.S(bottom_ancilla))
+            _physical_two_qubit_gate(self.circuit, self._ids, data_qubit, bottom_ancilla, "CZ", fault_tolerant)
+            self.circuit.append(cirq.S(data_qubit))
             
     def H(self, i: int | Collection[int], fault_tolerant: bool = False):
         if isinstance(i, int):
@@ -192,27 +193,29 @@ class IcebergModule(CircuitClass):
                 self.circuit.append(cirq.H(q))
             if fault_tolerant:
                 # match HH: operate on the *middle* pair (1,2) for n=4
-                self._physical_two_qubit_gate(1, 2, "CNOT", True)
-                self._physical_two_qubit_gate(2, 1, "CNOT", True)
-                self._physical_two_qubit_gate(1, 2, "CNOT", True)
+                _physical_two_qubit_gate(self.circuit, self._ids, self.data_qubits[1], self.data_qubits[2], "CNOT", True)
+                _physical_two_qubit_gate(self.circuit, self._ids, self.data_qubits[2], self.data_qubits[1], "CNOT", True)
+                _physical_two_qubit_gate(self.circuit, self._ids, self.data_qubits[1], self.data_qubits[2], "CNOT", True)
             else:
                 self.circuit.append(cirq.SWAP(self.data_qubits[1], self.data_qubits[2]))
             return
 
         else:
             for j in i:
-                dq = self.data_qubits[j + 1]
-                self._physical_two_qubit_gate(j + 1, -1, "CZ", fault_tolerant)
-                self.circuit.append(cirq.H(self.data_qubits[0]))
-                self.circuit.append(cirq.H(dq))
-                self._physical_two_qubit_gate(0, j + 1, "CZ", fault_tolerant)
-                self.circuit.append(cirq.H(dq))
-                self._physical_two_qubit_gate(0, j + 1, "CZ", fault_tolerant)
-                self.circuit.append(cirq.H(self.data_qubits[0]))
-                self.circuit.append(cirq.H(dq))
-                self._physical_two_qubit_gate(j + 1, -1, "CZ", fault_tolerant)
-                self.circuit.append(cirq.X(self.data_qubits[0]))
-                self.circuit.append(cirq.Z(self.data_qubits[-1]))
+                top_ancilla = self.data_qubits[0]
+                data_qubit = self.data_qubits[j + 1]
+                bottom_ancilla = self.data_qubits[-1]
+                _physical_two_qubit_gate(self.circuit, self._ids, data_qubit, bottom_ancilla, "CZ", fault_tolerant)
+                self.circuit.append(cirq.H(top_ancilla))
+                self.circuit.append(cirq.H(data_qubit))
+                _physical_two_qubit_gate(self.circuit, self._ids, top_ancilla, data_qubit, "CZ", fault_tolerant)
+                self.circuit.append(cirq.H(data_qubit))
+                _physical_two_qubit_gate(self.circuit, self._ids, top_ancilla, data_qubit, "CZ", fault_tolerant)
+                self.circuit.append(cirq.H(top_ancilla))
+                self.circuit.append(cirq.H(data_qubit))
+                _physical_two_qubit_gate(self.circuit, self._ids, data_qubit, bottom_ancilla, "CZ", fault_tolerant)
+                self.circuit.append(cirq.X(top_ancilla))
+                self.circuit.append(cirq.Z(bottom_ancilla))
 
     def HH(self, fault_tolerant: bool = False):
         """
@@ -225,9 +228,9 @@ class IcebergModule(CircuitClass):
         for q in self.data_qubits:
             self.circuit.append(cirq.H(q))
         if fault_tolerant:
-            self._physical_two_qubit_gate(1, 2, "CNOT", fault_tolerant)
-            self._physical_two_qubit_gate(2, 1, "CNOT", fault_tolerant)
-            self._physical_two_qubit_gate(1, 2, "CNOT", fault_tolerant)
+            _physical_two_qubit_gate(self.circuit, self._ids, self.data_qubits[1], self.data_qubits[2], "CNOT", fault_tolerant)
+            _physical_two_qubit_gate(self.circuit, self._ids, self.data_qubits[2], self.data_qubits[1], "CNOT", fault_tolerant)
+            _physical_two_qubit_gate(self.circuit, self._ids, self.data_qubits[1], self.data_qubits[2], "CNOT", fault_tolerant)
         else:
             self.circuit.append(cirq.SWAP(self.data_qubits[1], self.data_qubits[2]))
 
@@ -259,10 +262,14 @@ class IcebergModule(CircuitClass):
             self.circuit.append(cirq.CNOT(self.data_qubits[-1], self.data_qubits[j + 1]))
             self.circuit.append(cirq.CNOT(self.data_qubits[i + 1], self.data_qubits[j + 1]))
         else:
-            self._physical_two_qubit_gate(i + 1, 0, "CNOT", fault_tolerant)
-            self._physical_two_qubit_gate(-1, 0, "CNOT", fault_tolerant)
-            self._physical_two_qubit_gate(-1, j + 1, "CNOT", fault_tolerant)
-            self._physical_two_qubit_gate(i + 1, j + 1, "CNOT", fault_tolerant)
+            top_ancilla = self.data_qubits[0]
+            control_qubit = self.data_qubits[i + 1]
+            target_qubit = self.data_qubits[j + 1]
+            bottom_ancilla = self.data_qubits[-1]
+            _physical_two_qubit_gate(self.circuit, self._ids, control_qubit, top_ancilla, "CNOT", fault_tolerant)
+            _physical_two_qubit_gate(self.circuit, self._ids, bottom_ancilla, top_ancilla, "CNOT", fault_tolerant)
+            _physical_two_qubit_gate(self.circuit, self._ids, bottom_ancilla, target_qubit, "CNOT", fault_tolerant)
+            _physical_two_qubit_gate(self.circuit, self._ids, control_qubit, target_qubit, "CNOT", fault_tolerant)
 
     def CZ(self, i: int, j: int, fault_tolerant: bool = False):
         """
@@ -273,10 +280,13 @@ class IcebergModule(CircuitClass):
         if i < 0 or i >= self.k or j < 0 or j >= self.k:
             raise ValueError("Index out of range")
 
-        self._physical_two_qubit_gate(i + 1, j + 1, "CZ", fault_tolerant)
-        self.circuit.append(cirq.Z(self.data_qubits[-1]))
-        self._physical_two_qubit_gate(i + 1, -1, "CZ", fault_tolerant)
-        self._physical_two_qubit_gate(j + 1, -1, "CZ", fault_tolerant)
+        control_qubit = self.data_qubits[i + 1]
+        target_qubit = self.data_qubits[j + 1]
+        bottom_ancilla = self.data_qubits[-1]
+        _physical_two_qubit_gate(self.circuit, self._ids, control_qubit, target_qubit, "CZ", fault_tolerant)
+        self.circuit.append(cirq.Z(bottom_ancilla))
+        _physical_two_qubit_gate(self.circuit, self._ids, control_qubit, bottom_ancilla, "CZ", fault_tolerant)
+        _physical_two_qubit_gate(self.circuit, self._ids, target_qubit, bottom_ancilla, "CZ", fault_tolerant)
 
     def _RZZ(
         self,
@@ -297,9 +307,11 @@ class IcebergModule(CircuitClass):
         ):
             raise ValueError("Index out of range")
 
-        self._physical_two_qubit_gate(i + 1, j + 1, "CNOT", fault_tolerant)
-        self.circuit.append(cirq.rz(rads)(self.data_qubits[j + 1]))
-        self._physical_two_qubit_gate(i + 1, j + 1, "CNOT", fault_tolerant)
+        control_qubit = self.data_qubits[i + 1]
+        target_qubit = self.data_qubits[j + 1]
+        _physical_two_qubit_gate(self.circuit, self._ids, control_qubit, target_qubit, "CNOT", fault_tolerant)
+        self.circuit.append(cirq.rz(rads)(target_qubit))
+        _physical_two_qubit_gate(self.circuit, self._ids, control_qubit, target_qubit, "CNOT", fault_tolerant)
 
     def RZZ(self, i: int, j: int, rads: float, fault_tolerant: bool = False):
         """

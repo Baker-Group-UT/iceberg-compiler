@@ -5,13 +5,15 @@ managing logical-level operations across patches.
 """
 
 from __future__ import annotations
+
 from typing import Collection
 
 import cirq
 
-from .iceberg_module import IcebergModule
 from .gates import BarrierGate
+from .iceberg_module import IcebergModule, _physical_two_qubit_gate
 from .utils import SharedInt
+
 
 class IcebergSet:
     """
@@ -186,9 +188,20 @@ class IcebergSet:
             raise ValueError("control and target must differ")
         pi, qi = divmod(i, self.k)
         pj, qj = divmod(j, self.k)
-        if pi != pj:
-            raise NotImplementedError("Cross-patch CNOT not supported")
-        self.modules[pi].CNOT(qi, qj, fault_tolerant=fault_tolerant)
+        if pi == pj:
+            self.modules[pi].CNOT(qi, qj, fault_tolerant=fault_tolerant)
+        elif qi == qj:
+            control_data = self.modules[pi].data_qubits[qi + 1]
+            control_ancilla = self.modules[pi].data_qubits[-1]
+            target_data = self.modules[pj].data_qubits[qj + 1]
+            target_ancilla = self.modules[pj].data_qubits[0]
+
+            _physical_two_qubit_gate(self.circuit, self._n_total, control_data, target_data, "CNOT", False) # this is transversal
+            _physical_two_qubit_gate(self.circuit, self._n_total, control_data, target_ancilla, "CNOT", fault_tolerant)
+            _physical_two_qubit_gate(self.circuit, self._n_total, control_ancilla, target_data, "CNOT", fault_tolerant)
+            _physical_two_qubit_gate(self.circuit, self._n_total, control_ancilla, target_ancilla, "CNOT", fault_tolerant)
+        else:
+            raise NotImplementedError("Cross-patch CNOT for non-identical indices not implemented")
 
     def CNOT_k_Transversal(self, i: int, j: int):
         """Apply transversal CNOT across modules i → j."""
@@ -207,8 +220,18 @@ class IcebergSet:
         pj, qj = divmod(j, self.k)
         if pi == pj:
             self.modules[pi].CZ(qi, qj, fault_tolerant=fault_tolerant)
+        elif qi == qj:
+            control_data = self.modules[pi].data_qubits[qi + 1]
+            control_ancilla = self.modules[pi].data_qubits[-1]
+            target_data = self.modules[pj].data_qubits[qj + 1]
+            target_ancilla = self.modules[pj].data_qubits[-1]
+
+            _physical_two_qubit_gate(self.circuit, self._n_total, control_data, target_data, "CZ", False) # this is transversal
+            _physical_two_qubit_gate(self.circuit, self._n_total, control_data, target_ancilla, "CZ", fault_tolerant)
+            _physical_two_qubit_gate(self.circuit, self._n_total, control_ancilla, target_data, "CZ", fault_tolerant)
+            _physical_two_qubit_gate(self.circuit, self._n_total, control_ancilla, target_ancilla, "CZ", False) # this is transversal
         else:
-            raise NotImplementedError("Cross-patch CZ not implemented")
+            raise NotImplementedError("Cross-patch CZ for non-identical indices not implemented")
 
     def CZ_k_Transversal(self, i: int, j: int):
         """
