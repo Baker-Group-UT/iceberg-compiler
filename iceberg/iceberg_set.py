@@ -122,6 +122,20 @@ class IcebergSet:
         for patch, qset in enumerate(s):
             self.modules[patch].X(qset)
 
+    def X_at(self, patch: int, slot: int | list[int] | set[int]):
+        """Apply X to one or more slots in a specific module (patch)."""
+        if isinstance(slot, int):
+            slot = {slot}
+        else:
+            slot = set(slot)
+        # sanity checks
+        if patch < 0 or patch >= self.num_modules:
+            raise ValueError("Patch out of range")
+        for s in slot:
+            if s < 0 or s >= self.k:
+                raise ValueError("Slot out of range")
+        self.modules[patch].X(slot)
+
     def Z(self, i: int | Collection[int]):
         """Apply logical Z to specified logical qubit(s)."""
         if isinstance(i, int):
@@ -137,6 +151,18 @@ class IcebergSet:
             s[patch].add(index)
         for patch, qset in enumerate(s):
             self.modules[patch].Z(qset)
+
+    def Z_at(self, patch: int, slot: int | list[int] | set[int]):
+        if isinstance(slot, int):
+            slot = {slot}
+        else:
+            slot = set(slot)
+        if patch < 0 or patch >= self.num_modules:
+            raise ValueError("Patch out of range")
+        for s in slot:
+            if s < 0 or s >= self.k:
+                raise ValueError("Slot out of range")
+        self.modules[patch].Z(slot)
 
     def S(self, i: int | Collection[int]):
         """Apply logical S to specified logical qubit(s)."""
@@ -169,6 +195,8 @@ class IcebergSet:
                 raise ValueError("Duplicate index")
             s[patch].add(index)
         for patch, qset in enumerate(s):
+            if len(qset) == 0:
+                continue
             self.modules[patch].H(qset, fault_tolerant=fault_tolerant)
 
     def HH(self, patches: int | Collection[int], fault_tolerant: bool = False):

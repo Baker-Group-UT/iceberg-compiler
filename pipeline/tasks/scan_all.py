@@ -5,6 +5,7 @@ pipeline.tasks.scan_all.py - Full permutation scan from program circuit.
 from __future__ import annotations
 import cirq
 import pandas as pd
+from tqdm import trange
 
 from pipeline.config                    import PipelineConfig
 from pipeline.analysis.postselection    import postselect_against_reference
@@ -34,10 +35,10 @@ def run_full_scan(program_circuit: cirq.Circuit, config: PipelineConfig = Pipeli
 
     # # Step 3: Simulate
     simulator = Simulator(config.sim_config)
-    print("Ideal reference:")
-    ideal_sim_res = simulator.ideal_without_comparison(circuit=program_circuit)
-    print("Noisy permutations:")
-    simulation_results = [simulator.noisy_without_comparison(t.circuit) for t in translated]
+    ideal_sim_res = simulator.ideal(circuit=program_circuit)
+    simulation_results = []
+    for i in trange(len(translated), desc="Simulating circuits", unit=" sim"):
+        simulation_results.append(simulator.noisy(translated[i].circuit))
 
     # # Step 4: Postselection
     simulation_results = postselect_against_reference(

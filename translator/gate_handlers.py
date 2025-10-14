@@ -27,6 +27,8 @@ from .handlers.hadamard import apply_logical_hadamard
 from .handlers.controlled_not import apply_logical_cnot
 from .handlers.controlled_z import apply_logical_cz
 from .handlers.rz import apply_logical_rz
+from .handlers.x import apply_logical_x
+from .handlers.z import apply_logical_z
 from .handlers.swap import apply_logical_swap
 
 PAULI_X_TYPE = type(cirq.X)
@@ -34,10 +36,10 @@ PAULI_Z_TYPE = type(cirq.Z)
 
 # --- Canonical gate translation table (simple one-to-one mappings) ---
 TABLE_SIMPLE: Dict[type, tuple[str, Callable]] = {
-    PAULI_X_TYPE:         ("X", lambda ctx, q: ctx.iceberg_set.X(q)),
-    PAULI_Z_TYPE:         ("Z", lambda ctx, q: ctx.iceberg_set.Z(q)),
+    PAULI_X_TYPE:   ("X", apply_logical_x),
+    PAULI_Z_TYPE:   ("Z", apply_logical_z),
     Rz:             ("RZ", apply_logical_rz),
-    ZPowGate:       ("RZ", apply_logical_rz),
+    ZPowGate:       ("RZ", apply_logical_rz), # FIXME: can't remember what this was here for
     SwapPowGate:    ("SWAP", apply_logical_swap),
 }
 
@@ -97,12 +99,8 @@ def translate_and_apply(
 
     # --- Simple one-to-one handlers ---
     if g_type in TABLE_SIMPLE:
-        label, handler = TABLE_SIMPLE[g_type]
-        if label in {"X", "Z"}:
-            q = op.qubits[0].x
-            handler(context, q)
-        else:
-            handler(op, context)
+        _, handler = TABLE_SIMPLE[g_type]
+        handler(op, context)
         return None
 
     raise ValueError(f"Unsupported logical gate type: {g_type}")

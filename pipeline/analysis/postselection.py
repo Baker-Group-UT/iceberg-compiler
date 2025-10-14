@@ -14,11 +14,11 @@ from pipeline.analysis.metrics import (
     total_variation_distance
 )
 from translator import TranslationResult, TranslationContext
-
 from iceberg.iceberg_postselect import (
     ordered_measurement_keys,
     iceberg_postselect,
 )
+from simulator.result_types import SimulationResult
 
 
 def reduce_distribution(dist: Dict[str, float], context: TranslationContext) -> Dict[str, float]:
@@ -65,9 +65,6 @@ def reduce_distribution(dist: Dict[str, float], context: TranslationContext) -> 
         reduced[key] += prob
 
     return dict(reduced)
-
-from collections import defaultdict
-from typing import Dict
 
 # NOTE: REDUCE DISTRIBUTION FOR PARALLEL CIRCUIT EXECUTION, USE CAREFULLY
 # def reduce_distribution(dist: Dict[str, float], context: "TranslationContext") -> Dict[str, float]:
@@ -125,7 +122,7 @@ from typing import Dict
 
 def apply_iceberg_postselection(
     translated_circuits: List,
-    results: List[SqaleSimulationResult],
+    results: List[SimulationResult],
 ) -> List[PostselectedSimulationResult]:
     """
     Combines raw simulator results with Iceberg postselection logic.
@@ -171,8 +168,8 @@ def apply_iceberg_postselection(
 # 2 SHOTS PER RUN!
 def postselect_against_reference(
     translated_circuits: List[TranslationResult],
-    ideal_result: SqaleSimulationResult,
-    noisy_results: List[SqaleSimulationResult],
+    ideal_result: SimulationResult,
+    noisy_results: List[SimulationResult],
 ) -> List[PostselectedSimulationResult]:
     """
     Applies Iceberg postselection using a shared ideal result against many noisy results.
@@ -181,17 +178,15 @@ def postselect_against_reference(
     postselected_results = []
 
     for t, result in zip(translated_circuits, noisy_results):
-        key_order = ordered_measurement_keys(t.circuit)
-
-        postselected_noisy_dist = iceberg_postselect(result.noisy_dist, key_order)
+        postselected_noisy_dist = iceberg_postselect(result.noisy_dist, result.key_order)
         postselected_noisy_dist = reduce_distribution(postselected_noisy_dist, t.context)
 
         logical_fid = logical_fidelity(ideal_result.ideal_dist, postselected_noisy_dist)
-        logical_sel = logical_selection_rate(result.noisy_dist, key_order)
+        logical_sel = logical_selection_rate(result.noisy_dist, result.key_order)
         logical_total_variation_distance = total_variation_distance(
             postselected_noisy_dist, ideal_result.ideal_dist
         )
-        selection_rate_overall = result.percent_shots_kept * logical_sel
+        selection_rate_overall = (result.percent_shots_kept if result.percent_shots_kept else 1) * logical_sel
 
         postselected_results.append(
             PostselectedSimulationResult(
@@ -213,7 +208,7 @@ def postselect_against_reference(
 
 def calculate_metrics_for_bare_circuit(
     circuit: cirq.Circuit,
-    result: SqaleSimulationResult,
+    result: SimulationResult,
 ) -> PostselectedSimulationResult:
     """
     Calculates the metric for circuit.

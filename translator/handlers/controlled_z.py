@@ -15,6 +15,8 @@ Follows fault-tolerant (FT) placement rules:
 Falls back with logging if no valid FT placement exists.
 """
 
+# TODO: Update this file to match the same logic as CNOT regarding positions
+
 from __future__ import annotations
 from typing import Dict, List
 import cirq

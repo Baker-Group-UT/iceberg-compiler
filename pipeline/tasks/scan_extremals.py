@@ -6,6 +6,7 @@ Analyzes shortest and longest physical circuits per number of codes used.
 from __future__ import annotations
 import cirq
 import pandas as pd
+from tqdm import trange
 
 from pipeline.config                        import PipelineConfig
 from pipeline.analysis.postselection        import postselect_against_reference
@@ -43,14 +44,14 @@ def run_extremal_scan(
         score_fn=lambda tr: len(tr.circuit)  # could later use total_gates or custom metric
     )
 
-    # # Step 4: Simulate
+    # Step 4: Simulate
     simulator = Simulator(config.sim_config)
-    print("Ideal reference:")
-    ideal_sim_res = simulator.ideal_without_comparison(circuit=program_circuit)
-    print("Noisy permutations:")
-    simulation_results = [simulator.noisy_without_comparison(e.circuit) for e in extremals]
+    ideal_sim_res = simulator.ideal(circuit=program_circuit)
+    simulation_results = []
+    for i in trange(len(translated), desc="Simulating circuits", unit=" sim"):
+        simulation_results.append(simulator.noisy(translated[i].circuit))
 
-    # # Step 5: Postselection
+    # Step 5: Postselection
     simulation_results = postselect_against_reference(extremals, ideal_sim_res, simulation_results)
 
     # Step 6: Extract DataFrame

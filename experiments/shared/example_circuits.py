@@ -12,6 +12,9 @@ def unscalable_shors_3():
         cirq.CNOT(qA, qB),
         cirq.CNOT(qA, qC),
         cirq.H(qA),
+        cirq.measure(qA),
+        cirq.measure(qB),
+        cirq.measure(qC),
     )
     return {"label": "unscalable_shors_3", "program": program, "codes": [4,4,4]}
 
@@ -26,6 +29,10 @@ def square_cluster_4():
         cirq.CZ(qB, qD),                   # 5)  CZ_B,D
         cirq.CZ(qD, qC),                   # 6)  CZ_D,C
         cirq.CZ(qC, qA),                   # 7)  CZ_C,A
+        cirq.measure(qA),
+        cirq.measure(qB),
+        cirq.measure(qC),
+        cirq.measure(qD),
     )
     return {"label": "square_cluster_4", "program": program, "codes": [4,4,4,4]}
 
@@ -53,6 +60,9 @@ def grover_3():
         cirq.H(qA),                        # 18) H_A
         cirq.H(qB),                        # 19) H_B
         cirq.H(qC),                        # 20) H_C
+        cirq.measure(qA),
+        cirq.measure(qB),
+        cirq.measure(qC),
     )
     return {"label": "grover_3", "program": program, "codes": [4,4,4]}
 
@@ -88,6 +98,9 @@ def ghz_3():
         cirq.H(qA),                        # 0)  H_A
         cirq.CNOT(qA, qB),                 # 1)  CNOT_A→B
         cirq.CNOT(qA, qC),                 # 2)  CNOT_A→C
+        cirq.measure(qA),
+        cirq.measure(qB),
+        cirq.measure(qC),
     )
     return {"label": "ghz_3", "program": program, "codes": [4,4,4]}
 
@@ -98,6 +111,9 @@ def shor_toy_3():
         cirq.CNOT(qA, qB),                 # 1)  CNOT_A→B
         cirq.CNOT(qA, qC),                 # 2)  CNOT_A→C
         cirq.H(qA),                        # 3)  H_A
+        cirq.measure(qA),
+        cirq.measure(qB),
+        cirq.measure(qC),
     )
     return {"label": "unscalable_shor_3", "program": program, "codes": [4,4,4]}
 
@@ -107,6 +123,9 @@ def half_adder():
         cirq.CNOT(qA, qS),                 # 0)  CNOT_A→S
         cirq.CNOT(qB, qS),                 # 1)  CNOT_B→S
         cirq.CCX(qA, qB, qC),              # 2)  CCX_{A,B->C}
+        cirq.measure(qA),
+        cirq.measure(qB),
+        cirq.measure(qC),
     )
     return {"label": "half_adder", "program": program, "codes": [4,4,4,4]}
 
@@ -126,6 +145,10 @@ def ripple_inc_3():
         cirq.CCX(q0, c1, q1),              # 8
         cirq.CNOT(c1, q0),                 # 9
         cirq.CNOT(q0, c1),                 # 10
+
+        cirq.measure(q0),
+        cirq.measure(q1),
+        cirq.measure(q2),
     )
     return {"label": "ripple_incrementer_3", "program": program, "codes": [4,4,4,4,4]}
 
@@ -147,6 +170,10 @@ def toffoli_like_snippet():
         cirq.rz(math.pi / 4)(qA),          # 12) RZ(π/4)_A
         cirq.rz(-math.pi / 4)(qB),         # 13) RZ(-π/4)_B
         cirq.CNOT(qA, qB),                 # 14) CNOT_A→B
+
+        cirq.measure(qA),
+        cirq.measure(qB),
+        cirq.measure(qC),
     )
     return {"label": "toffoli_like_snippet", "program": program, "codes": [4,4,4]}
 

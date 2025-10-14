@@ -8,7 +8,7 @@ from typing import Dict, Any
 
 import cirq
 
-from simulator.result_types import SqaleSimulationResult
+from simulator.result_types import SimulationResult
 from simulator.utils import remove_barriers
 
 @dataclass
@@ -19,7 +19,7 @@ class PostselectedSimulationResult:
     permutation: Any                    # typically List[Tuple[int, int]]
     circuit: cirq.Circuit               # translated physical circuit
     contains_faults: bool
-    raw_result: SqaleSimulationResult   # raw simulator output
+    raw_result: SimulationResult        # raw simulator output
 
     postselected_noisy_dist: Dict[str, float]
     postselected_ideal_dist: Dict[str, float]

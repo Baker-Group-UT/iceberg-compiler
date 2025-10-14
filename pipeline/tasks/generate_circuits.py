@@ -4,7 +4,6 @@ pipeline.tasks.generate_circuits.py
 
 from __future__ import annotations
 import cirq
-import pandas as pd
 
 from pipeline.config                    import PipelineConfig
 from permutations.code_sets             import generate_uniform_code_sets
