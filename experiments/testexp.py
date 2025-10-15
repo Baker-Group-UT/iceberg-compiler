@@ -37,7 +37,7 @@ program_circuit = cirq.Circuit(
     cirq.measure(qB),
     cirq.measure(qC),
 )
-program_circuit = random_circuit(n=5, depth=5, seed=4)
+program_circuit = random_circuit(n=50, depth=100, seed=4)
 
 # program_circuit = ghz_3()["logical"]
 
@@ -53,22 +53,58 @@ config = PipelineConfig(
 # .with_ft(True)
 
 qiskit_translated_circuit = cirq_to_qiskit(program_circuit, qubits=program_circuit.all_qubits())
-print(qiskit_translated_circuit.draw(output="text"))
+# print(qiskit_translated_circuit.draw(output="text"))
 qubit_graph = build_qubit_graph(qiskit_translated_circuit)
+
 draw_qubit_graph(qubit_graph, orient="tower")
 
-# Run the full scan pipeline
-record: RunRecord = run_specific_scan(program_circuit, 
-    permutations=[  #[(0, 0), (0, 1), (1, 0)], 
-    [(0, 0), (0, 1), (1, 1), (2, 0), (2, 1)],
-                    # [(0, 0), (1, 0), (2, 0)], 
-                    # [(0, 1), (0, 0), (1, 1)],
-                    ], config=config)
-# record: RunRecord = run_extremal_scan(program_circuit, config=config)
-# record: RunRecord = run_full_scan(program_circuit, config=config)
-# generate_permutation_set(program_circuit, config)
-translated_circuit = translate_permutation(program_circuit, [(0, 0), (0, 1), (1, 1), (2, 0), (2, 1)], config=config).circuit
-qiskit_translated_circuit = cirq_to_qiskit(translated_circuit, qubits=translated_circuit.all_qubits())
-print(qiskit_translated_circuit.draw(output="text"))
-qubit_graph = build_qubit_graph(qiskit_translated_circuit)
-draw_qubit_graph(qubit_graph, orient="tower")
+# # Run the full scan pipeline
+# record: RunRecord = run_specific_scan(program_circuit, 
+#     permutations=[  #[(0, 0), (0, 1), (1, 0)], 
+#     [(0, 0), (0, 1), (1, 1), (2, 0), (2, 1)],
+#                     # [(0, 0), (1, 0), (2, 0)], 
+#                     # [(0, 1), (0, 0), (1, 1)],
+#                     ], config=config)
+# # record: RunRecord = run_extremal_scan(program_circuit, config=config)
+# # record: RunRecord = run_full_scan(program_circuit, config=config)
+# # generate_permutation_set(program_circuit, config)
+# translated_circuit = translate_permutation(program_circuit, [(0, 0), (0, 1), (1, 1), (2, 0), (2, 1)], config=config).circuit
+# qiskit_translated_circuit = cirq_to_qiskit(translated_circuit, qubits=translated_circuit.all_qubits())
+# print(qiskit_translated_circuit.draw(output="text"))
+# qubit_graph = build_qubit_graph(qiskit_translated_circuit)
+# draw_qubit_graph(qubit_graph, orient="tower")
+
+import networkx as nx
+import matplotlib.pyplot as plt
+
+def draw_multidigraph(G: nx.MultiDiGraph, with_labels=True):
+    """
+    Draws a NetworkX MultiDiGraph with arrows and optional labels.
+    """
+    pos = nx.spring_layout(G, seed=42)  # consistent layout
+    plt.figure(figsize=(6, 4))
+    
+    # Draw nodes and edges
+    nx.draw(
+        G, pos,
+        with_labels=with_labels,
+        node_color="lightblue",
+        node_size=700,
+        edgecolors="black",
+        arrows=True,
+        connectionstyle='arc3,rad=0.1'  # curved edges for multiple edges
+    )
+
+    # Optionally draw edge labels
+    edge_labels = {
+        (u, v): f"{len(G[u][v])}" if len(G[u][v]) > 1 else ""
+        for u, v in G.edges()
+    }
+    if any(edge_labels.values()):
+        nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels)
+
+    plt.axis("off")
+    plt.tight_layout()
+    plt.show()
+
+draw_multidigraph(qubit_graph)
