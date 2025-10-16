@@ -146,8 +146,9 @@ pytz==2025.2
 PyYAML==6.0.2
 pyzmq==26.4.0
 qcware-quasar==1.0.7
-qiskit==2.1.1
+qiskit==2.2.1
 qiskit-aer==0.17.0
+qiskit-superstaq==0.5.47
 referencing==0.36.2
 requests==2.32.3
 rfc3339-validator==0.1.4
