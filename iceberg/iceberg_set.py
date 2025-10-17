@@ -73,9 +73,12 @@ class IcebergSet:
         for i, mod in enumerate(self.modules):
             init_sub = initialize[self.k * i : self.k * (i + 1)] if initialize else None
             mod.encode(init_sub)
+        self.BARRIER()
+        
 
     def decode(self):
         """Measure and collect syndrome bits from all IcebergModules."""
+        self.BARRIER()
         for idx, mod in enumerate(self.modules):
             mod.decode(key_prefix=f"{idx}")
 

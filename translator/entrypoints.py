@@ -1,12 +1,12 @@
-# translator/entrypoints.py
 """
-translator.entrypoints.py - public facing accessible functions.
-Mostly used for translate_circuit
+translator.entrypoints.py - public-facing functions (Qiskit).
+Mostly used for translate_circuit / translate_gate.
 """
 
 from __future__ import annotations
-from typing import List, Tuple
-import cirq
+from typing import List, Tuple, Optional, Any
+
+from qiskit import QuantumCircuit
 
 from .core import Translator, Translation, TranslationResult
 from .config import TranslatorConfig
@@ -17,36 +17,38 @@ __all__ = [
     "TranslationResult",
 ]
 
+
 def translate_circuit(
-    program_circuit: cirq.Circuit,
+    program_circuit: QuantumCircuit,
     permutation: List[Tuple[int, int]],
     *,
     fault_tolerant: bool = False,
     verbose: bool = False,
 ) -> TranslationResult:
     """
-    Translates a logical circuit using the given permutation into a physical Iceberg circuit.
-    Returns a TranslationResult object with the final circuit, logs, and settings.
+    Translate a logical circuit using the given permutation into a physical Iceberg circuit.
+    Returns a TranslationResult with the final circuit, logs, and settings.
     """
     config = TranslatorConfig(
-        fault_tolerant= fault_tolerant,
+        fault_tolerant=fault_tolerant,
         verbose=verbose,
-        n_code=4
+        n_code=4,
     )
     translator = Translator(config=config)
     return translator.translate(program_circuit, permutation)
 
+
 def translate_gate(
-    op: cirq.Operation,
+    op: Any,  # Qiskit op: typically a (inst, qargs, cargs) tuple from QuantumCircuit.data
     permutation: List[Tuple[int, int]],
-    program_circuit: cirq.Circuit,
+    program_circuit: QuantumCircuit,
     *,
     fault_tolerant: bool = False,
     verbose: bool = False,
-    lookahead: cirq.Operation | None = None,
+    lookahead: Optional[Any] = None,  # same shape as `op` if provided
 ):
     """
-    Applies a single logical operation using the translator’s logic, for testing/debugging.
+    Apply a single logical operation using the translator’s logic (testing/debugging).
     """
     translation = Translation(
         permutation=permutation,

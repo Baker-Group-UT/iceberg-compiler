@@ -186,6 +186,7 @@ class IcebergModule(CircuitClass):
         for i in range(0, self.n - 1):
             self.circuit.cx(self.data_qubits[i], self.data_qubits[i + 1])
 
+
     def decode(self, key_prefix: str = ""):
         """
         Measure both parity ancilla qubits:

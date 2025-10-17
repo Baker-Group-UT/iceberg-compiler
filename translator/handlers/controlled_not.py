@@ -1,13 +1,12 @@
 """
 translator.handlers.cnot
 
-Logical CNOT gate placement logic for Iceberg codes.
+Logical CNOT gate placement logic for Iceberg codes (Qiskit).
 Handles both intra-patch and inter-patch scenarios with
 fallbacks to SWAP-based transversal correction when possible.
 """
 
 from __future__ import annotations
-import cirq
 
 from translator.context import TranslationContext
 from translator.handlers.utils import (
@@ -17,23 +16,33 @@ from translator.handlers.utils import (
     verbose_log,
 )
 
+
 def apply_logical_cnot(
-    op: cirq.Operation,
+    op,
     context: TranslationContext,
 ) -> bool:
     """
-    Applies a logical CNOT gate from a Cirq operation.
+    Applies a logical CNOT gate from a Qiskit operation.
 
     Args:
-        op: Cirq Operation for logical CNOT.
+        op: Qiskit op (typically normalized by dispatcher; has .qubits).
         context: TranslationContext with circuit and patch state.
 
     Returns:
         True if placement succeeds, False otherwise.
     """
-    q_ctl = op.qubits[0].x
-    q_tgt = op.qubits[1].x
-    return place_logical_cnot(q_ctl, q_tgt, context)
+    # Program (logical) indices
+    q_ctl_log = context.qc.find_bit(op.qubits[0]).index
+    q_tgt_log = context.qc.find_bit(op.qubits[1]).index
+
+    # Map to stable physical ids via permutation: phys = p * k_log + s
+    pc, sc = context.permutation[q_ctl_log]
+    pt, st = context.permutation[q_tgt_log]
+    q_ctl_phys = pc * context.k_log + sc
+    q_tgt_phys = pt * context.k_log + st
+
+    return place_logical_cnot(q_ctl_phys, q_tgt_phys, context)
+
 
 def place_logical_cnot(
     q_ctl: int,
@@ -67,7 +76,6 @@ def place_logical_cnot(
     targs = context.active_by_patch[patch_t]
 
     # Build a lightweight slot view reflecting the *current* (dynamic) slot of any qubit we test
-    # (If is_full_transversal accepts a callable instead of a dict, you can pass context.current_slot_of)
     slot_view = {i: context.current_slot_of(i) for i in set(ctrls + targs)}
 
     # Cross-patch constraints

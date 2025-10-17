@@ -1,13 +1,12 @@
 """
-translator.handlers.z.py - logic for applying a logical Z.
+translator.handlers.z.py – logic for applying a logical Z (Qiskit version).
 """
 
 from __future__ import annotations
-import cirq
-
 from translator.context import TranslationContext
 
-def apply_logical_z(op: cirq.Operation, context: TranslationContext) -> bool:
+
+def apply_logical_z(op, context: TranslationContext) -> bool:
     """
     Applies a logical Z gate to the *current* position of the given logical qubit.
 
@@ -22,17 +21,18 @@ def apply_logical_z(op: cirq.Operation, context: TranslationContext) -> bool:
     Returns:
         True if successfully placed.
     """
-    # Program "physical" id as used throughout handlers (stable id for the logical wire)
-    phys_id = int(op.qubits[0].x)
-
-    # Current (patch, slot) after any SWAPs performed to align transversals
+    # Get the flat qubit index (Qiskit equivalent of Cirq’s qubit.x)
+    logical_i = context.qc.find_bit(op.qubits[0]).index
+    phys_id   = context.phys_index_for_logical(logical_i)
     patch, slot = context.current_pos_of(phys_id)
 
-    # Apply logical Z at the *current* resolved location
+    # Resolve to (patch, slot) after any logical swaps
+    patch, slot = context.current_pos_of(phys_id)
+
+    # Apply logical Z at the resolved physical location
     context.iceberg_set.Z_at(patch, slot)
 
-    # (Optional verbose trace)
-    if context.verbose:
+    if getattr(context, "verbose", False):
         context.fault_log.append(f"[trace] Z on logical {phys_id} -> (p{patch},s{slot})")
 
     return True

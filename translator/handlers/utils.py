@@ -6,7 +6,6 @@ Shared helpers for logical gate placement logic on Iceberg circuits.
 
 from __future__ import annotations
 from typing import Dict, List
-from translator.context import TranslationContext
 
 def is_patch_solo(logical_idx: int, active_by_patch: Dict[int, List[int]], logical_to_patch: Dict[int, int]) -> bool:
     """

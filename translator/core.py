@@ -1,21 +1,22 @@
 """
 translator.core.py - Translator, Translation, and TranslationResult classes.
-Main functionality for this package.
+Main functionality for this package (Qiskit version).
 """
 
 from __future__ import annotations
 from typing import List, Tuple, Optional
 from dataclasses import dataclass
-import cirq
+
+from qiskit import QuantumCircuit
 
 from .context import TranslationContext
-from .utils import append_named_terminal_measurements
 from .gate_handlers import translate_and_apply
 from .config import TranslatorConfig
 
+
 @dataclass
 class TranslationResult:
-    circuit: cirq.Circuit
+    circuit: QuantumCircuit
     permutation: List[Tuple[int, int]]
     context: TranslationContext
     contains_faults: bool
@@ -23,11 +24,12 @@ class TranslationResult:
     verbose: bool
     fault_tolerant: bool
 
+
 class Translation:
     def __init__(
         self,
         permutation: List[Tuple[int, int]],
-        program_circuit: cirq.Circuit,
+        program_circuit: QuantumCircuit,
         *,
         fault_tolerant: bool = False,
         verbose: bool = False,
@@ -41,31 +43,32 @@ class Translation:
             permutation, program_circuit, fault_tolerant=fault_tolerant, verbose=verbose
         )
 
-    def translate_gate(self, op: cirq.Operation, next_op: cirq.Operation | None = None):
-        return translate_and_apply(
-            self.context,
-            op,
-            next_op=next_op,
-        )
+    def translate_gate(self, op, next_op=None):
+        # `op` and `next_op` are (inst, qargs, cargs) tuples from qc.data
+        return translate_and_apply(self.context, op, next_op=next_op)
 
     def translate_circuit(self) -> TranslationResult:
-        for moment in self.context.mapping["phys_circ"]:
-            ops = list(moment.operations)
-            skip_next = False
-            for i, op in enumerate(ops):
-                if skip_next:
-                    skip_next = False
-                    continue
-                next_op = ops[i + 1] if i + 1 < len(ops) else None
-                consumed = self.translate_gate(op, next_op)
-                if consumed is not None:
+        # Iterate over the program circuit instructions
+        ops = list(self.program_circuit.data)
+        skip_next = False
+        for i, op in enumerate(ops):
+            if skip_next:
+                skip_next = False
+                continue
+            next_op = ops[i + 1] if i + 1 < len(ops) else None
+            consumed = self.translate_gate(op, next_op)
+            if consumed is not None:
+                if consumed:
                     skip_next = True
-            # self.context.iceberg_set.BARRIER()
+                else:
+                    # gate application failed
+                    # TODO: make this pass further up the chain so we don't hault
+                    # permutation should be marked as infeasible in set
+                    raise RuntimeWarning("Gate application failed!")
 
         self.context.iceberg_set.decode()
-        # self.context.iceberg_set.BARRIER()
-
-        append_named_terminal_measurements(self.context.iceberg_set)
+        self.context.iceberg_set.BARRIER()
+        self.context.iceberg_set.measure()
 
         return TranslationResult(
             circuit=self.context.iceberg_set.circuit,
@@ -77,6 +80,7 @@ class Translation:
             fault_tolerant=self.fault_tolerant,
         )
 
+
 class Translator:
     def __init__(self, *, config: Optional[TranslatorConfig] = None):
         if config is None:
@@ -85,9 +89,10 @@ class Translator:
         self.verbose = config.verbose
         self.n_code = config.n_code
 
-    def translate(self, 
-                  program_circuit: cirq.Circuit, 
-                  permutation: List[Tuple[int, int]]
+    def translate(
+        self,
+        program_circuit: QuantumCircuit,
+        permutation: List[Tuple[int, int]],
     ) -> TranslationResult:
         """
         Translate a program circuit and a permutation into a physical circuit.
@@ -100,14 +105,12 @@ class Translator:
         )
         return translation.translate_circuit()
 
-    def translate_batch(self, 
-                        program_circuit: cirq.Circuit, 
-                        permutations: List[List[Tuple[int, int]]]
+    def translate_batch(
+        self,
+        program_circuit: QuantumCircuit,
+        permutations: List[List[Tuple[int, int]]],
     ) -> List[TranslationResult]:
         """
         Translate a program circuit and a list of permutations into physical circuits.
         """
-        return [
-            self.translate(program_circuit, perm)
-            for perm in permutations
-        ]
+        return [self.translate(program_circuit, perm) for perm in permutations]

@@ -1,47 +1,70 @@
 """
-translator.utils.py - A utility file for the translator package that contains 
-mapping functions and register measurement appending
+translator.utils.py - Qiskit utilities for mapping and measurement metadata
 """
 
 from __future__ import annotations
 from typing import List, Tuple, Dict
-import cirq
+
+from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister
 
 from iceberg.utils import logical_capacity
 
 
-def remap_for_perm(perm: List[Tuple[int, int]], k_log: int) -> Dict[cirq.LineQubit, cirq.LineQubit]:
+def remap_for_perm(perm: List[Tuple[int, int]], k_log: int) -> Dict[int, int]:
     """
-    Remap logical qubits (LineQubit(i)) to physical indices (patch * k_log + slot)
+    Remap logical qubit *indices* i -> physical flat index (patch * k_log + slot)
     based on the provided permutation.
     """
-    return {
-        cirq.LineQubit(i): cirq.LineQubit(p * k_log + s)
-        for i, (p, s) in enumerate(perm)
-    }
+    return {i: (p * k_log + s) for i, (p, s) in enumerate(perm)}
+
+
+def _clone_cregs(src: QuantumCircuit, dst: QuantumCircuit) -> None:
+    """Add classical registers to dst with same names/sizes as src."""
+    for creg in src.cregs:
+        dst.add_register(ClassicalRegister(len(creg), name=creg.name))
+
+
+def _new_qc_like(src: QuantumCircuit, n_qubits: int) -> QuantumCircuit:
+    """Create a fresh circuit with n_qubits (single qreg) and same cregs as src."""
+    qc = QuantumCircuit(QuantumRegister(n_qubits, "q"))
+    _clone_cregs(src, qc)
+    return qc
 
 
 def mapping_for_perm(
     permutation: List[Tuple[int, int]],
-    program_circuit: cirq.Circuit,
+    program_circuit: QuantumCircuit,
     *,
     n_code: int = 4,
 ) -> dict:
     """
-    Compute deterministic metadata to support logical to physical circuit translation.
+    Compute deterministic metadata to support logical→physical circuit translation.
     Returns:
-        - phys_circ
-        - patch mappings
-        - active patch lists
-        - state initialization map
+      - phys_circ: QuantumCircuit with remapped qubits
+      - patch mappings / active lists / state init map
     """
     k_log = logical_capacity(n_code)
-    remap = remap_for_perm(permutation, k_log)
-    phys_circ = program_circuit.transform_qubits(lambda q: remap[q])
-
-    phys_idxs = [q.x for q in remap.values()]
+    remap = remap_for_perm(permutation, k_log)  # i -> flat phys index
+    
+    # Determine program size from mapping
+    phys_idxs = list(remap.values())
     n_prog = max(phys_idxs) + 1
     n_codes = (n_prog + k_log - 1) // k_log
+
+    # Build a fresh circuit and re-append instructions with remapped qargs
+    phys_circ = _new_qc_like(program_circuit, n_prog)
+
+    # Map each original qubit index -> new circuit qubit
+    # Assume program_circuit.qubits are in logical order [0..]
+    # If not, adjust indexing policy here.
+    for inst, qargs, cargs in program_circuit.data:
+        mapped_qargs = []
+        for q in qargs:
+            # old flat index in the original circuit
+            old_idx = program_circuit.find_bit(q).index  # position in flat qubit list
+            new_idx = remap[old_idx]
+            mapped_qargs.append(phys_circ.qubits[new_idx])
+        phys_circ.append(inst, mapped_qargs, cargs)
 
     logical_to_patch = {i: i // k_log for i in range(n_prog)}
     idx_in_patch = {i: i % k_log for i in range(n_prog)}
@@ -62,61 +85,3 @@ def mapping_for_perm(
         "active_by_patch": active_by_patch,
         "state_map": state_map,
     }
-
-
-def append_named_terminal_measurements(iceberg_set) -> None:
-    """
-    Append terminal measurements to the IcebergSet circuit using module count.
-
-    For each module p in range(iceberg_set.num_modules), append:
-        - data_{p}         (measures that module's n data qubits)
-        - patch_{p}_anc0   (X-parity ancilla)
-        - patch_{p}_anc1   (Z-parity ancilla)
-
-    Any *additional* physical qubits allocated after the module blocks
-    (e.g., FT flag ancillas) are measured together into a single 'flags' register.
-    """
-    # 1) Strip existing measurements to avoid duplicate-key errors
-    circ_no_meas = cirq.Circuit(
-        (op for m in iceberg_set.circuit for op in m.operations
-         if not isinstance(op.gate, cirq.MeasurementGate)),
-        strategy=cirq.InsertStrategy.NEW_THEN_INLINE,
-    )
-
-    # 2) Per-module layout
-    n_modules = getattr(iceberg_set, "num_modules", None)
-    if n_modules is None:
-        raise AttributeError("iceberg_set must have 'num_modules' (module count).")
-
-    n_data = getattr(iceberg_set, "n", 4)       # physical data qubits per module
-    n_anc  = getattr(iceberg_set, "n_anc", 2)   # parity ancillas per module (default 2)
-    block  = n_data + n_anc
-
-    meas_ops: List[cirq.Operation] = []
-
-    # 3) Module-block measurements by index math
-    for p in range(n_modules):
-        base = p * block
-        data_block = [cirq.LineQubit(base + i) for i in range(n_data)]
-        anc0 = cirq.LineQubit(base + n_data + 0)
-        anc1 = cirq.LineQubit(base + n_data + 1)
-        meas_ops.append(cirq.measure(*data_block, key=f"data_{p}"))
-        meas_ops.append(cirq.measure(anc0, key=f"patch_{p}_anc0"))
-        meas_ops.append(cirq.measure(anc1, key=f"patch_{p}_anc1"))
-
-    # 4) Collect all remaining (flag) qubits beyond the allocated module blocks
-    #    We assume modules were allocated first; any later allocations (flags)
-    #    live at indices >= n_modules * block.
-    all_qubits = sorted(
-        [q for q in circ_no_meas.all_qubits() if isinstance(q, cirq.LineQubit)],
-        key=lambda q: q.x
-    )
-    reserved_end = n_modules * block
-    flag_qubits = [q for q in all_qubits if q.x >= reserved_end]
-
-    if flag_qubits:
-        # Measure all flags into ONE register to simplify downstream handling
-        meas_ops.append(cirq.measure(*flag_qubits, key="flags"))
-
-    # 5) Rebuild circuit with terminal measurements
-    iceberg_set.circuit = circ_no_meas + cirq.Circuit(cirq.Moment(meas_ops))
