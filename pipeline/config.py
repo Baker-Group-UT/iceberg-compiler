@@ -14,7 +14,7 @@ class PipelineConfig:
     Parent config object for pipeline orchestration.
     """
     fault_tolerant: bool = False
-    verbose: bool = False
+    verbose: bool = True
     save: bool = False
     save_dir: str = "results/pipeline"
     sim_config: SimulatorConfig = field(default_factory=SimulatorConfig)

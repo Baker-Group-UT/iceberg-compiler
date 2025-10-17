@@ -140,7 +140,6 @@ class Simulator:
         result = job.result()
 
         key_order, key_widths = self._key_meta(tcirc, result)
-        # key_order, key_widths = key_order[::-1], key_widths[::-1] 
 
         # <+======================================================================================+>*
         # NOTE: EXTREMELY important Note. AerSim returns are little endian.                         |   HEY READ THE NOTE!!!

@@ -46,3 +46,8 @@ class SimulatorConfig:
     def with_seed(self, seed: Optional[int] = None) -> Self:
         self.seed = seed
         return self
+
+    def with_noise_model(self, noise_model: NoiseModel) -> Self:
+        print("doin stuff")
+        self.noise_model = noise_model
+        return self

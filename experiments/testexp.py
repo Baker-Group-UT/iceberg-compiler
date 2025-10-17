@@ -20,7 +20,7 @@ program_circuit.measure_all()
 
 # Create a config for Pipeline
 config = PipelineConfig(
-    sim_config=StandardSimulator(repetitions=10000)\
+    sim_config=(repetitions=10000)\
         .with_noiseless()
         .with_seed(6),
     verbose=True,

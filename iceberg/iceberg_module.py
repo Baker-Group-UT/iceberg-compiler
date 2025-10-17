@@ -443,7 +443,10 @@ class IcebergModule(CircuitClass):
             i, j = j, i
 
         if not fault_tolerant and self.n == 4:
-            self.circuit.swap(self.data_qubits[1], self.data_qubits[2])
+            # self.circuit.swap(self.data_qubits[1], self.data_qubits[2])
+            self.circuit.cx(self.data_qubits[1], self.data_qubits[2])
+            self.circuit.cx(self.data_qubits[2], self.data_qubits[1])
+            self.circuit.cx(self.data_qubits[1], self.data_qubits[2])
         else:
             self.CNOT(i, j, fault_tolerant=fault_tolerant)
             self.CNOT(j, i, fault_tolerant=fault_tolerant)
