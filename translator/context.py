@@ -1,13 +1,14 @@
 """
-translator.context.py – TranslationContext class
+translator.context.py – TranslationContext class (Qiskit)
 
 Encapsulates all derived state and shared data used during translation.
 """
 
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import List, Dict, Tuple, Any, TYPE_CHECKING
-import cirq
+from typing import List, Dict, Tuple, TYPE_CHECKING
+
+from qiskit import QuantumCircuit
 
 if TYPE_CHECKING:
     from translator.core import Translation
@@ -17,21 +18,25 @@ __all__ = ["TranslationContext"]
 from iceberg.iceberg_set import IcebergSet
 from .utils import mapping_for_perm
 
+
 @dataclass
 class TranslationContext:
-    # --- existing static mapping (DO NOT MUTATE) ---
+    # --- static mapping (DO NOT MUTATE) ---
     iceberg_set: "IcebergSet"
     permutation: List[Tuple[int, int]]
     mapping: dict
-    logical_to_patch: Dict[int, int]     # static: i // k_log
-    idx_in_patch: Dict[int, int]         # static: i % k_log
-    active_by_patch: Dict[int, List[int]]# static: physical indices active per patch
+    logical_to_patch: Dict[int, int]      # static: i // k_log
+    idx_in_patch: Dict[int, int]          # static: i % k_log
+    active_by_patch: Dict[int, List[int]] # static: physical indices active per patch
     state_map: Dict[int, str]
     fault_log: List[str]
     fault_tolerant: bool
     verbose: bool
 
-    # --- NEW: dynamic, permutation-shaped tracker (MUTABLE) ---
+    # Keep a handle to the *program* circuit being translated (for find_bit, etc.)
+    qc: QuantumCircuit
+
+    # --- dynamic, permutation-shaped tracker (MUTABLE) ---
     k_log: int = 2
     # states we care about, in *permutation order*; each is (patch, slot)
     state_positions: List[Tuple[int, int]] = field(default_factory=list)
@@ -53,36 +58,29 @@ class TranslationContext:
             return self.state_positions[si][1]
         return self.idx_in_patch[phys_i]
 
-    def current_pos_of(self, phys_i: int) -> Tuple[int,int]:
+    def current_pos_of(self, phys_i: int) -> Tuple[int, int]:
         return (self.current_patch_of(phys_i), self.current_slot_of(phys_i))
 
+    def phys_index_for_logical(self, logical_i: int) -> int:
+        p, s = self.permutation[logical_i]
+        return p * self.k_log + s
+
     def update_states_on_swap(self, patch: int, i: int, j: int) -> None:
-        """Reflect a SWAP of slots i<->j inside 'patch' for tracked states.
-
-        Updates only the dynamic trackers:
-        - state_positions (list of (patch, slot) per tracked state)
-        - state_index_by_pos: (patch, slot) -> state index
-
-        NOTE: phys_to_state remains a stable mapping from the *program* physical
-        index to the state index; do not mutate it during swaps.
-        """
+        """Reflect a SWAP of slots i<->j inside 'patch' for tracked states."""
         if i == j:
             return
 
         a = (patch, i)
         b = (patch, j)
 
-        # Which tracked states (if any) occupy these positions?
         si = self.state_index_by_pos.get(a)
         sj = self.state_index_by_pos.get(b)
 
-        # Move the state at 'a' to 'b'
         if si is not None:
             self.state_index_by_pos.pop(a, None)
             self.state_positions[si] = b
             self.state_index_by_pos[b] = si
 
-        # Move the state at 'b' to 'a'
         if sj is not None:
             self.state_index_by_pos.pop(b, None)
             self.state_positions[sj] = a
@@ -92,14 +90,16 @@ class TranslationContext:
     def from_config(
         cls,
         permutation: List[Tuple[int, int]],
-        program_circuit: cirq.Circuit,
+        program_circuit: QuantumCircuit,
         *,
         fault_tolerant: bool = False,
         verbose: bool = False,
-    ) -> TranslationContext:
-        """Method for creating a TranslationContext"""
+    ) -> "TranslationContext":
+        """Construct a TranslationContext for a given program and permutation."""
         mapping = mapping_for_perm(permutation, program_circuit)
-        iceberg_set = IcebergSet(n_program=mapping["n_prog"], n=4, circuit=cirq.Circuit())
+        # Build a fresh physical IcebergSet circuit
+        iceberg_qc = QuantumCircuit()
+        iceberg_set = IcebergSet(n_program=mapping["n_prog"], n=4, circuit=iceberg_qc)
         iceberg_set.encode()
 
         k_log = mapping["k_log"]
@@ -123,6 +123,7 @@ class TranslationContext:
             fault_log=[],
             fault_tolerant=fault_tolerant,
             verbose=verbose,
+            qc=program_circuit,               # <- store program circuit for handlers
             k_log=k_log,
             state_positions=state_positions,
             state_index_by_pos=state_index_by_pos,
@@ -131,7 +132,7 @@ class TranslationContext:
 
     @classmethod
     def from_translation(cls, translation: "Translation") -> "TranslationContext":
-        """Convenience method for internal construction from a Translation object."""
+        """Convenience constructor from a Translation object."""
         return cls.from_config(
             translation.permutation,
             translation.program_circuit,

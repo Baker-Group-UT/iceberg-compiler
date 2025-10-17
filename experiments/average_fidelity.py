@@ -4,9 +4,7 @@ of a circuit as well as the best and worst fidelities. Final result is a plot wi
 for multiple different circuits including the bare circuit fidelity.
 """
 
-import cirq
 import matplotlib.pyplot as plt
-import seaborn as sns
 import pandas as pd
 
 from pipeline.config import PipelineConfig

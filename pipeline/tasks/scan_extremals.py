@@ -4,8 +4,9 @@ Analyzes shortest and longest physical circuits per number of codes used.
 """
 
 from __future__ import annotations
-import cirq
+import qiskit
 import pandas as pd
+from tqdm import trange
 
 from pipeline.config                        import PipelineConfig
 from pipeline.analysis.postselection        import postselect_against_reference
@@ -18,7 +19,7 @@ from simulator                              import Simulator
 from repository                             import RunBuilder, RunRepository
 
 def run_extremal_scan(
-        program_circuit: cirq.Circuit,
+        program_circuit: qiskit.QuantumCircuit,
         config: PipelineConfig = PipelineConfig(),
         *,
         extremals_per_code: int = 1
@@ -28,7 +29,7 @@ def run_extremal_scan(
     Returns a finalized RunRecord and saves it via RunRepository.
     """
     # Step 1: Generate permutation space
-    q = len(program_circuit.all_qubits())  # Assumes 1 logical qubit per Cirq qubit
+    q = program_circuit.num_qubits  # Assumes 1 logical qubit per qubit
     code_sets = generate_uniform_code_sets(q)
     permutations = generate_permutations(code_sets, q)
 
@@ -43,14 +44,14 @@ def run_extremal_scan(
         score_fn=lambda tr: len(tr.circuit)  # could later use total_gates or custom metric
     )
 
-    # # Step 4: Simulate
+    # Step 4: Simulate
     simulator = Simulator(config.sim_config)
-    print("Ideal reference:")
-    ideal_sim_res = simulator.ideal_without_comparison(circuit=program_circuit)
-    print("Noisy permutations:")
-    simulation_results = [simulator.noisy_without_comparison(e.circuit) for e in extremals]
+    ideal_sim_res = simulator.ideal(circuit=program_circuit)
+    simulation_results = []
+    for i in trange(len(extremals), desc="Simulating circuits", unit=" sim"):
+        simulation_results.append(simulator.noisy(extremals[i].circuit))
 
-    # # Step 5: Postselection
+    # Step 5: Postselection
     simulation_results = postselect_against_reference(extremals, ideal_sim_res, simulation_results)
 
     # Step 6: Extract DataFrame

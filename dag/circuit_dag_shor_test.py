@@ -5,7 +5,6 @@ import math
 from qiskit import QuantumCircuit, transpile
 from circuit_dag_prev import CircuitDAG, draw_detailed_interaction_graph
 from circuit_dag import build_qubit_graph, draw_qubit_graph
-from random_circuit_gen import gen_random_clifford_circ
 
 # ------------------------------------------------------------------
 # 1. Generate a random Clifford circuit (50 gates on 10 qubits)

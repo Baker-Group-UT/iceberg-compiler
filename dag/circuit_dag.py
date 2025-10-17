@@ -142,7 +142,7 @@ def draw_qubit_graph(
     seed: int = 42,
     tower_radius: float = 3.0,
     tower_zscale: float = 1.0,
-    arrow_scale: float = 1.4,       # <— overall arrow-head size multiplier
+    arrow_scale: float = 0.3,       # <— overall arrow-head size multiplier
     tower_head_ratio: float = 0.1, # <— fraction of arrow length used for head
 ):
     """Visualise *G*.
@@ -170,7 +170,8 @@ def draw_qubit_graph(
 
     else:  # orient == 'tower'
         n_qubits = 1 + max(q for q, _ in G.nodes)
-        R = tower_radius
+        scaled_tower_radius = G.number_of_nodes() * tower_radius
+        R = scaled_tower_radius
         pos = {}
         for (q, t) in G.nodes:
             theta = 2 * np.pi * q / n_qubits

@@ -1,7 +1,7 @@
 from abc import ABC, ABCMeta, abstractmethod
 from functools import wraps
 from typing import Collection
-import cirq
+import qiskit
 
 
 def mark_check_encoded(method):
@@ -49,7 +49,7 @@ class CircuitClass(ABC, metaclass=AutoCheckEncodedMeta):
     Abstract base class for any encoded circuit representation.
     """
 
-    circuit: cirq.Circuit
+    circuit: qiskit.QuantumCircuit
     _encoded: bool = False
 
     @abstractmethod

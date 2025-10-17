@@ -43,8 +43,8 @@ def result_to_row(sim_result: PostselectedSimulationResult, pipeline_config: Pip
         "postselected": sim_result.was_postselected,
 
         # Distributions (baseline, raw, postselected)
-        "ideal_dist": sim_result.raw_result.ideal_raw_dist,
-        "noisy_dist": sim_result.raw_result.noisy_raw_dist,
+        "ideal_dist": sim_result.raw_result.ideal_dist,
+        "noisy_dist": sim_result.raw_result.noisy_dist,
         "postselected_dist": sim_result.postselected_noisy_dist,
 
         # Logical postselection metrics

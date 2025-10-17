@@ -3,7 +3,6 @@ codes_used_vs_sel_rate_by_alpha.py - experiment to show how logical selection ra
 noise scaling (alpha), grouped by number of codes used.
 """
 
-import cirq
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -11,18 +10,8 @@ import pandas as pd
 
 from pipeline.config import PipelineConfig
 from pipeline import run_full_scan
-from simulator import alpha_scale_noise_params, ScaledNoiseModel, SimulatorConfig, DEFAULT_PARAMS
-
-# Define the program circuit
-qA, qB, qC, qD, qE, qF = cirq.LineQubit.range(6)
-program_circuit = cirq.Circuit(
-    cirq.H(qA),
-    cirq.CNOT(qA, qB),
-    cirq.CNOT(qB, qC),
-    cirq.CNOT(qC, qD),
-    cirq.CNOT(qD, qE),
-    cirq.CNOT(qE, qF),
-)
+from simulator import ScaledNoiseModel, SimulatorConfig
+from experiments.shared.example_circuits import n_ghz_state
 
 # Sweep over alphas (noise scaling)
 alphas = np.logspace(-3, 1, num=10)  # [0.001 ... 10]
@@ -32,9 +21,8 @@ for alpha in alphas:
     print(f"Running full scan for alpha = {alpha:.3f}")
 
     # Build noise model
-    scaled_params = alpha_scale_noise_params(base=DEFAULT_PARAMS, alpha=alpha)
-    noise_model = ScaledNoiseModel(noise_params=scaled_params)
-    sim_config = SimulatorConfig(noise_model=noise_model, repetitions=2, oversample=10)
+    noise_model = ScaledNoiseModel(alpha=alpha)
+    sim_config = SimulatorConfig(noise_model=noise_model, repetitions=20)
 
     # Configure pipeline
     config = PipelineConfig(
@@ -42,6 +30,8 @@ for alpha in alphas:
         verbose=False,
         fault_tolerant=False
     )
+
+    program_circuit = n_ghz_state(5)["logical"]
 
     # Run scan
     df = run_full_scan(program_circuit, config).dataframe.df

@@ -9,3 +9,6 @@ venv/
 results/
 scratch/
 Icon?
+dataset/
+paper/
+*.pptx
