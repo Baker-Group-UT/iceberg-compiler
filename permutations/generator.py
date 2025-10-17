@@ -11,6 +11,8 @@ import random
 from itertools import combinations, permutations as permute
 from typing import List, Tuple, Dict, Any, Union
 
+from qiskit import QuantumCircuit
+
 from iceberg.utils import logical_capacity
 
 
@@ -142,7 +144,7 @@ def generate_permutations(
     return perms
 
 def random_permutation_from_circuit(
-    circuit: Any,
+    circuit: QuantumCircuit,
     code_sizes: List[int],
     *,
     seed: int | None = None,
@@ -175,7 +177,7 @@ def random_permutation_from_circuit(
     """
     # Derive q without introducing circuit/gate awareness beyond counting qubits.
     try:
-        q = len(circuit.all_qubits())  # works for Cirq and similar interfaces
+        q = circuit.num_qubits
     except Exception as exc:  # pragma: no cover
         raise TypeError("circuit must expose .all_qubits()") from exc
 
