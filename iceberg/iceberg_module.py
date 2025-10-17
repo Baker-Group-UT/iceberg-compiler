@@ -195,12 +195,14 @@ class IcebergModule(CircuitClass):
         # X-type parity (CNOT from each data into parity_qubits[0])
         for dq in self.data_qubits:
             self.circuit.cx(dq, self.parity_qubits[0])
+        self.BARRIER()
 
         # Z-type parity: H, CX to parity[1], H (on data)
         for dq in self.data_qubits:
             self.circuit.h(dq)
             self.circuit.cx(dq, self.parity_qubits[1])
             self.circuit.h(dq)
+        self.BARRIER()
 
         _measure_many(self.circuit, self.parity_qubits, f"m_parity_{key_prefix}")
 

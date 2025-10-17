@@ -3,71 +3,13 @@ iceberg_postselect.py - Defines the logic for postselecting iceberg histograms.
 """
 
 from __future__ import annotations
-from typing import Dict, List, Tuple, Optional, Iterable
+from typing import Dict, List, Tuple, Optional
 
-from qiskit import QuantumCircuit
 
 __all__ = [
-    "ordered_measurement_keys",
     "iceberg_postselect",
     "iceberg_kept_mass",
 ]
-
-# ------------------------------------------------------------------
-# Measurement-key ordering (Qiskit)
-# ------------------------------------------------------------------
-
-def _creg_names_used_by_measures(circ: QuantumCircuit) -> List[str]:
-    """
-    Return the set of ClassicalRegister names that are actually targeted
-    by measure instructions in `circ`, as a list (deterministic order).
-    """
-    used: dict[str, None] = {}
-    for inst, _q, cargs in circ.data:
-        if inst.name != "measure":
-            continue
-        for cbit in cargs:
-            # Find the register this clbit belongs to
-            # `find_bit` returns BitLocations; we use `.registers` for robustness.
-            regs = cbit.registers if hasattr(cbit, "registers") else None
-            if regs:
-                # If the bit is part of multiple regs, record them all (rare).
-                for reg in regs:
-                    used.setdefault(reg.name, None)
-            else:
-                # Fallback via circuit mapping
-                loc = circ.find_bit(cbit)
-                for reg, _idx in loc.registers:
-                    used.setdefault(reg.name, None)
-    return list(used.keys())
-
-
-def ordered_measurement_keys(circuit: QuantumCircuit) -> List[str]:
-    """
-    Return register names in the deterministic order used by post-selection.
-
-    Rules:
-    - Include only classical registers actually written by measure ops.
-    - `data_*` registers are ordered by numeric suffix DESC (data_{max} ... data_0),
-      matching legacy concatenation (highest patch → lowest).
-    - All other registers (ancillas, flags, etc.) are sorted lexicographically.
-    """
-    used = set(_creg_names_used_by_measures(circuit))
-    # In case of earlier versions that relied on *all* cregs:
-    if not used:
-        used = {creg.name for creg in circuit.cregs}
-
-    data_keys = [k for k in used if k.startswith("data_")]
-    other_keys = sorted([k for k in used if not k.startswith("data_")])
-
-    # Sort data_* by numeric suffix DESC; fallback to reverse alpha on parse error
-    try:
-        data_keys_desc = sorted(data_keys, key=lambda n: int(n.split("_", 1)[1]), reverse=True)
-    except Exception:
-        data_keys_desc = sorted(data_keys, reverse=True)
-
-    return data_keys_desc + other_keys
-
 
 # ------------------------------------------------------------------
 # Iceberg-specific logic
