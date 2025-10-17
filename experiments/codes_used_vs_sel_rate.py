@@ -3,7 +3,6 @@ codes_used_vs_sel_rate_by_alpha.py - experiment to show how logical selection ra
 noise scaling (alpha), grouped by number of codes used.
 """
 
-import cirq
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns

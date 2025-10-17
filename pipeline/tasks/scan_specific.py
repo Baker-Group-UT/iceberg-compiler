@@ -3,9 +3,9 @@ pipeline.tasks.scan_specific.py - permutation scan from program circuit for a sp
 """
 
 from __future__ import annotations
-import cirq
+import qiskit
 import pandas as pd
-from typing import List, Sequence
+from typing import List
 from tqdm import trange
 
 from pipeline.config                    import PipelineConfig
@@ -18,7 +18,7 @@ from repository.run_builder             import RunBuilder
 from repository.repository              import RunRepository
 
 
-def run_specific_scan(program_circuit: cirq.Circuit, permutations: List[List[tuple]], config: PipelineConfig = PipelineConfig()):
+def run_specific_scan(program_circuit: qiskit.QuantumCircuit, permutations: List[List[tuple]], config: PipelineConfig = PipelineConfig()):
     """
     Runs a full permutation scan for the provided logical circuit using the given config.
     Returns a finalized RunRecord and saves it via RunRepository.

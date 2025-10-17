@@ -21,7 +21,7 @@ def apply_logical_z(op, context: TranslationContext) -> bool:
     Returns:
         True if successfully placed.
     """
-    # Get the flat qubit index (Qiskit equivalent of Cirq’s qubit.x)
+    # Get the flat qubit index
     logical_i = context.qc.find_bit(op.qubits[0]).index
     phys_id   = context.phys_index_for_logical(logical_i)
     patch, slot = context.current_pos_of(phys_id)

@@ -4,13 +4,13 @@ pipeline.tasks.generate_circuit.py
 
 from __future__ import annotations
 from typing import List, Tuple
-import cirq
+import qiskit
 
 from pipeline.config                    import PipelineConfig
 from translator.core                    import Translator
 
 
-def generate_circuit(program_circuit: cirq.Circuit, permutation: List[Tuple[int, int]], config: PipelineConfig = PipelineConfig()):
+def generate_circuit(program_circuit: qiskit.QuantumCircuit, permutation: List[Tuple[int, int]], config: PipelineConfig = PipelineConfig()):
     """
     Runs a full permutation scan for the provided logical circuit using the given config.
     Returns a finalized RunRecord and saves it via RunRepository.

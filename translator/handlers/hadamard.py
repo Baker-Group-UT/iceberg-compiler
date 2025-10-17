@@ -42,7 +42,7 @@ def apply_logical_hadamard(
     global_log_i = patch * context.k_log + slot
 
     # FIXME: This branch is broken because HH is not working I THINK
-    if is_patch_solo(global_log_i, context.active_by_patch, context.logical_to_patch):
+    if is_patch_solo(logical_i, context.active_by_patch, context.logical_to_patch):
         context.iceberg_set.HH([patch])
         context.state_map[global_log_i] = "+"
         return None
@@ -61,7 +61,8 @@ def apply_logical_hadamard(
         #         return logical_j
 
     # Otherwise: always perform a *single-qubit* logical H at the resolved location
-    context.iceberg_set.H(global_log_i, fault_tolerant=context.fault_tolerant)
+    # context.iceberg_set.H(global_log_i, fault_tolerant=context.fault_tolerant)
+    context.iceberg_set.H_at(patch, slot, fault_tolerant=context.fault_tolerant)
     context.state_map[global_log_i] = "+"
     if not context.fault_tolerant:
         context.fault_log.append(f"non-FT H on logical {global_log_i} in patch {patch}")

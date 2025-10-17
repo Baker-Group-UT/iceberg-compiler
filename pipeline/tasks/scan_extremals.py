@@ -4,7 +4,7 @@ Analyzes shortest and longest physical circuits per number of codes used.
 """
 
 from __future__ import annotations
-import cirq
+import qiskit
 import pandas as pd
 from tqdm import trange
 
@@ -19,7 +19,7 @@ from simulator                              import Simulator
 from repository                             import RunBuilder, RunRepository
 
 def run_extremal_scan(
-        program_circuit: cirq.Circuit,
+        program_circuit: qiskit.QuantumCircuit,
         config: PipelineConfig = PipelineConfig(),
         *,
         extremals_per_code: int = 1
@@ -29,7 +29,7 @@ def run_extremal_scan(
     Returns a finalized RunRecord and saves it via RunRepository.
     """
     # Step 1: Generate permutation space
-    q = len(program_circuit.all_qubits())  # Assumes 1 logical qubit per Cirq qubit
+    q = program_circuit.num_qubits  # Assumes 1 logical qubit per qubit
     code_sets = generate_uniform_code_sets(q)
     permutations = generate_permutations(code_sets, q)
 
@@ -48,8 +48,8 @@ def run_extremal_scan(
     simulator = Simulator(config.sim_config)
     ideal_sim_res = simulator.ideal(circuit=program_circuit)
     simulation_results = []
-    for i in trange(len(translated), desc="Simulating circuits", unit=" sim"):
-        simulation_results.append(simulator.noisy(translated[i].circuit))
+    for i in trange(len(extremals), desc="Simulating circuits", unit=" sim"):
+        simulation_results.append(simulator.noisy(extremals[i].circuit))
 
     # Step 5: Postselection
     simulation_results = postselect_against_reference(extremals, ideal_sim_res, simulation_results)

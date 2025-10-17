@@ -34,7 +34,6 @@ class Simulator:
     def __init__(self, config: Optional[SimulatorConfig] = None):
         if config is None:
             config = SimulatorConfig()
-        # Keep only fields relevant post-Cirq/SQALE removal
         self._repetitions: int = config.repetitions
         self._noiseless: bool = config.noiseless
         self._seed: Optional[int] = config.seed
@@ -129,7 +128,8 @@ class Simulator:
             sim = AerSimulator(noise_model=self._noise_model, seed_simulator=self._seed)
 
         # Transpile for the chosen simulator (ensures basis/optimization compatible)
-        tcirc = transpile(circuit, sim, optimization_level=0, seed_transpiler=self._seed)
+        # tcirc = transpile(circuit, sim, optimization_level=0, seed_transpiler=self._seed)
+        tcirc = circuit
 
         # If there are no classical bits, nothing to count
         if len(tcirc.clbits) == 0:
@@ -140,6 +140,7 @@ class Simulator:
         result = job.result()
 
         key_order, key_widths = self._key_meta(tcirc, result)
+        # key_order, key_widths = key_order[::-1], key_widths[::-1] 
 
         # <+======================================================================================+>*
         # NOTE: EXTREMELY important Note. AerSim returns are little endian.                         |   HEY READ THE NOTE!!!
@@ -156,6 +157,7 @@ class Simulator:
         little_endian_counts = result.get_counts(0)  # first (and typically only) circuit
         counts = self._invert_endianness(little_endian_counts)
         # ^^^^^^^^^^ IMPORTANT THING ^^^^^^^^^^ #
+        # NOTE: When we invert this here we also HAVE to invert the post selection bitstrings
 
         # counts: Dict[str, int], keys are space-delimited per creg in qc.cregs order
         probs = self._counts_to_probs(counts)

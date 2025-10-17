@@ -3,7 +3,7 @@ pipeline.tasks.generate_circuits.py
 """
 
 from __future__ import annotations
-import cirq
+import qiskit
 
 from pipeline.config                    import PipelineConfig
 from permutations.code_sets             import generate_uniform_code_sets
@@ -11,13 +11,13 @@ from permutations.generator             import generate_permutations
 from translator.core                    import Translator
 
 
-def generate_circuits(program_circuit: cirq.Circuit, config: PipelineConfig = PipelineConfig()):
+def generate_circuits(program_circuit: qiskit.QuantumCircuit, config: PipelineConfig = PipelineConfig()):
     """
     Runs a full permutation scan for the provided logical circuit using the given config.
     Returns a finalized RunRecord and saves it via RunRepository.
     """
     # Step 1: Generate permutation space
-    q = len(program_circuit.all_qubits())  # Assumes 1 logical qubit per Cirq qubit
+    q = program_circuit.num_qubits  # Assumes 1 logical qubit per qubit
     code_sets = generate_uniform_code_sets(q)
     permutations = generate_permutations(code_sets, q)
 

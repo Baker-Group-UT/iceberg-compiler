@@ -207,6 +207,29 @@ class IcebergSet:
             if qset:
                 self.modules[patch].H(qset, fault_tolerant=fault_tolerant)
 
+    def H_at(self, patch: int, slot: int | list[int] | set[int], *, fault_tolerant: bool = False):
+        """Apply H to one or more slots in a specific module (patch).
+
+        Args:
+            patch: Module index.
+            slot: Single slot or a collection of slots within the module.
+            fault_tolerant: If True, use the FT implementation.
+        """
+        if isinstance(slot, int):
+            slot = {slot}
+        else:
+            slot = set(slot)
+
+        if patch < 0 or patch >= self.num_modules:
+            raise ValueError("Patch out of range")
+
+        for s in slot:
+            if s < 0 or s >= self.k:
+                raise ValueError("Slot out of range")
+
+        if slot:
+            self.modules[patch].H(slot, fault_tolerant=fault_tolerant)
+
     def HH(self, patches: int | Collection[int], fault_tolerant: bool = False):
         """
         Apply the HH operation (logical Hadamard followed by relabel) to selected modules.

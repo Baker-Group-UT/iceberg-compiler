@@ -1,5 +1,5 @@
 """
-shared.example_circuits.py - various Qiskit circuits (converted from Cirq)
+shared.example_circuits.py - various Qiskit circuits
 """
 
 import math
