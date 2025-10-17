@@ -2,7 +2,7 @@
 run_scan.py - high level test file
 """
 
-import cirq
+import qiskit
 
 from pipeline.config import PipelineConfig
 from pipeline import run_full_scan, run_extremal_scan, run_specific_scan, generate_permutation_set
@@ -16,28 +16,11 @@ from experiments_superstaq.converters.qiskit import cirq_to_qiskit
 from dag.circuit_dag import draw_qubit_graph, build_qubit_graph
 from cirq.contrib.qasm_import import circuit_from_qasm
 
-qA, qB, qC, = cirq.LineQubit.range(3)
-program_circuit = cirq.Circuit(
-    cirq.H(qA),
-    cirq.CNOT(qA, qB),
-    cirq.CNOT(qA, qC),
-    cirq.H(qA),
-    # cirq.H(qA),
-    # cirq.H(qB),
-    # cirq.Z(qB),
-    # cirq.X(qB),
-    # cirq.CNOT(qA, qB),
-    # cirq.CNOT(qA, qC),
-    # cirq.H(qA),
-    # cirq.rz(-math.pi/4)(qA),
-    cirq.X(qA),
-    # cirq.X(qB),
-    cirq.X(qC),
-    cirq.measure(qA),
-    cirq.measure(qB),
-    cirq.measure(qC),
-)
-
+program_circuit = qiskit.QuantumCircuit(3)
+program_circuit.h(0)
+program_circuit.cx(0,1)
+program_circuit.cx(0,2)
+program_circuit.h(0)
 
 
 # program_circuit = ghz_3()["logical"]

@@ -1,39 +1,46 @@
-import cirq
+from qiskit import QuantumCircuit
 import random
 
-def random_circuit(n: int, depth: int = 50, seed: int | None = None) -> cirq.Circuit:
+def random_circuit(n: int, depth: int = 50, seed: int | None = None) -> QuantumCircuit:
     """
-    Generate a random Cirq circuit with n qubits and given depth.
+    Generate a random Qiskit QuantumCircuit with n qubits and given depth.
     Mix of CNOT, H, and X gates applied at random locations.
     Before measurement, the operation order is randomly shuffled.
     """
     rng = random.Random(seed)
-    qubits = [cirq.LineQubit(i) for i in range(n)]
-    circuit = cirq.Circuit()
+    qc = QuantumCircuit(n, name=f"random_{n}q_depth{depth}")
 
-    # Collect operations
     ops = []
 
     # Ensure every qubit is used at least once
-    for q in qubits:
-        ops.append(rng.choice([cirq.H(q), cirq.X(q)]))
+    for q in range(n):
+        gate = rng.choice(["h", "x"])
+        if gate == "h":
+            ops.append(("h", [q]))
+        else:
+            ops.append(("x", [q]))
 
     # Add random layers
     for _ in range(depth):
         gate_type = rng.choice(["cnot", "h", "x"])
         if gate_type == "cnot":
-            q1, q2 = rng.sample(qubits, 2)
-            ops.append(cirq.CNOT(q1, q2))
+            q1, q2 = rng.sample(range(n), 2)
+            ops.append(("cx", [q1, q2]))
         elif gate_type == "h":
-            ops.append(cirq.H(rng.choice(qubits)))
+            q = rng.choice(range(n))
+            ops.append(("h", [q]))
         else:
-            ops.append(cirq.X(rng.choice(qubits)))
+            q = rng.choice(range(n))
+            ops.append(("x", [q]))
 
     # Shuffle all operations before measurement
     rng.shuffle(ops)
-    circuit.append(ops)
 
-    # Add measurement at the end
-    circuit.append(cirq.measure(*qubits))
+    # Apply all operations
+    for gate, qubits in ops:
+        getattr(qc, gate)(*qubits)
 
-    return circuit
+    # Add measurements at the end
+    qc.measure_all()
+
+    return qc

@@ -14,23 +14,21 @@ import argparse
 import os
 from datetime import datetime
 
-import cirq
+import qiskit
 import pandas as pd
 import matplotlib.pyplot as plt
 
 from pipeline.config import PipelineConfig
 from pipeline import run_specific_scan
 from repository.run_builder import RunRecord
-from simulator.config_presets import OversampledSimulator
+from simulator.config_presets import StandardSimulator
 
 # --- Program circuit (same as your run_scan example) ---
-qA, qB, qC = cirq.LineQubit.range(3)
-PROGRAM_CIRCUIT = cirq.Circuit(
-    cirq.H(qA),
-    cirq.CNOT(qA, qB),
-    cirq.CNOT(qA, qC),
-    cirq.H(qA),
-)
+PROGRAM_CIRCUIT = qiskit.QuantumCircuit(3)
+PROGRAM_CIRCUIT.h(0)
+PROGRAM_CIRCUIT.cx(0,1)
+PROGRAM_CIRCUIT.cx(0,2)
+PROGRAM_CIRCUIT.h(0)
 
 # Default permutations from your snippet
 DEFAULT_PERMUTATIONS = [
@@ -47,12 +45,6 @@ def parse_args() -> argparse.Namespace:
         nargs="+",
         default=[100, 500, 1_000, 2_000, 5_000, 10_000, 20_000, 50_000, 100_000],
         help="List of simulator repetition counts to sweep.",
-    )
-    p.add_argument(
-        "--oversample",
-        type=int,
-        default=50,
-        help="Oversample factor for OversampledSimulator.",
     )
     p.add_argument(
         "--save-records",
@@ -76,15 +68,15 @@ def ensure_outdir() -> str:
     os.makedirs(outdir, exist_ok=True)
     return outdir
 
-def build_config(repetitions: int, oversample: int, save: bool, verbose: bool, ft: bool) -> PipelineConfig:
-    sim = OversampledSimulator(repetitions=repetitions, oversample=oversample)
+def build_config(repetitions: int, save: bool, verbose: bool, ft: bool) -> PipelineConfig:
+    sim = StandardSimulator(repetitions=repetitions)
     cfg = PipelineConfig(sim_config=sim, verbose=verbose, save=save)
     if ft:
         cfg = cfg.with_ft(True)
     return cfg
 
-def run_once(repetitions: int, oversample: int, save: bool, verbose: bool, ft: bool) -> pd.DataFrame:
-    config = build_config(repetitions, oversample, save, verbose, ft)
+def run_once(repetitions: int, save: bool, verbose: bool, ft: bool) -> pd.DataFrame:
+    config = build_config(repetitions, save, verbose, ft)
     record: RunRecord = run_specific_scan(
         PROGRAM_CIRCUIT,
         permutations=DEFAULT_PERMUTATIONS,
@@ -92,7 +84,7 @@ def run_once(repetitions: int, oversample: int, save: bool, verbose: bool, ft: b
     )
     df = record.dataframe.df  # <- your RunRecord dataframe
     # Add sweep metadata
-    df = df.assign(repetitions=repetitions, oversample=oversample)
+    df = df.assign(repetitions=repetitions)
     return df
 
 def plot_metric(df: pd.DataFrame, metric: str, outpath: str, title: str):
@@ -139,7 +131,7 @@ def main():
     # Collect across sweep
     frames: list[pd.DataFrame] = []
     for reps in args.reps:
-        df = run_once(reps, args.oversample, args.save_records, args.verbose, args.ft)
+        df = run_once(reps, args.save_records, args.verbose, args.ft)
         # Keep only the columns we need (plus helpful identifiers)
         select_cols = [
             "perm_key",
@@ -154,7 +146,6 @@ def main():
             "contains_faults",
             "fault_tolerant",
             "repetitions",
-            "oversample",
         ]
         # Columns may vary by config; keep intersection
         cols = [c for c in select_cols if c in df.columns]

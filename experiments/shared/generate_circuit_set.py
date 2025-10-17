@@ -1,7 +1,12 @@
+"""
+experiments.shared.random_qasm_dataset_qiskit.py – Generate and save random Qiskit circuits as QASM2.
+"""
+
 import os
 import random
-import cirq
-from experiments.shared.random_circuit import random_circuit
+from qiskit import QuantumCircuit
+from experiments.shared.random_circuit import random_circuit  # <- your Qiskit version
+from qiskit.qasm3 import dumps as qasm3_dumps
 
 # ----------------------------------------------------------------------
 # Helper: save a single random circuit to dataset as OpenQASM2
@@ -13,7 +18,7 @@ def save_random_qasm_circuit(
     seed: int | None = None,
 ) -> str:
     """
-    Creates a random Cirq circuit, converts it to OpenQASM2,
+    Creates a random Qiskit circuit, converts it to OpenQASM2,
     and saves it to the dataset folder.
 
     Returns:
@@ -24,10 +29,10 @@ def save_random_qasm_circuit(
         depth = rng.randint(10, 20)
 
     # Generate the circuit
-    circuit = random_circuit(n=n_qubits, depth=depth, seed=seed)
+    circuit: QuantumCircuit = random_circuit(n=n_qubits, depth=depth, seed=seed)
 
     # Convert to OpenQASM2
-    qasm_str = cirq.qasm(circuit)
+    qasm_str = qasm3_dumps(circuit)
 
     # Ensure dataset directory exists
     os.makedirs(dataset_dir, exist_ok=True)
@@ -94,5 +99,6 @@ def fill_random_qasm_dataset(
 
 
 # Example usage:
-paths = fill_random_qasm_dataset(10_000)
-# print("\n".join(paths))
+if __name__ == "__main__":
+    paths = fill_random_qasm_dataset(10_000)
+    # print("\n".join(paths))

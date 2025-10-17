@@ -104,13 +104,15 @@ def StochasticNoiseModel() -> NoiseModel:
     return nm
 
 
-def ScaledNoiseModel(base: NoiseModel, alpha: float) -> NoiseModel:
+def ScaledNoiseModel(alpha: float, base: NoiseModel = None) -> NoiseModel:
     """
     Return a copy of `base` with quantum-error probabilities scaled by `alpha`.
     (Readout errors left unchanged for simplicity.)
 
     Note: Uses private NoiseModel fields to reattach errors; future Qiskit may change these.
     """
+    if base is None:
+        base = DefaultNoiseModel()
     if alpha <= 0:
         # Degenerate: no noise
         return NoiseModel()

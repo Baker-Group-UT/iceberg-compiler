@@ -1,28 +1,26 @@
 """
-run_scan.py - high level test file
+run_scan.py - High-level test file
 """
 
-import cirq
+from qiskit import QuantumCircuit
 
 from pipeline.config import PipelineConfig
 from pipeline import run_full_scan
 from repository.run_builder import RunRecord
 from simulator.config_presets import StandardSimulator
 
+# Build the logical (program) circuit
+program_circuit = QuantumCircuit(3, name="run_scan")
+program_circuit.h(0)
+program_circuit.cx(0, 1)
+program_circuit.cx(0, 2)
+program_circuit.h(0)
 
-qA, qB, qC = cirq.LineQubit.range(3)
-program_circuit = cirq.Circuit(
-    cirq.H(qA),
-    cirq.CNOT(qA, qB),
-    cirq.CNOT(qA, qC),
-    cirq.H(qA),
-)
-
-# Create a config for Pipeline
+# Create a config for the pipeline
 config = PipelineConfig(
     sim_config=StandardSimulator(repetitions=1000),
     verbose=True,
-    fault_tolerant=False
+    fault_tolerant=False,
 )
 
 # Run the full scan pipeline

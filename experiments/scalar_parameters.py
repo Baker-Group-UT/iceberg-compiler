@@ -2,7 +2,7 @@
 scalar_parameters.py - experiment that creates a 2D plot of permutation fidelities vs alpha parameter scalars
 """
 
-import cirq
+import qiskit
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -11,18 +11,14 @@ from pandas import DataFrame, concat
 from pipeline.config import PipelineConfig
 from pipeline import run_specific_scan, simulate_circuit
 from repository.run_builder import RunRecord
-from simulator import alpha_scale_noise_params, ScaledNoiseModel, SimulatorConfig, DEFAULT_PARAMS
+from simulator import ScaledNoiseModel, SimulatorConfig
 
 # Define the program circuit
-qA, qB, qC = cirq.LineQubit.range(3)
-program_circuit = cirq.Circuit(
-    cirq.H(qA),
-    cirq.CNOT(qA, qB),
-    cirq.CNOT(qA, qC),
-    cirq.H(qA),
-
-    cirq.measure(qA, qB, qC)
-)
+program_circuit = qiskit.QuantumCircuit(3)
+program_circuit.h(0)
+program_circuit.cx(0,1)
+program_circuit.cx(0,2)
+program_circuit.h(0)
 
 perms_to_scan = [
     [(0, 0), (0, 1), (1, 0)],
@@ -41,8 +37,7 @@ overall_df = []
 
 for alpha in alphas:
     print(f"\nRunning alpha = {alpha:.3f}")
-    scaled_params = alpha_scale_noise_params(base=DEFAULT_PARAMS, alpha=alpha)
-    noise_model = ScaledNoiseModel(noise_params=scaled_params)
+    noise_model = ScaledNoiseModel(alpha=alpha)
     sim_config = SimulatorConfig(noise_model=noise_model, repetitions=1000)
     config = PipelineConfig(
         sim_config=sim_config,
