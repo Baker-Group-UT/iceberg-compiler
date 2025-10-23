@@ -9,12 +9,12 @@ counts→probability distribution utilities.
 
 from __future__ import annotations
 
+from logging import warning
 from typing import Optional
 
 from qiskit import QuantumCircuit
 from qiskit.result import Result
 from qiskit_aer.noise import NoiseModel  # kept for future use with AerSimulator
-from qiskit import transpile
 from qiskit_aer import AerSimulator
 
 from .config import SimulatorConfig
@@ -133,6 +133,7 @@ class Simulator:
 
         # If there are no classical bits, nothing to count
         if len(tcirc.clbits) == 0:
+            warning("Did you forget to add measurement registers?")
             return {}
 
         # Run and return raw counts
@@ -144,7 +145,7 @@ class Simulator:
         # <+======================================================================================+>*
         # NOTE: EXTREMELY important Note. AerSim returns are little endian.                         |   HEY READ THE NOTE!!!
         #  This also includes register order.                                                       |             ,\
-        #  We reverse their order here so we can directly read                                      |             \\\,_
+        #  We reverse the bitstring here so we can directly read                                    |             \\\,_
         #  bit strings into their correct register from L to R                                      |              \` ,\
         # For example:                                                                              |         __,.-" =__)
         #   bits B -> L 0101 1111 00 01 != ['m_parity_0', 'm_parity_1', 'm_data_0', 'm_data_1']     |       ."        )

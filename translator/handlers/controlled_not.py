@@ -68,7 +68,7 @@ def place_logical_cnot(
 
     # Intra-patch CNOT (always valid)
     if patch_c == patch_t:
-        iceberg_set.CNOT(q_ctl, q_tgt, fault_tolerant=context.fault_tolerant)
+        iceberg_set.CNOT(patch_c * context.k_log + pos_c, patch_t * context.k_log + pos_t, fault_tolerant=context.fault_tolerant)
         return True
 
     # Extract physical indices considered active in each patch (static list of indices)

@@ -1,6 +1,7 @@
 """
 run_scan_cnot_sweep.py
 """
+import random
 import qiskit
 import numpy as np
 import matplotlib.pyplot as plt
@@ -16,17 +17,26 @@ perms = [permGroup, permDiff]
 
 # Fixed config (tweak as desired)
 config = PipelineConfig(
-    sim_config=ScaledSimulator(alpha=1, repetitions=10_000).with_seed(6),
+    sim_config=ScaledSimulator(alpha=1, repetitions=5_000).with_seed(6),
     verbose=False,
     save=False,
     seed=4,
 )
 
+seed = 4
+random.seed(4)
+RANDOM_BIT = False
 def make_circuit(num_cnots: int) -> qiskit.QuantumCircuit:
     qc = qiskit.QuantumCircuit(2)
-    qc.x(0)
+    qc.h(0)
     for _ in range(num_cnots):
-        qc.cx(0, 1)
+        if RANDOM_BIT:
+            bit = random.randint(0,1)
+        else:
+            bit = 0
+        other_bit = 1 - bit
+        qc.cx(bit, other_bit)
+
     qc.measure_all()
     return qc
 

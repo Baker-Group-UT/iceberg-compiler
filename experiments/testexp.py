@@ -8,7 +8,7 @@ from qiskit.circuit.random import random_clifford_circuit
 from pipeline.config import PipelineConfig
 from pipeline import run_full_scan, run_extremal_scan, run_specific_scan
 from simulator.config_presets import ScaledSimulator, StandardSimulator
-from evaluator.packer import pack
+from packer.packer import pack
 
 
 program_circuit: qiskit.QuantumCircuit = random_clifford_circuit(4, 6)
@@ -21,10 +21,10 @@ tcirc = qiskit.transpile(
     optimization_level=2,
 )
 tcirc.measure_all()
-print(tcirc)
+# print(tcirc)
 
-res = pack(tcirc)
-print(res.permutation)
+# res = pack(tcirc)
+# print(res.permutation)
 
 pcirc = qiskit.QuantumCircuit(4)
 pcirc.x(0)
@@ -40,14 +40,7 @@ config = PipelineConfig(
     save=False,
     seed=4,
 )
+print(pcirc)
 # print(pack(pcirc))
-perms = [
-    [(0, 0), (1, 1), (2, 1), (0, 1)],
-    [(0, 1), (1, 1), (2, 1), (0, 0)],
-    [(1, 1), (0, 0), (2, 1), (0, 1)],
-    [(1, 1), (0, 1), (2, 1), (0, 0)],
-    [(1, 1), (2, 1), (0, 0), (0, 1)],
-    [(1, 1), (2, 1), (0, 1), (0, 0)],
-]
 
-res = run_full_scan(tcirc, config)
+res = run_full_scan(pcirc, config)
