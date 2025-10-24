@@ -25,6 +25,7 @@ from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister
 from .base import CircuitClass
 from .utils import SharedInt, rand_clifford_angles
 
+SWAP_GATE_ALLOWED = False
 
 def _ensure_creg(circ: QuantumCircuit, name: str, size: int = 1) -> ClassicalRegister:
     """
@@ -317,10 +318,10 @@ class IcebergModule(CircuitClass):
             raise ValueError("HH only implemented for n=4")
         for q in self.data_qubits:
             self.circuit.h(q)
-        if fault_tolerant:
-            _physical_two_qubit_gate(self.circuit, self._ids, self.data_qubits[1], self.data_qubits[2], "CNOT", True)
-            _physical_two_qubit_gate(self.circuit, self._ids, self.data_qubits[2], self.data_qubits[1], "CNOT", True)
-            _physical_two_qubit_gate(self.circuit, self._ids, self.data_qubits[1], self.data_qubits[2], "CNOT", True)
+        if not SWAP_GATE_ALLOWED:
+            _physical_two_qubit_gate(self.circuit, self._ids, self.data_qubits[1], self.data_qubits[2], "CNOT", fault_tolerant)
+            _physical_two_qubit_gate(self.circuit, self._ids, self.data_qubits[2], self.data_qubits[1], "CNOT", fault_tolerant)
+            _physical_two_qubit_gate(self.circuit, self._ids, self.data_qubits[1], self.data_qubits[2], "CNOT", fault_tolerant)
         else:
             self.circuit.swap(self.data_qubits[1], self.data_qubits[2])
 
@@ -443,10 +444,12 @@ class IcebergModule(CircuitClass):
             i, j = j, i
 
         if not fault_tolerant and self.n == 4:
-            # self.circuit.swap(self.data_qubits[1], self.data_qubits[2])
-            self.circuit.cx(self.data_qubits[1], self.data_qubits[2])
-            self.circuit.cx(self.data_qubits[2], self.data_qubits[1])
-            self.circuit.cx(self.data_qubits[1], self.data_qubits[2])
+            if not SWAP_GATE_ALLOWED:
+                self.circuit.cx(self.data_qubits[1], self.data_qubits[2])
+                self.circuit.cx(self.data_qubits[2], self.data_qubits[1])
+                self.circuit.cx(self.data_qubits[1], self.data_qubits[2])
+            else:
+                self.circuit.swap(self.data_qubits[1], self.data_qubits[2])
         else:
             self.CNOT(i, j, fault_tolerant=fault_tolerant)
             self.CNOT(j, i, fault_tolerant=fault_tolerant)

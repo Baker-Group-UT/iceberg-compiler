@@ -42,7 +42,7 @@ def apply_logical_hadamard(
     global_log_i = patch * context.k_log + slot
 
     # FIXME: This branch is broken because HH is not working I THINK
-    if is_patch_solo(logical_i, context.active_by_patch, context.logical_to_patch):
+    if is_patch_solo(global_log_i, context.active_by_patch, context.logical_to_patch):
         context.iceberg_set.HH([patch])
         context.state_map[global_log_i] = "+"
         return None
@@ -50,15 +50,15 @@ def apply_logical_hadamard(
     if ENABLE_HH_MERGE:
         pass
         # Try to merge H + H -> HH *only if both H's are in the same patch*
-        # if next_op and getattr(next_op.gate, "name", "").lower() == "h":
-        #     logical_j = context.qc.find_bit(next_op.qubits[0]).index
-        #     pj, sj = context.permutation[logical_j]
-        #     phys_j = pj * context.k_log + sj
-        #     patch_j, _ = context.current_pos_of(phys_j)
-        #     if logical_j != logical_i and patch_j == patch:
-        #         context.iceberg_set.HH([patch], fault_tolerant=context.fault_tolerant)
-        #         context.state_map[global_log_i] = context.state_map[patch_j * context.k_log] = "+"
-        #         return logical_j
+        if next_op and getattr(next_op.gate, "name", "").lower() == "h":
+            logical_j = context.qc.find_bit(next_op.qubits[0]).index
+            pj, sj = context.permutation[logical_j]
+            phys_j = pj * context.k_log + sj
+            patch_j, _ = context.current_pos_of(phys_j)
+            if logical_j != logical_i and patch_j == patch:
+                context.iceberg_set.HH([patch], fault_tolerant=context.fault_tolerant)
+                context.state_map[global_log_i] = context.state_map[patch_j * context.k_log] = "+"
+                return logical_j
 
     # Otherwise: always perform a *single-qubit* logical H at the resolved location
     # context.iceberg_set.H(global_log_i, fault_tolerant=context.fault_tolerant)

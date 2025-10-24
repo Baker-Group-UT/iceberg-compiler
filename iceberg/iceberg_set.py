@@ -25,6 +25,7 @@ class IcebergSet:
         n: int,
         circuit: QuantumCircuit,
         initialize: str | None = None,
+        encode_override: bool = False,
     ):
         """
         Create a set of IcebergModules to encode `n_program`
@@ -54,6 +55,7 @@ class IcebergSet:
         ]
         self.circuit = circuit
         self._encoded = False
+        self._encode_override = encode_override
 
         if initialize is not None:
             self.encode(initialize)
@@ -72,7 +74,8 @@ class IcebergSet:
 
         for i, mod in enumerate(self.modules):
             init_sub = initialize[self.k * i : self.k * (i + 1)] if initialize else None
-            mod.encode(init_sub)
+            if not self._encode_override:
+                mod.encode(init_sub)
         self.BARRIER()
         
 

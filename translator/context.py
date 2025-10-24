@@ -65,26 +65,31 @@ class TranslationContext:
         p, s = self.permutation[logical_i]
         return p * self.k_log + s
 
-    def update_states_on_swap(self, patch: int, i: int, j: int) -> None:
-        """Reflect a SWAP of slots i<->j inside 'patch' for tracked states."""
-        if i == j:
-            return
+    def update_states_on_swap(self, patch: int, prog_state_i: int, prog_state_j: int) -> None:
+        """
+        Reflect a SWAP within 'patch' for k_log == 2 by flipping slot 0 <-> 1
+        for all tracked states in that patch. The prog_state_i/j args are accepted
+        for future generalization but are not required here.
+        """
+        patch = int(patch)
+        k = int(self.k_log)  # assumed 2 for this logic
 
-        a = (patch, i)
-        b = (patch, j)
+        # Debug
+        if self.verbose:
+            print("state positions BEFORE:", self.state_positions)
 
-        si = self.state_index_by_pos.get(a)
-        sj = self.state_index_by_pos.get(b)
+        # 1) Update state_positions and state_index_by_pos for any state in this patch
+        for si, (p, slot) in enumerate(self.state_positions):
+            if p == patch:
+                old_pos = (p, slot)
+                new_pos = (p, 1 - slot)  # flip 0 <-> 1
+                # reverse map: remove old, set new
+                self.state_index_by_pos.pop(old_pos, None)
+                self.state_positions[si] = new_pos
+                self.state_index_by_pos[new_pos] = si
 
-        if si is not None:
-            self.state_index_by_pos.pop(a, None)
-            self.state_positions[si] = b
-            self.state_index_by_pos[b] = si
-
-        if sj is not None:
-            self.state_index_by_pos.pop(b, None)
-            self.state_positions[sj] = a
-            self.state_index_by_pos[a] = sj
+        if self.verbose:
+            print("state positions AFTER:", self.state_positions)
 
     @classmethod
     def from_config(
@@ -94,12 +99,18 @@ class TranslationContext:
         *,
         fault_tolerant: bool = False,
         verbose: bool = False,
+        encode_override: bool = False,
     ) -> "TranslationContext":
         """Construct a TranslationContext for a given program and permutation."""
         mapping = mapping_for_perm(permutation, program_circuit)
         # Build a fresh physical IcebergSet circuit
         iceberg_qc = QuantumCircuit()
-        iceberg_set = IcebergSet(n_program=mapping["n_prog"], n=4, circuit=iceberg_qc)
+        iceberg_set = IcebergSet(
+            n_program=mapping["n_prog"],
+            n=4,
+            circuit=iceberg_qc,
+            encode_override=encode_override
+        )
         iceberg_set.encode()
 
         k_log = mapping["k_log"]

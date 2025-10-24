@@ -5,8 +5,8 @@ experiments.shared.random_qasm_dataset_qiskit.py – Generate and save random Qi
 import os
 import random
 from qiskit import QuantumCircuit
-from experiments.shared.random_circuit import random_circuit  # <- your Qiskit version
 from qiskit.qasm3 import dumps as qasm3_dumps
+from qiskit.circuit.random import random_circuit
 
 # ----------------------------------------------------------------------
 # Helper: save a single random circuit to dataset as OpenQASM2
@@ -29,7 +29,7 @@ def save_random_qasm_circuit(
         depth = rng.randint(10, 20)
 
     # Generate the circuit
-    circuit: QuantumCircuit = random_circuit(n=n_qubits, depth=depth, seed=seed)
+    circuit: QuantumCircuit = random_circuit(num_qubits=n_qubits, depth=depth, seed=seed)
 
     # Convert to OpenQASM2
     qasm_str = qasm3_dumps(circuit)

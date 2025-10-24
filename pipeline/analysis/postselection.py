@@ -220,3 +220,39 @@ def calculate_metrics_for_bare_circuit(
 #             reduced[key] += prob
             
 #     return dict(reduced)
+
+def postselect_against_reference_raw(
+    translated_circuits: List[TranslationResult],
+    ideal_result: SimulationResult,
+    noisy_results: List[SimulationResult],
+) -> List[PostselectedSimulationResult]:
+    """
+    Applies Iceberg postselection using a shared ideal result against many noisy results.
+    Useful for comparing multiple noisy runs to a single reference.
+    """
+    postselected_results = []
+
+    for t, result in zip(translated_circuits, noisy_results):
+        postselected_noisy_dist, sel_rate = iceberg_postselect(result.noisy_dist, result.key_order)
+        postselected_noisy_dist = reduce_distribution(postselected_noisy_dist, t.context)
+
+        logical_fid = logical_fidelity(ideal_result.ideal_dist, postselected_noisy_dist)
+        logical_total_variation_distance = total_variation_distance(
+            postselected_noisy_dist, ideal_result.ideal_dist
+        )
+
+        postselected_results.append(
+            PostselectedSimulationResult(
+                permutation=t.permutation,
+                circuit=t.circuit,
+                contains_faults=t.contains_faults,
+                raw_result=result,
+                postselected_noisy_dist=postselected_noisy_dist,
+                postselected_ideal_dist=ideal_result.ideal_dist,
+                logical_fidelity=logical_fid,
+                logical_selection_rate=sel_rate,
+                logical_total_variation_distance=logical_total_variation_distance,
+            )
+        )
+
+    return postselected_results

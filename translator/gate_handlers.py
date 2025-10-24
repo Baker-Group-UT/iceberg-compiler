@@ -82,6 +82,7 @@ def translate_and_apply(
         True if a lookahead gate was consumed, otherwise None.
         False if the gate couldn't be applied
     """
+    context.iceberg_set.BARRIER()
     # before the tuple/_OpLike checks
     if hasattr(op, "operation") and hasattr(op, "qubits"):  # CircuitInstruction (Qiskit 1.0+)
         inst = op.operation

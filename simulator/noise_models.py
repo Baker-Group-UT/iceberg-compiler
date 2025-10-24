@@ -120,13 +120,13 @@ def ScaledNoiseModel(
 
     # Scale probabilities linearly and clamp to reasonable maxima
     # (kept conservative to avoid singular matrices or non-CP maps).
-    p1 = min(base_p1 * alpha, 0.5)
-    p2 = min(base_p2 * alpha, 0.5)
-    p_meas = min(base_p_meas * alpha, 0.45) if scale_readout else base_p_meas
+    p1 = base_p1 * alpha
+    p2 = base_p2 * alpha
+    p_meas = base_p_meas * alpha if scale_readout else base_p_meas
 
     # Shorten T1/T2 as alpha grows (alpha=1 -> baseline; alpha=10 -> 10x shorter)
-    T1 = max(base_T1 / alpha, 1e-9)
-    T2 = max(base_T2 / alpha, 1e-9)
+    T1 = base_T1 / alpha
+    T2 = base_T2 / alpha
 
     nm = NoiseModel()
 

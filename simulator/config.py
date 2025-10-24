@@ -48,6 +48,5 @@ class SimulatorConfig:
         return self
 
     def with_noise_model(self, noise_model: NoiseModel) -> Self:
-        print("doin stuff")
         self.noise_model = noise_model
         return self

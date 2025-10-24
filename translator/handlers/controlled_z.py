@@ -96,7 +96,8 @@ def place_logical_cz(
 
     # Already aligned → FT transversal CZ
     if pos_c == pos_t and (control_ok or target_alone):
-        iceberg_set.CZ_k_Transversal(patch_c, patch_t)
+        # iceberg_set.CZ_k_Transversal(patch_c, patch_t)
+        iceberg_set.CZ(patch_c * context.k_log + pos_c, patch_t * context.k_log + pos_t)
         return True
 
     # Misaligned → try SWAP on target patch if solo
@@ -108,7 +109,8 @@ def place_logical_cz(
         _, pos_c2 = context.current_pos_of(q_ctl)
         _, pos_t2 = context.current_pos_of(q_tgt)
         assert pos_c2 == pos_t2, "Post-SWAP misalignment before transversal (target branch)."
-        iceberg_set.CZ_k_Transversal(patch_c, patch_t)
+        # iceberg_set.CZ_k_Transversal(patch_c, patch_t)
+        iceberg_set.CZ(patch_c * context.k_log + pos_c2, patch_t * context.k_log + pos_t2)
         return True
 
     # Misaligned → try SWAP on control patch if control_ok
@@ -120,7 +122,9 @@ def place_logical_cz(
         _, pos_c2 = context.current_pos_of(q_ctl)
         _, pos_t2 = context.current_pos_of(q_tgt)
         assert pos_c2 == pos_t2, "Post-SWAP misalignment before transversal (control branch)."
-        iceberg_set.CZ_k_Transversal(patch_c, patch_t)
+        
+        # iceberg_set.CZ_k_Transversal(patch_c, patch_t)
+        iceberg_set.CZ(patch_c * context.k_log + pos_c2, patch_t * context.k_log + pos_t2)
         return True
 
     # Rejected

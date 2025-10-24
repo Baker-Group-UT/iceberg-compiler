@@ -66,7 +66,7 @@ def mapping_for_perm(
             mapped_qargs.append(phys_circ.qubits[new_idx])
         phys_circ.append(inst, mapped_qargs, cargs)
 
-    logical_to_patch = {i: i // k_log for i in range(n_prog)}
+    logical_to_patch = {i: i // k_log for i in range(k_log * n_codes)}
     idx_in_patch = {i: i % k_log for i in range(n_prog)}
 
     active_by_patch: Dict[int, List[int]] = {p: [] for p in range(n_codes)}
