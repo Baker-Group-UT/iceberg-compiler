@@ -1,33 +1,21 @@
-"""
-packer.calibrate.py - For a set of standard or passed in gates will simulate 
-the logical error rate distribution, logical selection rate distribution, respective stdevs for both
-and mean and median for the distributions
+# tcalibrate.py  (augmented)
 
-It does this by:
-1) Noiselessly encoding and running a random qiskit circuit in the module.
-2) For the set single application gates (X, Z, RZ) we noisily simulate only their application in the circuit 
-"""
-
-# characterize_compose.py
-from typing import Iterable, Optional, List, Tuple
-from qiskit import QuantumCircuit
-from qiskit_aer import AerSimulator
-from qiskit_aer.noise import NoiseModel, depolarizing_error
+from typing import Iterable, Optional, List, Tuple, Callable
+from qiskit import QuantumCircuit, transpile
+from qiskit.circuit.random import random_circuit as qk_random_circuit
 from qiskit.circuit import Instruction
 import qiskit
 
-# segment_translate.py
-from typing import Callable, Optional, List, Tuple, Iterable
-from qiskit import QuantumCircuit
-from qiskit.circuit.random import random_circuit as qk_random_circuit, random_clifford_circuit
+from qiskit.quantum_info import Statevector, DensityMatrix
+from qiskit_aer import AerSimulator
 from qiskit_aer.noise import NoiseModel, depolarizing_error
+from qiskit_aer.library import SetDensityMatrix
 
-from pipeline.analysis.postselection import apply_iceberg_postselection, postselect_against_reference
+from pipeline.analysis.postselection import apply_iceberg_postselection
 from pipeline.config import PipelineConfig
-from simulator.config_presets import ScaledSimulator
-from translator.core import TranslationContext, TranslationResult   # your class
+from simulator.config_presets import ScaledSimulator, StandardSimulator
+from translator.core import TranslationContext, TranslationResult
 from translator.gate_handlers import translate_and_apply
-
 from simulator.simulator import Simulator
 
 # ---------- Minimal reusable segment translator ----------
@@ -41,11 +29,6 @@ def translate_segment(
     postlude: Optional[Callable[[TranslationContext], None]] = None,
     encode_override: bool = False,
 ) -> QuantumCircuit:
-    """
-    Translate ONLY the ops of `program_circuit` into an *encoded/physical* segment
-    by reusing your gate-level translator. Optional prelude/postlude let you
-    insert ENCODE or DECODE+MEASURE around the ops without duplicating logic.
-    """
     print("encode override:", encode_override)
     ctx = TranslationContext.from_config(
         permutation, program_circuit, fault_tolerant=fault_tolerant, verbose=verbose, encode_override=encode_override
@@ -53,15 +36,14 @@ def translate_segment(
     if prelude:
         prelude(ctx)
 
-    # Replay program ops through the translator
     ops = list(program_circuit.data)
     skip_next = False
-    for i, op in enumerate(ops):
+    for i, ci in enumerate(ops):
         if skip_next:
             skip_next = False
             continue
         nxt = ops[i + 1] if i + 1 < len(ops) else None
-        consumed = translate_and_apply(ctx, op, next_op=nxt)
+        consumed = translate_and_apply(ctx, ci, next_op=nxt)
         if consumed is not None:
             if consumed:
                 skip_next = True
@@ -100,6 +82,7 @@ def make_logical_char_prog(gate: str, targets: Iterable[int], theta: Optional[fl
         raise NotImplementedError(gate)
     return prog
 
+
 def build_full_composed_char_circuit(
     *,
     permutation: List[Tuple[int,int]],
@@ -111,7 +94,7 @@ def build_full_composed_char_circuit(
     char_label: str = "TEST_SEG",
     fault_tolerant: bool = False,
     verbose: bool = False,
-) -> Tuple[QuantumCircuit, NoiseModel]:
+) -> Tuple[QuantumCircuit, QuantumCircuit, QuantumCircuit, QuantumCircuit]:
     # A) ENCODE + random logical program (encoded)
     rand_prog_raw = qk_random_circuit(
         2, depth=rand_depth, seed=rand_seed, measure=False, num_operand_distribution={1: 0.5, 2: 0.5}
@@ -129,52 +112,43 @@ def build_full_composed_char_circuit(
     )
     segA.barrier()
 
-    # B) CHAR logical op → encoded segment
+    # B) CHAR logical op → encoded segment (run NOISILY)
     char_prog = make_logical_char_prog(gate, targets, theta)
-    segB = translate_segment(char_prog, permutation, 
+    segB = translate_segment(
+        char_prog, permutation, 
         fault_tolerant=fault_tolerant, verbose=verbose, 
         encode_override=True
     )
 
-    # Wrap B as a single named Instruction (so we can attach noise only here)
-    char_inst: Instruction = segB.to_instruction(label=char_label)
-
-    # C) DECODE + MEASURE
-    empty = QuantumCircuit(char_prog.num_qubits)  # no ops; just to set width
+    # C) DECODE + MEASURE (ideal)
+    empty = QuantumCircuit(char_prog.num_qubits)
     segC = translate_segment(
         empty, permutation,
         fault_tolerant=fault_tolerant, verbose=verbose,
         postlude=lambda ctx: (ctx.iceberg_set.decode(), ctx.iceberg_set.measure()),
+        encode_override=True
     )
+    return segA, segB, segC, rand_prog_raw
 
-    # Compose A • [B] • C
-    nq = segA.num_qubits
-    full = QuantumCircuit(nq)
-    full.compose(segA, qubits=full.qubits, inplace=True)      # A
-    full.append(char_inst, qargs=full.qubits)                 # [B] as one op
-    full.compose(segC, qubits=full.qubits, inplace=True)      # C
 
-    # Noise ONLY on [B]
-    noise = NoiseModel()
-    oneq = depolarizing_error(0.01, 1)  # swap for your channel
-    # Attach the 1q channel to each qubit position of CHAR_SEG
-    for pos in range(nq):
-        noise.add_quantum_error(oneq, [char_label], qubits=[pos])
-
-    return full, noise, rand_prog_raw
-
-# ---- Example run (swap in your Simulator/Repository flow) ----
 def demo_run(permutation: List[Tuple[int,int]]):
-    qc, noise, raw_qc = build_full_composed_char_circuit(
+    segA, segB, segC, raw_qc = build_full_composed_char_circuit(
         permutation=permutation,
-        rand_depth=4, rand_seed=6,
-        gate="X", targets=(0,),
+        rand_depth=10, rand_seed=6,
+        gate="CX", targets=(0,1),
         char_label="TEST_SEG",
     )
+
+    # Preserve register names in the circuit we store in TranslationResult
+    tr_circ = QuantumCircuit(*segA.qregs, *segA.cregs)
+    tr_circ.compose(segA, inplace=True)
+    tr_circ.compose(segB, inplace=True)
+    tr_circ.compose(segC, inplace=True)
+
     tr = TranslationResult(
-        circuit=qc,
+        circuit=tr_circ,
         permutation=permutation,
-        context= TranslationContext.from_config(
+        context=TranslationContext.from_config(
             permutation, raw_qc, fault_tolerant=False, verbose=False
         ),
         contains_faults=False,
@@ -182,30 +156,52 @@ def demo_run(permutation: List[Tuple[int,int]]):
         fault_log=None,
         verbose=False,
     )
-    target_basis = ['x', 'z', 'h', 'rz', 'cx', 'cz', 'measure']
-    rand_prog = qiskit.transpile(
-        raw_qc,
-        basis_gates=target_basis,
-        optimization_level=2,
-    )
-    rand_prog.measure_all()
-    backend = AerSimulator()
-    basis = backend.configuration().basis_gates
-    qc_unrolled = qiskit.transpile(qc, backend=backend, basis_gates=basis, optimization_level=0)
-    rand_prog_unrolled = qiskit.transpile(rand_prog, backend=backend, basis_gates=basis, optimization_level=0)
 
-    sim_config=ScaledSimulator(alpha=1, repetitions=50_000).with_noise_model(noise)
+    # ----------------------
+    # 1) PRE (ideal): run segA ideally to obtain psiA
+    # ----------------------
+    nq = segA.num_qubits
+    if len(segA) == 0:
+        psiA = Statevector.from_label('0' * nq)
+    else:
+        psiA = Statevector.from_instruction(segA)
 
+    # ----------------------
+    # 2) MIDDLE (noisy): run segB with noise, starting from psiA
+    # ----------------------
+    noise = NoiseModel()
+    noise.add_all_qubit_quantum_error(depolarizing_error(0.01, 1), ['x', 'z', 'h', 'rz'])
+    noise.add_all_qubit_quantum_error(depolarizing_error(0.02, 2), ['cx', 'cz'])
+
+    sim_mid = AerSimulator(method="density_matrix", noise_model=noise)
+    segB_t = transpile(segB, sim_mid, optimization_level=0, layout_method="trivial")
+    segB_t.save_density_matrix(label='rho_mid')
+
+    res_mid = sim_mid.run(segB_t, initial_statevector=psiA).result()
+    rhoB = res_mid.data(0)['rho_mid']
+
+    # ----------------------
+    # 3) POST (ideal): initialize from rhoB and execute segC ideally
+    #    IMPORTANT: build the wrapper on segC's EXISTING registers to keep names.
+    # ----------------------
+    sim_post = AerSimulator(method="density_matrix")
+
+    post_init = QuantumCircuit(*segC.qregs, *segC.cregs)  # re-use same qregs/cregs (names preserved)
+    dm = DensityMatrix(rhoB)
+    post_init.append(SetDensityMatrix(dm), post_init.qubits)
+    post_init.compose(segC, inplace=True)
+
+    post_t = transpile(post_init, sim_post, optimization_level=0, layout_method="trivial")
+    res_post = sim_post.run(post_t).result()
+
+    # Final execution through your Simulator to keep downstream identical.
+    sim_config = StandardSimulator(repetitions=500_000)
     simulator = Simulator(sim_config)
-    sim_res_raw = simulator.run(circuit=qc_unrolled)
+    sim_res_raw = simulator.run(circuit=post_t)
 
-    # simulation_results = postselect_against_reference([tr], ideal_sim_res, [noisy_sim_res])
     sim_results = apply_iceberg_postselection([tr], [sim_res_raw])
-
     return sim_results
-    # sim = AerSimulator()
-    # res = sim.run(qiskit.transpile(qc, sim), shots=50_000, noise_model=noise).result()
-    # return res.get_counts()
 
-print(demo_run([(0,0), (0,1)]))
 
+if __name__ == "__main__":
+    print(demo_run([(0,0), (0,1)]))

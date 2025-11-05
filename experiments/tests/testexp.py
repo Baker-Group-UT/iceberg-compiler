@@ -2,16 +2,23 @@
 run_scan.py - high level test file
 """
 
+from translator.core import TranslationResult
+
+
+from pipeline.tasks.generate_permutations import generate_permutation_set
+from repository.run_builder import RunRecord
+
+
 import qiskit
 from qiskit.circuit.random import random_clifford_circuit
 
 from pipeline.config import PipelineConfig
-from pipeline import run_full_scan, run_extremal_scan, run_specific_scan
+from pipeline import generate_circuit, run_full_scan, run_extremal_scan, run_specific_scan
 from simulator.config_presets import ScaledSimulator, StandardSimulator
 from packer.packer import pack
 
 
-program_circuit: qiskit.QuantumCircuit = random_clifford_circuit(4, 6)
+program_circuit: qiskit.QuantumCircuit = random_clifford_circuit(4, 10)
 
 target_basis = ['x', 'z', 'h', 'rz', 'cx', 'cz', 'measure']
 
@@ -27,11 +34,10 @@ tcirc.measure_all()
 # print(res.permutation)
 
 pcirc = qiskit.QuantumCircuit(4)
-pcirc.x(0)
-pcirc.cx(0, 2)
-pcirc.h(3)
-pcirc.h(2)
-# pcirc.cx(3, 2)
+pcirc.h(0)
+pcirc.cx(0, 1)
+pcirc.cx(1, 2)
+pcirc.cx(2, 3)
 pcirc.measure_all()
 
 config = PipelineConfig(
@@ -40,7 +46,18 @@ config = PipelineConfig(
     save=False,
     seed=4,
 )
-print(pcirc)
+
 # print(pack(pcirc))
 
-res = run_full_scan(pcirc, config)
+# res: RunRecord = run_full_scan(pcirc, config)
+# df = res.dataframe.df
+
+perms = [
+    [(0,0), (0,1), (1,0), (1,1)],
+    [(0,0), (1,0), (2,0), (3,0)],
+]
+
+from qiskit.qasm3 import dumps
+print(pcirc)
+translated: TranslationResult = generate_circuit(pcirc, perms[1], config)
+print(dumps(translated.circuit))

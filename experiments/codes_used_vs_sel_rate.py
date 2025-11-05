@@ -9,12 +9,12 @@ import seaborn as sns
 import pandas as pd
 
 from pipeline.config import PipelineConfig
-from pipeline import run_full_scan
+from pipeline import run_full_scan, run_extremal_scan
 from simulator import ScaledNoiseModel, SimulatorConfig
 from experiments.shared.example_circuits import n_ghz_state
 
 # Sweep over alphas (noise scaling)
-alphas = np.logspace(-3, 1, num=10)  # [0.001 ... 10]
+alphas = np.logspace(-2, 1.5, num=50)  # [0.001 ... 10]
 all_grouped_dfs = []
 
 for alpha in alphas:
@@ -22,7 +22,7 @@ for alpha in alphas:
 
     # Build noise model
     noise_model = ScaledNoiseModel(alpha=alpha)
-    sim_config = SimulatorConfig(noise_model=noise_model, repetitions=20)
+    sim_config = SimulatorConfig(noise_model=noise_model, repetitions=100)
 
     # Configure pipeline
     config = PipelineConfig(
@@ -31,10 +31,10 @@ for alpha in alphas:
         fault_tolerant=False
     )
 
-    program_circuit = n_ghz_state(5)["logical"]
+    program_circuit = n_ghz_state(6)["program"]
 
     # Run scan
-    df = run_full_scan(program_circuit, config).dataframe.df
+    df = run_extremal_scan(program_circuit, config).dataframe.df
 
     # Group by number of codes used, average the logical selection rate
     grouped = df.groupby("codes_used")["logical_selection_rate"].mean().reset_index()
@@ -43,7 +43,8 @@ for alpha in alphas:
 
 # Combine all alpha sweeps into a single DataFrame
 final_df = pd.concat(all_grouped_dfs, ignore_index=True)
-
+# clipping for logit scale
+final_df["logical_selection_rate"] = final_df["logical_selection_rate"].clip(1e-6, 1 - 1e-6)
 # Plot
 fig, ax = plt.subplots(figsize=(12, 6))
 
@@ -58,10 +59,11 @@ sns.lineplot(
 )
 
 ax.set_xscale("log")
+ax.set_yscale("logit")
 ax.set_xlabel("Noise Scaling Factor (alpha)", fontsize=12)
 ax.set_ylabel("Logical Selection Rate", fontsize=12)
 ax.set_title("Logical Selection Rate vs Noise Scaling (Grouped by Codes Used)", fontsize=14)
-ax.set_ylim(0, 1.05)
+# ax.set_ylim(0, 1.05)
 ax.grid(True)
 
 # Optional: Legend formatting

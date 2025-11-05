@@ -23,6 +23,7 @@ from .handlers.x import apply_logical_x
 from .handlers.z import apply_logical_z
 from .handlers.swap import apply_logical_swap
 
+BARRIERS = False
 
 # --- Simple shim so handlers can use op.gate and op.qubits like before ---
 class _OpLike:
@@ -82,7 +83,8 @@ def translate_and_apply(
         True if a lookahead gate was consumed, otherwise None.
         False if the gate couldn't be applied
     """
-    context.iceberg_set.BARRIER()
+    if BARRIERS:
+        context.iceberg_set.BARRIER()
     # before the tuple/_OpLike checks
     if hasattr(op, "operation") and hasattr(op, "qubits"):  # CircuitInstruction (Qiskit 1.0+)
         inst = op.operation

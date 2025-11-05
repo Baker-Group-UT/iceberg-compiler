@@ -3,18 +3,17 @@ pipeline.tasks.scan_all.py - Full permutation scan from program circuit.
 """
 
 from __future__ import annotations
+
 import qiskit
-import pandas as pd
 
 from pipeline.config                    import PipelineConfig
 from pipeline.analysis.postselection    import calculate_metrics_for_bare_circuit
-from pipeline.analysis.result_row       import result_to_row
-from pipeline.analysis.print_df         import print_df_table
+from pipeline.analysis.result_types import PostselectedSimulationResult
 from simulator.simulator                import Simulator
-from repository.run_builder             import RunBuilder
-from repository.repository              import RunRepository
 
-def simulate_circuit(circuit: qiskit.QuantumCircuit, config: PipelineConfig = PipelineConfig()):
+def simulate_circuit(circuit: qiskit.QuantumCircuit,
+    config: PipelineConfig = PipelineConfig()
+) -> PostselectedSimulationResult:
     """
     Simulates a specific circuit.
     """
@@ -24,6 +23,6 @@ def simulate_circuit(circuit: qiskit.QuantumCircuit, config: PipelineConfig = Pi
     simulation_results = simulator.run(circuit)
 
     # Step 4: Postselection
-    sim_res = calculate_metrics_for_bare_circuit(circuit, simulation_results)
+    sim_res: PostselectedSimulationResult = calculate_metrics_for_bare_circuit(circuit, simulation_results)
 
     return sim_res

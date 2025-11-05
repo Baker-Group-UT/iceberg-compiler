@@ -28,7 +28,7 @@ random.seed(4)
 RANDOM_BIT = False
 def make_circuit(num_cnots: int) -> qiskit.QuantumCircuit:
     qc = qiskit.QuantumCircuit(2)
-    qc.h(0)
+    qc.x(0)
     for _ in range(num_cnots):
         if RANDOM_BIT:
             bit = random.randint(0,1)

@@ -4,6 +4,9 @@ of a circuit as well as the best and worst fidelities. Final result is a plot wi
 for multiple different circuits including the bare circuit fidelity.
 """
 
+from pipeline.analysis.result_types import PostselectedSimulationResult
+
+
 import matplotlib.pyplot as plt
 import pandas as pd
 
@@ -45,16 +48,14 @@ for name, circuit in circuits_to_test.items():
     max_fidelity = df["fidelity"].max()
 
     # Bare circuit fidelity
-    bare_record = simulate_circuit(circuit=circuit, config=config)
-    bare_df = bare_record.dataframe.df.copy()
-    bare_fidelity = bare_df["fidelity"].iloc[0] if not bare_df.empty else None
-
+    sim_res: PostselectedSimulationResult = simulate_circuit(circuit=circuit, config=config)
+    fidelity = sim_res.logical_fidelity
     summary_rows.append({
         "circuit": name,
         "mean": mean_fidelity,
         "min": min_fidelity,
         "max": max_fidelity,
-        "bare": bare_fidelity
+        "bare": fidelity
     })
 
 # Convert to DataFrame

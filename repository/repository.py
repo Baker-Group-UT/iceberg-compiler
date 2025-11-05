@@ -32,7 +32,7 @@ class RunRepository:
         self.base_dir = base_dir
         os.makedirs(self.base_dir, exist_ok=True)
 
-    def _path_for(self, record: RunRecord, compress: bool = True) -> str:
+    def _path_for(self, record: RunRecord, compress: bool = True, base_path: str = None) -> str:
         """
         Generate a filename for a run based on timestamp, circuit name, and repetitions.
 
@@ -48,9 +48,9 @@ class RunRepository:
         fname = f"{ts}_{name}_R{record.manifest.repetitions}.json"
         if compress:
             fname += ".gz"
-        return os.path.join(self.base_dir, fname)
+        return os.path.join(self.base_dir if base_path is None else base_path, fname)
 
-    def save_run(self, record: RunRecord, compress: bool = True) -> str:
+    def save_run(self, record: RunRecord, compress: bool = True, path: str = None) -> str:
         """
         Save a RunRecord to disk.
 
@@ -61,7 +61,7 @@ class RunRepository:
         Returns:
             Path to the saved file.
         """
-        path = self._path_for(record, compress=compress)
+        save_path = self._path_for(record, compress=compress, base_path=path)
         packed = record.to_dict()
 
         # Compute integrity hash
@@ -71,13 +71,13 @@ class RunRepository:
 
         # Save to disk
         if compress:
-            with gzip.open(path, "wt", encoding="utf-8") as f:
+            with gzip.open(save_path, "wt", encoding="utf-8") as f:
                 json.dump(packed, f, ensure_ascii=False)
         else:
-            with open(path, "w", encoding="utf-8") as f:
+            with open(save_path, "w", encoding="utf-8") as f:
                 json.dump(packed, f, ensure_ascii=False, indent=2)
 
-        return path
+        return save_path
 
     def load_run(self, path: str) -> RunRecord:
         """
