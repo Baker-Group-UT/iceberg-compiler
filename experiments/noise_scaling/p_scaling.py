@@ -49,7 +49,7 @@ tcirc = qiskit.transpile(
 
 print(tcirc)
 
-scalars = np.logspace(-2.5, 2.5, num=20)
+scalars = np.logspace(-2.5, 1.5, num=20)
 results = []
 for scalar in scalars:
     # print(f"\n=== Running simulation for p_scalar = {scalar:.3f} ===")

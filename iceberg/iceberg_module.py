@@ -26,6 +26,7 @@ from .base import CircuitClass
 from .utils import SharedInt, rand_clifford_angles
 
 SWAP_GATE_ALLOWED = False
+BARRIERS = False
 
 def _ensure_creg(circ: QuantumCircuit, name: str, size: int = 1) -> ClassicalRegister:
     """
@@ -197,14 +198,16 @@ class IcebergModule(CircuitClass):
         # X-type parity (CNOT from each data into parity_qubits[0])
         for dq in self.data_qubits:
             self.circuit.cx(dq, self.parity_qubits[0])
-        self.BARRIER()
+        if BARRIERS:
+            self.BARRIER()
 
         # Z-type parity: H, CX to parity[1], H (on data)
         for dq in self.data_qubits:
             self.circuit.h(dq)
             self.circuit.cx(dq, self.parity_qubits[1])
             self.circuit.h(dq)
-        self.BARRIER()
+        if BARRIERS:
+            self.BARRIER()
 
         _measure_many(self.circuit, self.parity_qubits, f"m_parity_{key_prefix}")
 

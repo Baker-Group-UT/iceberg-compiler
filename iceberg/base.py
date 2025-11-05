@@ -6,7 +6,7 @@ import qiskit
 
 def mark_check_encoded(method):
     """Mark method to require _encoded=True when called."""
-    method._check_encoded = True
+    # method._check_encoded = True
     return method
 
 

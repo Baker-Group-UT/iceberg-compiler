@@ -8,7 +8,7 @@ from qiskit import QuantumCircuit
 
 def unscalable_shors_3():
     label = "unscalable_shors_3"
-    qc = QuantumCircuit(3, name=label)  # qA=0, qB=1, qC=2
+    qc = QuantumCircuit(3)  # qA=0, qB=1, qC=2
     qc.h(0)
     qc.cx(0, 1)
     qc.cx(0, 2)
@@ -19,7 +19,7 @@ def unscalable_shors_3():
 
 def square_cluster_4():
     label = "square_cluster_4"
-    qc = QuantumCircuit(4, name=label)  # qA=0, qB=1, qC=2, qD=3
+    qc = QuantumCircuit(4)  # qA=0, qB=1, qC=2, qD=3
     qc.h(0); qc.h(1); qc.h(2); qc.h(3)
     qc.cz(0, 1)  # A-B
     qc.cz(1, 3)  # B-D
@@ -31,7 +31,7 @@ def square_cluster_4():
 
 def grover_3():
     label = "grover_3"
-    qc = QuantumCircuit(3, name=label)  # qA=0, qB=1, qC=2
+    qc = QuantumCircuit(3)  # qA=0, qB=1, qC=2
     qc.h(0); qc.h(1); qc.h(2)
     qc.h(2)
     qc.ccx(0, 1, 2)
@@ -49,7 +49,7 @@ def grover_3():
 
 def ghz_3():
     label = "ghz_3"
-    qc = QuantumCircuit(3, name=label)  # qA=0, qB=1, qC=2
+    qc = QuantumCircuit(3)  # qA=0, qB=1, qC=2
     qc.h(0)
     qc.cx(0, 1)
     qc.cx(0, 2)
@@ -59,7 +59,7 @@ def ghz_3():
 
 def shor_toy_3():
     label = "unscalable_shor_3"
-    qc = QuantumCircuit(3, name=label)  # qA=0, qB=1, qC=2
+    qc = QuantumCircuit(3)  # qA=0, qB=1, qC=2
     qc.h(0)
     qc.cx(0, 1)
     qc.cx(0, 2)
@@ -71,7 +71,7 @@ def shor_toy_3():
 def half_adder():
     label = "half_adder"
     # A=0, B=1, S=2, C=3 (S and C start |0>)
-    qc = QuantumCircuit(4, name=label)
+    qc = QuantumCircuit(4)
     qc.cx(0, 2)        # CNOT A→S
     qc.cx(1, 2)        # CNOT B→S
     qc.ccx(0, 1, 3)    # CCX_{A,B->C}
@@ -82,7 +82,7 @@ def half_adder():
 def ripple_inc_3():
     label = "ripple_incrementer_3"
     # q0=0, q1=1, q2=2, c1=3, c2=4
-    qc = QuantumCircuit(5, name=label)
+    qc = QuantumCircuit(5)
     qc.cx(0, 3)        # 0
     qc.cx(3, 0)        # 1
     qc.ccx(0, 3, 1)    # 2
@@ -100,7 +100,7 @@ def ripple_inc_3():
 
 def toffoli_like_snippet():
     label = "toffoli_like_snippet"
-    qc = QuantumCircuit(3, name=label)  # qA=0, qB=1, qC=2
+    qc = QuantumCircuit(3)  # qA=0, qB=1, qC=2
     qc.h(2)                      # H_C
     qc.cx(1, 2)                  # CNOT B→C
     qc.rz(-math.pi / 4, 2)       # RZ(-π/4)_C
@@ -121,9 +121,9 @@ def toffoli_like_snippet():
 
 def n_ghz_state(n: int):
     label = "CNOT Ladder/Chain"
-    qc = QuantumCircuit(n, label)
+    qc = QuantumCircuit(n)
     qc.h(0)
-    for i in range(1, n-1):
+    for i in range(1, n):
         qc.cx(i - 1, i)
     qc.measure_all()
     return {"label": label, "program": qc, "codes": [4] * n}

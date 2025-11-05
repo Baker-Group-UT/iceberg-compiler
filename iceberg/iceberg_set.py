@@ -13,6 +13,7 @@ from qiskit import QuantumCircuit
 from .iceberg_module import IcebergModule, _physical_two_qubit_gate
 from .utils import SharedInt
 
+BARRIERS = False
 
 class IcebergSet:
     """
@@ -76,12 +77,14 @@ class IcebergSet:
             init_sub = initialize[self.k * i : self.k * (i + 1)] if initialize else None
             if not self._encode_override:
                 mod.encode(init_sub)
-        self.BARRIER()
+        if BARRIERS:
+            self.BARRIER()
         
 
     def decode(self):
         """Measure and collect syndrome bits from all IcebergModules."""
-        self.BARRIER()
+        if BARRIERS:
+            self.BARRIER()
         for idx, mod in enumerate(self.modules):
             mod.decode(key_prefix=f"{idx}")
 

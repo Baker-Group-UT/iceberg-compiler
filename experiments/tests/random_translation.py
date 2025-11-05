@@ -28,7 +28,7 @@ permDiff =  [(1, 0), (0, 0), (1, 1), (0, 1)]
 # permDiff =  [(0, 0), (1, 0), (2, 0), (3, 0)]
 
 for seed in range(100, 200):
-    program_circuit = random_circuit(num_qubits=4, depth=10, seed=seed)
+    program_circuit = random_circuit(num_qubits=4, depth=25, seed=seed)
 
     program_circuit.measure_all()
 
@@ -43,7 +43,7 @@ for seed in range(100, 200):
     results = []
 
     config = PipelineConfig(
-        sim_config=StandardSimulator(repetitions=5_000).with_noiseless(),
+        sim_config=StandardSimulator(repetitions=10_000).with_noiseless(),
         verbose=False,
         save=False,
     )

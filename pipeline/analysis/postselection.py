@@ -54,12 +54,12 @@ def reduce_distribution(dist: Dict[str, float], context: TranslationContext) -> 
         # Build the reduced key by selecting only the tracked-state positions
         try:
             key = "".join(bitstring[i] for i in kept_indices)
-        except IndexError:
+        except IndexError as exc:
             # If something is off (e.g., bitstring shorter than expected), skip or raise
             # Raising helps catch upstream mismatches early:
             raise IndexError(
                 f"Bitstring length {len(bitstring)} too short for indices {kept_indices}."
-            )
+            ) from exc
         reduced[key] += prob
 
     return dict(reduced)
@@ -80,7 +80,7 @@ def apply_iceberg_postselection(
         key_order = result.key_order
 
         postselected_noisy_dist, sel_rate = iceberg_postselect(result.noisy_dist, key_order)
-        postselected_ideal_dist = iceberg_postselect(result.ideal_dist, key_order)
+        postselected_ideal_dist, _ = iceberg_postselect(result.ideal_dist, key_order)
 
         logical_fid = logical_fidelity(postselected_ideal_dist, postselected_noisy_dist)
         logical_total_variation_distance = total_variation_distance(

@@ -6,7 +6,7 @@ import os
 import random
 from qiskit import QuantumCircuit
 from qiskit.qasm3 import dumps as qasm3_dumps
-from qiskit.circuit.random import random_circuit
+from qiskit.circuit.random import random_circuit, random_clifford_circuit
 
 # ----------------------------------------------------------------------
 # Helper: save a single random circuit to dataset as OpenQASM2
@@ -29,7 +29,8 @@ def save_random_qasm_circuit(
         depth = rng.randint(10, 20)
 
     # Generate the circuit
-    circuit: QuantumCircuit = random_circuit(num_qubits=n_qubits, depth=depth, seed=seed)
+    circuit: QuantumCircuit = random_clifford_circuit(num_qubits=n_qubits, num_gates=depth, seed=seed)
+    # circuit: QuantumCircuit = random_clifford_circuit(num_qubits=n_qubits, num_gates=depth, seed=seed)
 
     # Convert to OpenQASM2
     qasm_str = qasm3_dumps(circuit)
@@ -100,5 +101,5 @@ def fill_random_qasm_dataset(
 
 # Example usage:
 if __name__ == "__main__":
-    paths = fill_random_qasm_dataset(10_000)
+    paths = fill_random_qasm_dataset(10_000, dataset_dir="clifford_circuits")
     # print("\n".join(paths))

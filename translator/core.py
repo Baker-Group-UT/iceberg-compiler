@@ -24,6 +24,7 @@ class TranslationResult:
     verbose: bool
     fault_tolerant: bool
 
+BARRIERS = False
 
 class Translation:
     def __init__(
@@ -67,7 +68,8 @@ class Translation:
                     raise RuntimeWarning("Gate application failed!")
 
         self.context.iceberg_set.decode()
-        self.context.iceberg_set.BARRIER()
+        if BARRIERS:
+            self.context.iceberg_set.BARRIER()
         self.context.iceberg_set.measure()
 
         return TranslationResult(
