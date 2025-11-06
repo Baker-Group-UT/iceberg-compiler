@@ -14,12 +14,12 @@ from typing import Optional
 
 from qiskit import QuantumCircuit
 from qiskit.result import Result
-from qiskit_aer.noise import NoiseModel  # kept for future use with AerSimulator
 from qiskit_aer import AerSimulator
+from qiskit_aer.noise import NoiseModel  # kept for future use with AerSimulator
 
 from .config import SimulatorConfig
-from .utils import bhattacharyya
 from .result_types import SimulationResult
+from .utils import bhattacharyya
 
 
 class Simulator:
@@ -45,7 +45,7 @@ class Simulator:
         self._repetitions = repetitions
         return self
 
-    def with_noise_model(self, noise_model: NoiseModel) -> "Simulator":
+    def with_noise_model(self, noise_model: NoiseModel | None) -> "Simulator":
         self._noise_model = noise_model
         return self
 
@@ -87,7 +87,9 @@ class Simulator:
         if result is not None and result.results:
             header = getattr(result.results[0], "header", None)
             if header and hasattr(header, "creg_sizes"):
-                creg_sizes = header.creg_sizes  # e.g. [['m_parity_0', 2], ['m_data_0', 4]]
+                creg_sizes = (
+                    header.creg_sizes
+                )  # e.g. [['m_parity_0', 2], ['m_data_0', 4]]
                 key_order = [name for name, _ in creg_sizes]
                 key_widths = [size for _, size in creg_sizes]
                 return key_order, key_widths
@@ -99,7 +101,7 @@ class Simulator:
 
     # NOTE: We invert the endianness of the AerSim output from little to big endianness.
     # this is so we can print out bitstrings and the left most character or [0] is the 0th bit.
-    def _invert_endianness(self, counts: dict[str, int | float]) -> dict[str, int | float]:
+    def _invert_endianness(self, counts: dict[str, int | float]) -> dict[str, int]:
         """
         Reverse the bit order of each key in `counts`.
         e.g. {'010 11': 5} → {'11 010': 5}
@@ -134,7 +136,7 @@ class Simulator:
         # If there are no classical bits, nothing to count
         if len(tcirc.clbits) == 0:
             warning("Did you forget to add measurement registers?")
-            return {}
+            return {}, [], []
 
         # Run and return raw counts
         job = sim.run(tcirc, shots=self._repetitions)
@@ -154,7 +156,9 @@ class Simulator:
         #       and so we can print(bitstring[i]) to print the actual ith bit                       |       `-----` `--`
         #       i.e. 0,1,1,0,1,0,1 -> bits 0,1,2,3,4,5,6                                            |
         # <+======================================================================================+>*
-        little_endian_counts = result.get_counts(0)  # first (and typically only) circuit
+        little_endian_counts = result.get_counts(
+            0
+        )  # first (and typically only) circuit
         counts = self._invert_endianness(little_endian_counts)
         # ^^^^^^^^^^ IMPORTANT THING ^^^^^^^^^^ #
         # NOTE: When we invert this here we also HAVE to invert the post selection bitstrings

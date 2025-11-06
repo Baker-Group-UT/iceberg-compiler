@@ -3,18 +3,22 @@ simulator/noise_models.py
 
 Predefined Qiskit Aer noise models for use with the Simulator.
 """
+
 # pylint: disable=[C0103]
 from __future__ import annotations
-from typing import Dict, Optional
+
+from typing import Callable, Dict, Optional
 
 from qiskit_aer.noise import (
     NoiseModel,
+    QuantumError,
+    ReadoutError,
     depolarizing_error,
     thermal_relaxation_error,
-    ReadoutError,
 )
 
 # ---------- utils ----------
+
 
 def noise_model_to_dict(model: NoiseModel) -> Dict:
     out: Dict[str, Dict] = {"quantum_errors": {}, "readout_errors": {}}
@@ -33,7 +37,9 @@ def noise_model_to_dict(model: NoiseModel) -> Dict:
         out["readout_errors"][str(q)] = mat
     return out
 
+
 # ---------- presets ----------
+
 
 def DefaultNoiseModel() -> NoiseModel:
     nm = NoiseModel()
@@ -149,3 +155,90 @@ def ScaledNoiseModel(
     nm.add_all_qubit_readout_error(ro)
 
     return nm
+
+
+def DistanceDependentNoiseModel(
+    layout: Dict[int, tuple[int, int]],
+    distance_function: Callable[
+        [float, float, float, float],
+        Callable[[tuple[int, int], tuple[int, int]], QuantumError],
+    ],
+    *,
+    p1: float = 1e-3,
+    p2: float = 5e-3,
+    p_meas: float = 0.02,
+    T1: float = 100e-6,
+    T2: float = 80e-6,
+    t_1q: float = 50e-9,
+    t_2q: float = 300e-9,
+    oneq_ops: Optional[list[str]] = None,
+    twoq_ops: Optional[list[str]] = None,
+) -> NoiseModel:
+    """
+    Build a Qiskit Aer NoiseModel with two-qubit errors dependent on qubit distance.
+    Args:
+        layout: Mapping of qubit index to (x, y) position.
+        distance_function: Function that takes T1, T2, t_2q, p2 and returns a function
+            which takes two positions and returns a QuantumError for those qubits.
+        p1, p2: Depolarizing error probabilities for 1q and 2q gates.
+        p_meas: Readout error probability.
+        T1, T2: Relaxation and dephasing times.
+        t_1q, t_2q: Gate times for 1q and 2q gates.
+        oneq_ops, twoq_ops: Gate name lists to attach 1q/2q errors to.
+    """
+    if twoq_ops is None:
+        twoq_ops = ["cx", "cz"]
+
+    nm = NoiseModel()
+
+    dep1 = depolarizing_error(p1, 1)
+    thr1 = thermal_relaxation_error(T1, T2, t_1q)
+    err1 = dep1.compose(thr1)
+    nm.add_all_qubit_quantum_error(err1, oneq_ops)
+
+    df = distance_function(T1, T2, t_2q, p2)
+    for q1 in layout:
+        for q2 in layout:
+            if q1 >= q2:
+                continue
+            pos1 = layout[q1]
+            pos2 = layout[q2]
+            err2 = df(pos1, pos2)
+            nm.add_quantum_error(err2, twoq_ops, [q1, q2])
+
+    ro = ReadoutError([[1 - p_meas, p_meas], [p_meas, 1 - p_meas]])
+    nm.add_all_qubit_readout_error(ro)
+
+    return nm
+
+
+def manhattan_distance(pos1: tuple[int, int], pos2: tuple[int, int]) -> float:
+    return abs(pos1[0] - pos2[0]) + abs(pos1[1] - pos2[1])
+
+
+def distance_noise_function(
+    T1: float,
+    T2: float,
+    t_2q: float,
+    p2: float,
+    dist: Callable[[tuple[int, int], tuple[int, int]], float] = manhattan_distance,
+    movement_speed: float = 0.5,
+) -> Callable[[tuple[int, int], tuple[int, int]], QuantumError]:
+    """
+    Returns a function that computes a QuantumError based on Manhattan distance.
+    The error probability increases with distance.
+    """
+
+    def error_function(pos1: tuple[int, int], pos2: tuple[int, int]) -> QuantumError:
+        distance = dist(pos1, pos2)
+        time_to_move = 2 * distance / movement_speed
+        nonlocal t_2q
+        t_2q = t_2q + time_to_move
+        scaled_p2 = min(p2 * distance, 0.5)
+        dep2 = depolarizing_error(scaled_p2, 2)
+        thr2 = thermal_relaxation_error(T1, T2, t_2q).tensor(
+            thermal_relaxation_error(T1, T2, t_2q)
+        )
+        return dep2.compose(thr2)
+
+    return error_function

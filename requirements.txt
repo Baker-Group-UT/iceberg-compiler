@@ -1,5 +1,6 @@
 alabaster==1.0.0
 annotated-types==0.7.0
+antlr4-python3-runtime==4.13.2
 anyio==4.9.0
 appnope==0.1.4
 argon2-cffi==23.1.0
@@ -40,7 +41,6 @@ duet==0.2.9
 email_validator==2.2.0
 execnet==2.1.1
 executing==2.2.0
--e git+https://github.com/Infleqtion/experiments-superstaq.git@b2ff93caf45c55a5a14498f2294df9fa599703e1#egg=experiments_superstaq
 fastjsonschema==2.21.1
 fonttools==4.57.0
 fqdn==1.5.1
@@ -104,6 +104,7 @@ networkx==3.4.2
 notebook==7.4.0
 notebook_shim==0.2.4
 numpy==2.2.4
+openqasm3==1.0.1
 overrides==7.7.0
 packaging==24.2
 pandas==2.2.3
@@ -148,6 +149,7 @@ pyzmq==26.4.0
 qcware-quasar==1.0.7
 qiskit==2.2.1
 qiskit-aer==0.17.0
+qiskit-qasm3-import==0.6.0
 qiskit-superstaq==0.5.47
 referencing==0.36.2
 requests==2.32.3
@@ -178,6 +180,7 @@ sphinxcontrib-qthelp==2.0.0
 sphinxcontrib-serializinghtml==2.0.0
 stack-data==0.6.3
 stevedore==5.4.1
+stim==1.15.0
 symengine==0.13.0
 sympy==1.13.3
 terminado==0.18.1
