@@ -21,6 +21,7 @@ from .config import SimulatorConfig
 from .result_types import SimulationResult
 from .utils import bhattacharyya
 
+from .stim_backend import run_stim_backend
 
 class Simulator:
     """
@@ -38,6 +39,7 @@ class Simulator:
         self._noiseless: bool = config.noiseless
         self._seed: Optional[int] = config.seed
         self._noise_model: Optional[NoiseModel] = config.noise_model
+        self._stim: bool = config.stim
 
     # -------- Fluent Configuration Methods --------
 
@@ -57,6 +59,10 @@ class Simulator:
         self._noiseless = noiseless
         return self
 
+    def with_stim(self, stim: bool = True) -> "Simulator":
+        self._stim = stim
+        return self
+
     def clone(self) -> "Simulator":
         return (
             Simulator()
@@ -64,6 +70,7 @@ class Simulator:
             .with_noise_model(self._noise_model)
             .with_seed(self._seed if self._seed is not None else 0)
             .with_noiseless(self._noiseless)
+            .with_stim(self._stim)
         )
 
     # -------------- ( Helpers ) -------------
@@ -118,11 +125,43 @@ class Simulator:
 
     # -------- Core Simulation Method --------
 
+    def _stimulate(self, circuit: QuantumCircuit, add_noise: bool = True):
+        """
+        Execute `circuit` and return a (probs, key_order, key_widths) tuple.
+        This version uses the Stim backend (quasi-probabilities), replacing Aer sim.run().
+        """
+
+        # If there are no classical bits, nothing to count
+        tcirc = circuit  # preserve naming from your original
+        if len(tcirc.clbits) == 0:
+            warning("Did you forget to add measurement registers?")
+            return {}
+
+        # ---- Run via Stim ----
+        # NOTE: This returns quasi-probabilities directly (normalized to sum ~1.0).
+        #       It also returns bitstrings in conventional printed order already,
+        #       so DO NOT call _invert_endianness here.
+        probs = run_stim_backend(
+            circuit=tcirc,
+            shots=self._repetitions,
+            seed=self._seed,
+        )
+
+        key_order = [creg.name for creg in tcirc.cregs]
+        key_widths = [creg.size for creg in tcirc.cregs]
+
+        return probs, key_order, key_widths
+
+
     def _simulate(self, circuit: QuantumCircuit, add_noise: bool = True):
         """
         Execute `circuit` with Qiskit's AerSimulator and return a counts dict.
         Uses class config: repetitions (shots), seed, noiseless, and noise_model.
         """
+
+        if self._stim:
+            return self._stimulate(circuit, add_noise=add_noise)
+
         # Choose simulator backend
         if (not add_noise) or (self._noise_model is None) or self._noiseless:
             sim = AerSimulator(seed_simulator=self._seed)

@@ -20,6 +20,7 @@ class SimulatorConfig:
     noise_model: Optional[NoiseModel] = None
     noiseless: bool = False
     seed: Optional[int] = None
+    stim: bool = False
 
     def __post_init__(self):
         # Default to a realistic noise model if none specified and not noiseless
@@ -49,4 +50,8 @@ class SimulatorConfig:
 
     def with_noise_model(self, noise_model: NoiseModel) -> Self:
         self.noise_model = noise_model
+        return self
+
+    def with_stim(self, stim: bool = True) -> Self:
+        self.stim = stim
         return self
