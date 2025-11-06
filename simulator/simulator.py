@@ -22,7 +22,7 @@ from .utils import bhattacharyya
 from .result_types import SimulationResult
 
 from .stim_backend import run_stim_backend
-from qiskit.visualization import plot_histogram
+
 class Simulator:
     """
     Quantum circuit simulator (Qiskit).
@@ -39,6 +39,7 @@ class Simulator:
         self._noiseless: bool = config.noiseless
         self._seed: Optional[int] = config.seed
         self._noise_model: Optional[NoiseModel] = config.noise_model
+        self._stim: bool = config.stim
 
     # -------- Fluent Configuration Methods --------
 
@@ -58,6 +59,10 @@ class Simulator:
         self._noiseless = noiseless
         return self
 
+    def with_stim(self, stim: bool = True) -> "Simulator":
+        self._stim = stim
+        return self
+
     def clone(self) -> "Simulator":
         return (
             Simulator()
@@ -65,6 +70,7 @@ class Simulator:
             .with_noise_model(self._noise_model)
             .with_seed(self._seed if self._seed is not None else 0)
             .with_noiseless(self._noiseless)
+            .with_stim(self._stim)
         )
 
     # -------------- ( Helpers ) -------------
@@ -151,7 +157,7 @@ class Simulator:
         Uses class config: repetitions (shots), seed, noiseless, and noise_model.
         """
 
-        if circuit.num_qubits > 30:
+        if self._stim:
             return self._stimulate(circuit, add_noise=add_noise)
 
         # Choose simulator backend
