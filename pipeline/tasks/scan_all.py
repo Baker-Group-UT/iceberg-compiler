@@ -33,9 +33,6 @@ def run_full_scan(program_circuit: qiskit.QuantumCircuit, config: PipelineConfig
     translator = Translator(config=config.translator_config)
     translated = translator.translate_batch(program_circuit, permutations)
 
-    for t in translated:
-        print(t.circuit)
-
     # # Step 3: Simulate
     simulator = Simulator(config.sim_config)
     ideal_sim_res = simulator.ideal(circuit=program_circuit)

@@ -62,7 +62,10 @@ def mapping_for_perm(
         for q in qargs:
             # old flat index in the original circuit
             old_idx = program_circuit.find_bit(q).index  # position in flat qubit list
-            new_idx = remap[old_idx]
+            try:
+                new_idx = remap[old_idx]
+            except KeyError:
+                raise KeyError("Remap error, likely due to a mismatch between # of logical qubits vs. # in permutation. Check permutation passed in.")
             mapped_qargs.append(phys_circ.qubits[new_idx])
         phys_circ.append(inst, mapped_qargs, cargs)
 

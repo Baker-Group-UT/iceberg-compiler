@@ -42,9 +42,6 @@ def run_random_scan(program_circuit: qiskit.QuantumCircuit, m: int = 100, config
             warning("Permutation set incomplete, reached 2,500 addition failures to permutation set.")
         else:
             warning(f"Permutation set incomplete. For some reason, the permutation set if not of length m but length {len(permutations)}")
-    print("length:", len(permutations))
-    print(permutations)
-    return
 
     # Step 2: Translate logical to physical
     translator = Translator(config=config.translator_config)

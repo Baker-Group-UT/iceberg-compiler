@@ -24,7 +24,6 @@ def apply_logical_z(op, context: TranslationContext) -> bool:
     # Get the flat qubit index
     logical_i = context.qc.find_bit(op.qubits[0]).index
     phys_id   = context.phys_index_for_logical(logical_i)
-    patch, slot = context.current_pos_of(phys_id)
 
     # Resolve to (patch, slot) after any logical swaps
     patch, slot = context.current_pos_of(phys_id)

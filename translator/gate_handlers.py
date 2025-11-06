@@ -9,16 +9,12 @@ from __future__ import annotations
 from typing import Dict, Callable, Optional, Sequence
 import math
 
-# Qiskit gate names we’ll dispatch on:
-#  - simple:  'x', 'z', 'rz', 'swap'
-#  - complex: 'h', 'cx', 'cz'
-#  - skipped: 'barrier', 'measure'
-
 from .context import TranslationContext
 from .handlers.hadamard import apply_logical_hadamard
 from .handlers.controlled_not import apply_logical_cnot
 from .handlers.controlled_z import apply_logical_cz
 from .handlers.rz import apply_logical_rz
+from .handlers.s import apply_logical_s
 from .handlers.x import apply_logical_x
 from .handlers.z import apply_logical_z
 from .handlers.swap import apply_logical_swap
@@ -36,9 +32,10 @@ class _OpLike:
 # --- Canonical gate translation table (simple one-to-one mappings) ---
 # Use lowercase instruction names for robustness.
 TABLE_SIMPLE: Dict[str, tuple[str, Callable]] = {
+    "rz":   ("RZ",   apply_logical_rz),
+    "s":    ("S",    apply_logical_s),
     "x":    ("X",    apply_logical_x),
     "z":    ("Z",    apply_logical_z),
-    "rz":   ("RZ",   apply_logical_rz),
     "swap": ("SWAP", apply_logical_swap),
 }
 
