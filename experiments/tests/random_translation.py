@@ -7,20 +7,20 @@ from pipeline import run_random_scan
 from simulator.config_presets import StandardSimulator
 from qiskit.circuit.random import random_clifford_circuit
 
-permGroup = [(0, 0), (0, 1), (1, 0), (1, 1)]
-permDiff =  [(0, 0), (1, 0), (2, 0), (3, 0)]
+# permGroup = [(0, 0), (0, 1), (1, 0), (1, 1)]
+# permDiff =  [(0, 0), (1, 0), (2, 0), (3, 0)]
 # permDiff =  [(0, 0), (1, 0), (2, 0), (3, 0)]
 
 for seed in range(100, 200):
     # S gate seems a lil broken. Also more than like 10 qubits will eventually fail. Not sure why.
-    program_circuit = random_clifford_circuit(num_qubits=12, num_gates=40, seed=seed, gates=['x', 'z', 'h', 'cx', 'cz'])
+    program_circuit = random_clifford_circuit(num_qubits=25, num_gates=50, seed=seed, gates=['x', 'z', 'h', 'cx', 'cz'])
 
     program_circuit.measure_all()
 
     results = []
 
     config = PipelineConfig(
-        sim_config=StandardSimulator(repetitions=10_000).with_noiseless(),
+        sim_config=StandardSimulator(repetitions=50_000).with_noiseless().with_stim(),
         verbose=False,
         save=False,
     )

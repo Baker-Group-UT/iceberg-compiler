@@ -6,11 +6,11 @@ for applying fault-tolerant or faulty versions of logical gates on an Iceberg ic
 '''
 
 from __future__ import annotations
-from typing import Dict, Callable, Optional, Sequence
+from typing import Dict, Callable, Sequence
 import math
 
 from .context import TranslationContext
-from .handlers.hadamard import apply_logical_hadamard
+from .handlers.hadamard import apply_logical_hadamard, apply_logical_hh_merge
 from .handlers.controlled_not import apply_logical_cnot
 from .handlers.controlled_z import apply_logical_cz
 from .handlers.rz import apply_logical_rz
@@ -19,7 +19,7 @@ from .handlers.x import apply_logical_x
 from .handlers.z import apply_logical_z
 from .handlers.swap import apply_logical_swap
 
-BARRIERS = False
+BARRIERS = True
 
 # --- Simple shim so handlers can use op.gate and op.qubits like before ---
 class _OpLike:
@@ -42,6 +42,7 @@ TABLE_SIMPLE: Dict[str, tuple[str, Callable]] = {
 # --- Special compound gate handlers ---
 TABLE_COMPLEX: Dict[str, Callable] = {
     "h":  apply_logical_hadamard,
+    "hh": apply_logical_hh_merge,
     "cx": apply_logical_cnot,
     "cz": apply_logical_cz,
 }
@@ -64,8 +65,6 @@ def _rz_angle_from_gate(inst) -> float:
 def translate_and_apply(
     context: TranslationContext,
     op,  # Accept either (inst, qargs, cargs) tuple from qc.data OR an _OpLike
-    *,
-    next_op: Optional[object] = None,  # optional lookahead; same normalization below if used
 ):
     """
     Translates and applies a logical operation onto the IcebergSet circuit
@@ -74,11 +73,9 @@ def translate_and_apply(
     Args:
         context: TranslationContext holding mapping and circuit state.
         op: Qiskit (inst, qargs, cargs) triple from QuantumCircuit.data, or an _OpLike.
-        next_op: Optional lookahead (same accepted shapes) — currently unused.
 
     Returns:
-        True if a lookahead gate was consumed, otherwise None.
-        False if the gate couldn't be applied
+        False if the gate couldn't be applied, otherwise None.
     """
     if BARRIERS:
         context.iceberg_set.BARRIER()
@@ -108,13 +105,6 @@ def translate_and_apply(
     if gname in TABLE_COMPLEX:
         TABLE_COMPLEX[gname](op_like, context)
         return None
-
-    # FIXME: HH lookahead merging broken
-    # # --- Check for HH compound gate ---
-    # # None = Success, True = Gate consumed, False = Gate application failed
-    # if isinstance(gate, HPowGate) and next_op and isinstance(next_op.gate, HPowGate):
-    #     apply_logical_hadamard(op, context, next_op)
-    #     return True
 
     # --- Simple one-to-one handlers ---
     if gname in TABLE_SIMPLE:

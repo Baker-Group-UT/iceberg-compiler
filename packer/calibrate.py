@@ -36,19 +36,10 @@ def translate_segment(
     if prelude:
         prelude(ctx)
 
-    ops = list(program_circuit.data)
-    skip_next = False
-    for i, ci in enumerate(ops):
-        if skip_next:
-            skip_next = False
-            continue
-        nxt = ops[i + 1] if i + 1 < len(ops) else None
-        consumed = translate_and_apply(ctx, ci, next_op=nxt)
-        if consumed is not None:
-            if consumed:
-                skip_next = True
-            else:
-                raise RuntimeError("translate_segment: gate application failed")
+    for ci in program_circuit.data:
+        flag = translate_and_apply(ctx, ci)
+        if flag is False:
+            raise RuntimeError("translate_segment: gate application failed")
 
     if postlude:
         postlude(ctx)

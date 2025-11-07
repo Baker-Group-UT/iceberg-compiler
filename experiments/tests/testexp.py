@@ -19,7 +19,7 @@ from simulator.config_presets import ScaledSimulator, StandardSimulator
 from packer.packer import pack
 
 
-# program_circuit: qiskit.QuantumCircuit = random_clifford_circuit(4, 40)
+# program_circuit: qiskit.QuantumCircuit = random_clifford_circuit(40, 40, gates=['x', 'z', 'h', 's', 'cx', 'cz'])
 
 # target_basis = ['x', 'z', 'h', 's', 'cx', 'cz', 'measure']
 
@@ -30,19 +30,16 @@ from packer.packer import pack
 # )
 # tcirc.measure_all()
 
-tcirc = qiskit.QuantumCircuit(8)
-tcirc.h(0)
-tcirc.cx(0, 1)
-tcirc.cx(1, 2)
-tcirc.cx(2, 3)
-tcirc.cx(3, 4)
-tcirc.cx(4, 5)
-tcirc.cx(5, 6)
-tcirc.cx(6, 7)
+tcirc = qiskit.QuantumCircuit(4)
+# tcirc.x(0)
+# tcirc.z(0)
+tcirc.x(0)
+
 tcirc.measure_all()
+print(tcirc)
 
 config = PipelineConfig(
-    sim_config=ScaledSimulator(alpha=1, repetitions=50_000).with_seed(6),
+    sim_config=ScaledSimulator(alpha=1, repetitions=50_000).with_noiseless().with_seed(9).with_stim(),
     verbose=True,
     save=False,
     seed=4,
@@ -55,10 +52,9 @@ config = PipelineConfig(
 
 perms = [
     [(0,0), (0,1), (1,0), (1,1)],
-    [(0,0), (1,0), (2,0), (3,0)],
+    # [(0,0), (1,0), (2,0), (3,0)],
 ]
 
-res: RunRecord = run_random_scan(tcirc, 10, config)
-print(res.dataframe.df)
-
-print_df.print_df_table(res.dataframe.df)
+# res: RunRecord = run_random_scan(tcirc, 1, config)
+res: RunRecord = run_specific_scan(tcirc, perms, config)
+# res: RunRecord = run_full_scan(tcirc, config)

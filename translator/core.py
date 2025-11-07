@@ -12,6 +12,7 @@ from qiskit import QuantumCircuit
 from .context import TranslationContext
 from .gate_handlers import translate_and_apply
 from .config import TranslatorConfig
+from .merging import preprocess_program_for_merging
 
 
 @dataclass
@@ -24,7 +25,7 @@ class TranslationResult:
     verbose: bool
     fault_tolerant: bool
 
-BARRIERS = False
+BARRIERS = True
 
 class Translation:
     def __init__(
@@ -44,28 +45,19 @@ class Translation:
             permutation, program_circuit, fault_tolerant=fault_tolerant, verbose=verbose
         )
 
-    def translate_gate(self, op, next_op=None):
-        # `op` and `next_op` are (inst, qargs, cargs) tuples from qc.data
-        return translate_and_apply(self.context, op, next_op=next_op)
+    def translate_gate(self, op):
+        # `op` is an (inst, qargs, cargs) tuple from qc.data
+        return translate_and_apply(self.context, op)
 
     def translate_circuit(self) -> TranslationResult:
         # Iterate over the program circuit instructions
-        ops = list(self.program_circuit.data)
-        skip_next = False
-        for i, op in enumerate(ops):
-            if skip_next:
-                skip_next = False
-                continue
-            next_op = ops[i + 1] if i + 1 < len(ops) else None
-            consumed = self.translate_gate(op, next_op)
-            if consumed is not None:
-                if consumed:
-                    skip_next = True
-                else:
-                    # gate application failed
-                    # TODO: make this pass further up the chain so we don't hault
-                    # permutation should be marked as infeasible in set
-                    raise RuntimeWarning("Gate application failed!")
+        for op in self.program_circuit.data:
+            flag = self.translate_gate(op)
+            if flag is False:
+                # gate application failed
+                # TODO: make this pass further up the chain so we don't hault
+                # permutation should be marked as infeasible in set
+                raise RuntimeWarning("Gate application failed!")
 
         self.context.iceberg_set.decode()
         if BARRIERS:
@@ -90,6 +82,7 @@ class Translator:
         self.fault_tolerant = config.fault_tolerant
         self.verbose = config.verbose
         self.n_code = config.n_code
+        self.enable_hh_merging = config.enable_hh_merging
 
     def translate(
         self,
@@ -99,9 +92,13 @@ class Translator:
         """
         Translate a program circuit and a permutation into a physical circuit.
         """
+        if self.enable_hh_merging:
+            processed_circuit = preprocess_program_for_merging(program_circuit, permutation)
+        else:
+            processed_circuit = program_circuit
         translation = Translation(
             permutation=permutation,
-            program_circuit=program_circuit,
+            program_circuit=processed_circuit,
             fault_tolerant=self.fault_tolerant,
             verbose=self.verbose,
         )
