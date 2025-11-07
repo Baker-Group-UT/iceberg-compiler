@@ -4,7 +4,7 @@ Mostly used for translate_circuit / translate_gate.
 """
 
 from __future__ import annotations
-from typing import List, Tuple, Optional, Any
+from typing import List, Tuple, Any
 
 from qiskit import QuantumCircuit
 
@@ -45,7 +45,6 @@ def translate_gate(
     *,
     fault_tolerant: bool = False,
     verbose: bool = False,
-    lookahead: Optional[Any] = None,  # same shape as `op` if provided
 ):
     """
     Apply a single logical operation using the translator’s logic (testing/debugging).
@@ -56,4 +55,4 @@ def translate_gate(
         fault_tolerant=fault_tolerant,
         verbose=verbose,
     )
-    return translation.translate_gate(op, next_op=lookahead)
+    return translation.translate_gate(op)

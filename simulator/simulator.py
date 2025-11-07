@@ -202,15 +202,12 @@ class Simulator:
         little_endian_counts = result.get_counts(
             0
         )  # first (and typically only) circuit
-        print("probs before invert:", little_endian_counts)
         counts = self._invert_endianness(little_endian_counts)
         # ^^^^^^^^^^ IMPORTANT THING ^^^^^^^^^^ #
         # NOTE: When we invert this here we also HAVE to invert the post selection bitstrings
 
         # counts: Dict[str, int], keys are space-delimited per creg in qc.cregs order
         probs = self._counts_to_probs(counts)
-        print("probs after invert:", probs)
-        print("key order:", key_order)
         return probs, key_order, key_widths
 
     # ---------------------- Public APIs -----------------------
