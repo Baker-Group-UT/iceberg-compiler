@@ -135,20 +135,24 @@ class Simulator:
         tcirc = circuit  # preserve naming from your original
         if len(tcirc.clbits) == 0:
             warning("Did you forget to add measurement registers?")
-            return {}
+            return {}, [], []
 
         # ---- Run via Stim ----
-        # NOTE: This returns quasi-probabilities directly (normalized to sum ~1.0).
-        #       It also returns bitstrings in conventional printed order already,
-        #       so DO NOT call _invert_endianness here.
+        include_noise = add_noise and (not self._noiseless)
+
         probs = run_stim_backend(
             circuit=tcirc,
             shots=self._repetitions,
             seed=self._seed,
+            include_noise=include_noise,
         )
+        key_order, key_widths = self._key_meta(tcirc)
 
-        key_order = [creg.name for creg in tcirc.cregs]
-        key_widths = [creg.size for creg in tcirc.cregs]
+        if not add_noise:
+            probs = self._invert_endianness(probs)
+
+            key_order = list(reversed(key_order))
+            key_widths = list(reversed(key_widths))
 
         return probs, key_order, key_widths
 
@@ -198,12 +202,15 @@ class Simulator:
         little_endian_counts = result.get_counts(
             0
         )  # first (and typically only) circuit
+        print("probs before invert:", little_endian_counts)
         counts = self._invert_endianness(little_endian_counts)
         # ^^^^^^^^^^ IMPORTANT THING ^^^^^^^^^^ #
         # NOTE: When we invert this here we also HAVE to invert the post selection bitstrings
 
         # counts: Dict[str, int], keys are space-delimited per creg in qc.cregs order
         probs = self._counts_to_probs(counts)
+        print("probs after invert:", probs)
+        print("key order:", key_order)
         return probs, key_order, key_widths
 
     # ---------------------- Public APIs -----------------------
