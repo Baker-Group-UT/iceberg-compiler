@@ -83,6 +83,7 @@ class Translator:
         self.verbose = config.verbose
         self.n_code = config.n_code
         self.enable_hh_merging = config.enable_hh_merging
+        self.allow_transversal_swap_merges = config.allow_transversal_swap_merges
 
     def translate(
         self,
@@ -93,7 +94,11 @@ class Translator:
         Translate a program circuit and a permutation into a physical circuit.
         """
         if self.enable_hh_merging:
-            processed_circuit = preprocess_program_for_merging(program_circuit, permutation)
+            processed_circuit = preprocess_program_for_merging(
+                program_circuit,
+                permutation,
+                allow_transversal_swap_merges=self.allow_transversal_swap_merges,
+            )
         else:
             processed_circuit = program_circuit
         translation = Translation(

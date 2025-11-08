@@ -13,7 +13,7 @@ from qiskit import QuantumCircuit
 from .iceberg_module import IcebergModule, _physical_two_qubit_gate
 from .utils import SharedInt
 
-BARRIERS = False
+BARRIERS = True
 
 class IcebergSet:
     """

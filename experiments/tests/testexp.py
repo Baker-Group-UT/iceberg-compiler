@@ -33,13 +33,37 @@ from packer.packer import pack
 tcirc = qiskit.QuantumCircuit(4)
 # tcirc.x(0)
 # tcirc.z(0)
-tcirc.x(0)
+# tcirc.x(0)
+# tcirc.x(1)
+# tcirc.cx(0,2)
+# tcirc.z(1)
+# tcirc.cx(1,2)
+# tcirc.cz(0,2)
+# tcirc.x(2)
+# tcirc.cz(1,3)
+# tcirc.h(0)
+# tcirc.h(1)
+# tcirc.cx(0,3)
+# tcirc.cx(1,2)
+# tcirc.x(3)
+# tcirc.x(0)
+
+tcirc.h(0)
+tcirc.x(1)
+tcirc.h(2)
+tcirc.x(3)
+tcirc.cx(3,0)
+tcirc.cx(2,1)
+tcirc.cx(1,2)
+tcirc.cx(0,3)
+tcirc.h(2)
+tcirc.x(3)
 
 tcirc.measure_all()
 print(tcirc)
 
 config = PipelineConfig(
-    sim_config=ScaledSimulator(alpha=1, repetitions=50_000).with_noiseless().with_seed(9).with_stim(),
+    sim_config=ScaledSimulator(alpha=1, repetitions=100_000).with_seed(9).with_noiseless(), #.with_stim(),
     verbose=True,
     save=False,
     seed=4,
@@ -56,5 +80,5 @@ perms = [
 ]
 
 # res: RunRecord = run_random_scan(tcirc, 1, config)
-res: RunRecord = run_specific_scan(tcirc, perms, config)
+res: RunRecord = run_specific_scan(tcirc, perms,  config)
 # res: RunRecord = run_full_scan(tcirc, config)
