@@ -25,8 +25,8 @@ from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister
 from .base import CircuitClass
 from .utils import SharedInt, rand_clifford_angles
 
-SWAP_GATE_ALLOWED = False
-BARRIERS = False
+SWAP_GATE_ALLOWED = True
+BARRIERS = True
 
 def _ensure_creg(circ: QuantumCircuit, name: str, size: int = 1) -> ClassicalRegister:
     """

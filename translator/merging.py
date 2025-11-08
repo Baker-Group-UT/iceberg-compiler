@@ -111,9 +111,10 @@ from __future__ import annotations
 
 import copy
 from dataclasses import dataclass, field
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from qiskit.circuit import Gate, QuantumCircuit
+from qiskit.circuit.library import SwapGate
 from qiskit.converters import circuit_to_dag
 from qiskit.dagcircuit import DAGCircuit, DAGOpNode
 
@@ -154,14 +155,83 @@ class HHGate(Gate):
         return HHGate()
 
 
+class _TransversalMacroGate(Gate):
+    """Base helper to stash metadata for transversal macros."""
+
+    def __init__(
+        self,
+        name: str,
+        num_qubits: int,
+        *,
+        control_patch: int,
+        target_patch: int,
+        control_count: int,
+        logical_qubits: Sequence[int],
+    ) -> None:
+        super().__init__(name, num_qubits, [])
+        self.metadata = {
+            "control_patch": control_patch,
+            "target_patch": target_patch,
+            "control_count": control_count,
+            "logical_qubits": list(logical_qubits),
+        }
+
+
+class CXTGate(_TransversalMacroGate):
+    def __init__(
+        self,
+        *,
+        control_patch: int,
+        target_patch: int,
+        control_count: int,
+        logical_qubits: Sequence[int],
+    ) -> None:
+        super().__init__(
+            "cxt",
+            len(logical_qubits),
+            control_patch=control_patch,
+            target_patch=target_patch,
+            control_count=control_count,
+            logical_qubits=logical_qubits,
+        )
+
+
+class CZTGate(_TransversalMacroGate):
+    def __init__(
+        self,
+        *,
+        control_patch: int,
+        target_patch: int,
+        control_count: int,
+        logical_qubits: Sequence[int],
+    ) -> None:
+        super().__init__(
+            "czt",
+            len(logical_qubits),
+            control_patch=control_patch,
+            target_patch=target_patch,
+            control_count=control_count,
+            logical_qubits=logical_qubits,
+        )
+
+
 @dataclass(frozen=True)
-class MergeRecord:
-    """Book-keeping for replacing two H nodes with one HH instruction."""
+class PlannedOp:
+    gate: Gate
+    qargs: Tuple[object, ...]
+
+
+@dataclass(frozen=True, eq=False)
+class MacroReplacement:
+    """Instruction replacement plan covering HH, CXT, and CZT merges."""
 
     first: DAGOpNode
     second: DAGOpNode
-    waiting_qubit: object
-    lead_qubit: object
+    macro_gate: Gate
+    macro_qargs: Tuple[object, ...]
+    blocked_qubits: Tuple[object, ...]
+    pre_ops: Tuple[PlannedOp, ...] = ()
+    post_ops: Tuple[PlannedOp, ...] = ()
 
 
 DEFAULT_SETTINGS = HHMergeSettings()
@@ -174,10 +244,13 @@ def preprocess_program_for_merging(
     permutation: Sequence[Tuple[int, int]],
     *,
     settings: Optional[HHMergeSettings] = None,
+    allow_transversal_swap_merges: bool = False,
 ) -> QuantumCircuit:
     """
-    Return a possibly rewritten circuit where certain pairs of H gates inside a
-    patch are replaced with an HH macro instruction.
+    Return a possibly rewritten circuit where compatible H, CX, and CZ pairs are
+    replaced with HH / CXT / CZT macro instructions. When
+    ``allow_transversal_swap_merges`` is true the pass is also permitted to wrap
+    the macro in explicit SWAP gates to temporarily align control/target lanes.
     """
     if program_circuit.num_qubits == 0:
         return program_circuit
@@ -191,29 +264,33 @@ def preprocess_program_for_merging(
     if not patch_pairs:
         return program_circuit
 
-    skip_nodes = set()
-    consumed_nodes: set = set()
-    replacements: Dict[DAGOpNode, MergeRecord] = {}
-    waiting_lookup: Dict[DAGOpNode, MergeRecord] = {}
-    for patch, qubits in patch_pairs.items():
-        merges = _find_merges_for_patch(layer_index, order_index, qubits, settings, consumed_nodes)
-        for first, second in merges:
-            waiting_qubit = first.qargs[0]
-            lead_qubit = second.qargs[0]
-            record = MergeRecord(first=first, second=second, waiting_qubit=waiting_qubit, lead_qubit=lead_qubit)
-            skip_nodes.add(first)
-            replacements[second] = record
-            waiting_lookup[first] = record
+    qubit_indices = {qubit: program_circuit.find_bit(qubit).index for qubit in program_circuit.qubits}
 
-    if not replacements:
+    consumed_nodes: set = set()
+    records: List[MacroReplacement] = []
+    for patch, qubits in patch_pairs.items():
+        records.extend(
+            _find_hh_merges_for_patch(layer_index, order_index, qubits, settings, consumed_nodes)
+        )
+
+    records.extend(
+        _find_transversal_merges(
+            layer_index,
+            order_index,
+            patch_pairs,
+            qubit_indices,
+            consumed_nodes,
+            allow_transversal_swap_merges,
+        )
+    )
+
+    if not records:
         return program_circuit
 
     return _build_rewritten_circuit(
         program_circuit,
         dag,
-        skip_nodes,
-        replacements,
-        waiting_lookup,
+        records,
         layer_index,
         order_index,
     )
@@ -239,16 +316,16 @@ def _build_patch_pairs(
     return patch_pairs
 
 
-def _find_merges_for_patch(
+def _find_hh_merges_for_patch(
     layer_index: Dict[DAGOpNode, int],
     order_index: Dict[DAGOpNode, int],
     qubits: Tuple,
     settings: HHMergeSettings,
     consumed: set,
-) -> List[Tuple[DAGOpNode, DAGOpNode]]:
+) -> List[MacroReplacement]:
     lane_map = {qubits[0]: 0, qubits[1]: 1}
     events = _collect_events(layer_index, order_index, lane_map)
-    merges: List[Tuple[DAGOpNode, DAGOpNode]] = []
+    merges: List[MacroReplacement] = []
     waiting: Optional[_WaitingState] = None
 
     for _, _, lanes, node in events:
@@ -288,13 +365,26 @@ def _find_merges_for_patch(
 
         # lead lane encountered a gate
         if name == "h":
-            merges.append((waiting.node, node))
+            record = _build_hh_record(waiting.node, node)
+            merges.append(record)
             consumed.add(waiting.node)
             consumed.add(node)
             waiting = None
             continue
 
     return merges
+
+
+def _build_hh_record(first: DAGOpNode, second: DAGOpNode) -> MacroReplacement:
+    waiting_qubit = first.qargs[0]
+    lead_qubit = second.qargs[0]
+    return MacroReplacement(
+        first=first,
+        second=second,
+        macro_gate=HHGate(),
+        macro_qargs=(waiting_qubit, lead_qubit),
+        blocked_qubits=(waiting_qubit,),
+    )
 
 
 def _collect_events(
@@ -314,12 +404,296 @@ def _collect_events(
     return events
 
 
+def _find_transversal_merges(
+    layer_index: Dict[DAGOpNode, int],
+    order_index: Dict[DAGOpNode, int],
+    patch_pairs: Dict[int, Tuple],
+    qubit_indices: Dict[object, int],
+    consumed: set,
+    allow_transversal_swap_merges: bool,
+) -> List[MacroReplacement]:
+    patch_ids = sorted(patch_pairs.keys())
+    records: List[MacroReplacement] = []
+    for idx, left_patch in enumerate(patch_ids):
+        for right_patch in patch_ids[idx + 1 :]:
+            records.extend(
+                _scan_patch_pair_for_transversal(
+                    layer_index,
+                    order_index,
+                    left_patch,
+                    right_patch,
+                    patch_pairs[left_patch],
+                    patch_pairs[right_patch],
+                    qubit_indices,
+                    consumed,
+                    allow_transversal_swap_merges,
+                )
+            )
+    return records
+
+
+def _scan_patch_pair_for_transversal(
+    layer_index: Dict[DAGOpNode, int],
+    order_index: Dict[DAGOpNode, int],
+    patch_a: int,
+    patch_b: int,
+    qubits_a: Tuple,
+    qubits_b: Tuple,
+    qubit_indices: Dict[object, int],
+    consumed: set,
+    allow_transversal_swap_merges: bool,
+) -> List[MacroReplacement]:
+    lane_map = {q: slot for slot, q in enumerate(qubits_a + qubits_b)}
+    events = _collect_events(layer_index, order_index, lane_map)
+    patches_by_qubit = {q: patch_a for q in qubits_a}
+    patches_by_qubit.update({q: patch_b for q in qubits_b})
+
+    slots_by_patch: Dict[int, Dict[int, object]] = {
+        patch_a: {slot: qubit for slot, qubit in enumerate(qubits_a)},
+        patch_b: {slot: qubit for slot, qubit in enumerate(qubits_b)},
+    }
+    slot_lookup: Dict[object, int] = {}
+    for patch, slots in slots_by_patch.items():
+        for slot, qubit in slots.items():
+            slot_lookup[qubit] = slot
+
+    pending: Optional[_PendingTransversal] = None
+    records: List[MacroReplacement] = []
+
+    for _, _, _, node in events:
+        if node in consumed:
+            continue
+
+        name = getattr(node.op, "name", "").lower()
+        if name in SKIP_NAMES:
+            continue
+
+        if name == "swap" and _apply_real_swap(node, patches_by_qubit, slots_by_patch, slot_lookup):
+            continue
+
+        info = _gate_info_for_pair(
+            node,
+            name,
+            patch_a,
+            patch_b,
+            patches_by_qubit,
+            slot_lookup,
+        )
+
+        if info is not None:
+            if pending is None:
+                pending = info
+                continue
+
+            record = _evaluate_transversal_pair(
+                pending,
+                info,
+                slots_by_patch,
+                slot_lookup,
+                qubit_indices,
+                allow_transversal_swap_merges,
+            )
+
+            if record is None:
+                pending = info
+                continue
+
+            records.append(record)
+            consumed.add(record.first)
+            consumed.add(record.second)
+            pending = None
+            continue
+
+        if pending and _node_blocks_pending(node, pending, patches_by_qubit):
+            pending = None
+
+    return records
+
+
+def _evaluate_transversal_pair(
+    first: "_PendingTransversal",
+    second: "_PendingTransversal",
+    slots_by_patch: Dict[int, Dict[int, object]],
+    slot_lookup: Dict[object, int],
+    qubit_indices: Dict[object, int],
+    allow_transversal_swap_merges: bool,
+) -> Optional[MacroReplacement]:
+    if first.gate_name != second.gate_name:
+        return None
+
+    if first.gate_name == "cx" and first.control_patch != second.control_patch:
+        return None
+
+    if first.target_patch != second.target_patch:
+        return None
+
+    control_pairs = {
+        first.control_slot: first.target_slot,
+        second.control_slot: second.target_slot,
+    }
+    if len(control_pairs) != 2 or len(set(control_pairs.values())) != 2:
+        return None
+
+    ordered_control_slots = sorted(control_pairs.keys())
+    slot_lo, slot_hi = ordered_control_slots
+    identity_map = control_pairs[slot_lo] == slot_lo and control_pairs[slot_hi] == slot_hi
+    cross_map = control_pairs[slot_lo] == slot_hi and control_pairs[slot_hi] == slot_lo
+
+    pre_ops: Tuple[PlannedOp, ...] = ()
+    post_ops: Tuple[PlannedOp, ...] = ()
+    swapped_patch: Optional[int] = None
+    swapped_slots: Optional[Tuple[int, int]] = None
+
+    if not identity_map:
+        if not allow_transversal_swap_merges or not cross_map:
+            return None
+        # Prefer swapping the target patch when alignment forms a cross map.
+        swapped_patch = first.target_patch
+        swapped_slots = tuple(sorted({first.target_slot, second.target_slot}))
+        swap_qubits = tuple(slots_by_patch[swapped_patch][slot] for slot in swapped_slots)
+        swap_gate = SwapGate()
+        planned = PlannedOp(gate=swap_gate, qargs=swap_qubits)
+        pre_ops = (planned,)
+        post_ops = (PlannedOp(gate=SwapGate(), qargs=swap_qubits),)
+        _apply_slot_swap(slots_by_patch, slot_lookup, swapped_patch, swapped_slots[0], swapped_slots[1])
+
+    control_order = tuple(qubit for _, qubit in sorted(slots_by_patch[first.control_patch].items()))
+    target_order = tuple(qubit for _, qubit in sorted(slots_by_patch[first.target_patch].items()))
+    macro_qargs = control_order + target_order
+    logical_indices = tuple(qubit_indices[q] for q in macro_qargs)
+
+    if first.gate_name == "cx":
+        macro_gate = CXTGate(
+            control_patch=first.control_patch,
+            target_patch=first.target_patch,
+            control_count=len(control_order),
+            logical_qubits=logical_indices,
+        )
+    else:
+        macro_gate = CZTGate(
+            control_patch=first.control_patch,
+            target_patch=first.target_patch,
+            control_count=len(control_order),
+            logical_qubits=logical_indices,
+        )
+
+    record = MacroReplacement(
+        first=first.node,
+        second=second.node,
+        macro_gate=macro_gate,
+        macro_qargs=macro_qargs,
+        blocked_qubits=(first.control_qubit, first.target_qubit),
+        pre_ops=pre_ops,
+        post_ops=post_ops,
+    )
+
+    if swapped_patch is not None and swapped_slots is not None:
+        _apply_slot_swap(slots_by_patch, slot_lookup, swapped_patch, swapped_slots[0], swapped_slots[1])
+
+    return record
+
+
+def _apply_real_swap(
+    node: DAGOpNode,
+    patch_lookup: Dict[object, int],
+    slots_by_patch: Dict[int, Dict[int, object]],
+    slot_lookup: Dict[object, int],
+) -> bool:
+    qargs = list(node.qargs)
+    if len(qargs) != 2:
+        return False
+    patch = patch_lookup.get(qargs[0])
+    if patch is None or patch != patch_lookup.get(qargs[1]):
+        return False
+    slot_a = slot_lookup.get(qargs[0])
+    slot_b = slot_lookup.get(qargs[1])
+    if slot_a is None or slot_b is None:
+        return False
+    _apply_slot_swap(slots_by_patch, slot_lookup, patch, slot_a, slot_b)
+    return True
+
+
+def _apply_slot_swap(
+    slots_by_patch: Dict[int, Dict[int, object]],
+    slot_lookup: Dict[object, int],
+    patch: int,
+    slot_a: int,
+    slot_b: int,
+) -> None:
+    if slot_a == slot_b:
+        return
+    qa = slots_by_patch[patch][slot_a]
+    qb = slots_by_patch[patch][slot_b]
+    slots_by_patch[patch][slot_a], slots_by_patch[patch][slot_b] = qb, qa
+    slot_lookup[qa], slot_lookup[qb] = slot_b, slot_a
+
+
+def _gate_info_for_pair(
+    node: DAGOpNode,
+    name: str,
+    patch_a: int,
+    patch_b: int,
+    patch_lookup: Dict[object, int],
+    slot_lookup: Dict[object, int],
+) -> Optional["_PendingTransversal"]:
+    if name not in {"cx", "cz"}:
+        return None
+    qargs = list(node.qargs)
+    if len(qargs) != 2:
+        return None
+    patch0 = patch_lookup.get(qargs[0])
+    patch1 = patch_lookup.get(qargs[1])
+    if patch0 is None or patch1 is None:
+        return None
+    if {patch0, patch1} != {patch_a, patch_b}:
+        return None
+    slot0 = slot_lookup.get(qargs[0])
+    slot1 = slot_lookup.get(qargs[1])
+    if slot0 is None or slot1 is None:
+        return None
+    if patch0 == patch1:
+        return None
+
+    control_patch = patch0
+    target_patch = patch1
+    control_qubit = qargs[0]
+    target_qubit = qargs[1]
+    control_slot = slot0
+    target_slot = slot1
+
+    if name == "cz" and patch1 < patch0:
+        control_patch, target_patch = target_patch, control_patch
+        control_qubit, target_qubit = target_qubit, control_qubit
+        control_slot, target_slot = target_slot, control_slot
+
+    return _PendingTransversal(
+        node=node,
+        gate_name=name,
+        control_patch=control_patch,
+        target_patch=target_patch,
+        control_qubit=control_qubit,
+        target_qubit=target_qubit,
+        control_slot=control_slot,
+        target_slot=target_slot,
+    )
+
+
+def _node_blocks_pending(
+    node: DAGOpNode,
+    pending: "_PendingTransversal",
+    patch_lookup: Dict[object, int],
+) -> bool:
+    qargs = set(node.qargs)
+    if pending.control_qubit in qargs or pending.target_qubit in qargs:
+        return True
+    patches = {patch_lookup.get(q) for q in qargs if patch_lookup.get(q) is not None}
+    return len(patches) > 1
+
+
 def _build_rewritten_circuit(
     original: QuantumCircuit,
     dag: DAGCircuit,
-    skip_nodes: set,
-    replacements: Dict[DAGOpNode, MergeRecord],
-    waiting_lookup: Dict[DAGOpNode, MergeRecord],
+    records: Sequence[MacroReplacement],
     layer_index: Dict[DAGOpNode, int],
     order_index: Dict[DAGOpNode, int],
 ) -> QuantumCircuit:
@@ -330,9 +704,12 @@ def _build_rewritten_circuit(
     if hasattr(original, "metadata"):
         new_qc.metadata = copy.deepcopy(original.metadata)
 
-    hh_gate = HHGate()
-    blocked_qubits: Dict[object, MergeRecord] = {}
-    delayed_nodes: Dict[MergeRecord, List[DAGOpNode]] = {}
+    skip_nodes = {record.first for record in records}
+    replacements = {record.second: record for record in records}
+    waiting_lookup = {record.first: record for record in records}
+
+    blocked_qubits: Dict[object, MacroReplacement] = {}
+    delayed_nodes: Dict[MacroReplacement, List[DAGOpNode]] = {}
     ordered_nodes = sorted(
         dag.topological_op_nodes(),
         key=lambda n: (layer_index.get(n, 0), order_index.get(n, 0)),
@@ -341,21 +718,27 @@ def _build_rewritten_circuit(
         if node in skip_nodes:
             record = waiting_lookup.get(node)
             if record is not None:
-                blocked_qubits[record.waiting_qubit] = record
+                for qubit in record.blocked_qubits:
+                    blocked_qubits[qubit] = record
                 delayed_nodes.setdefault(record, [])
+            continue
+        if node in replacements:
+            record = replacements[node]
+            for planned in record.pre_ops:
+                new_qc.append(planned.gate.copy(), list(planned.qargs), [])
+            new_qc.append(record.macro_gate, list(record.macro_qargs), [])
+            for planned in record.post_ops:
+                new_qc.append(planned.gate.copy(), list(planned.qargs), [])
+            for delayed in delayed_nodes.get(record, []):
+                new_qc.append(delayed.op.copy(), delayed.qargs, delayed.cargs)
+            delayed_nodes.pop(record, None)
+            for qubit in record.blocked_qubits:
+                blocked_qubits.pop(qubit, None)
             continue
         blocking_records = {blocked_qubits[q] for q in node.qargs if q in blocked_qubits}
         if blocking_records:
             record = next(iter(blocking_records))
             delayed_nodes.setdefault(record, []).append(node)
-            continue
-        if node in replacements:
-            record = replacements[node]
-            new_qc.append(hh_gate, [record.waiting_qubit, record.lead_qubit], [])
-            for delayed in delayed_nodes.get(record, []):
-                new_qc.append(delayed.op.copy(), delayed.qargs, delayed.cargs)
-            delayed_nodes.pop(record, None)
-            blocked_qubits.pop(record.waiting_qubit, None)
             continue
         new_qc.append(node.op.copy(), node.qargs, node.cargs)
 
@@ -367,6 +750,18 @@ class _WaitingState:
     lane: Lane
     node: DAGOpNode
     remaining: float
+
+
+@dataclass
+class _PendingTransversal:
+    node: DAGOpNode
+    gate_name: str
+    control_patch: int
+    target_patch: int
+    control_qubit: object
+    target_qubit: object
+    control_slot: int
+    target_slot: int
 
 
 def _layer_by_node(dag: DAGCircuit) -> Tuple[Dict[DAGOpNode, int], Dict[DAGOpNode, int]]:

@@ -11,8 +11,8 @@ import math
 
 from .context import TranslationContext
 from .handlers.hadamard import apply_logical_hadamard, apply_logical_hh_merge
-from .handlers.controlled_not import apply_logical_cnot
-from .handlers.controlled_z import apply_logical_cz
+from .handlers.controlled_not import apply_logical_cnot, apply_logical_cxt
+from .handlers.controlled_z import apply_logical_cz, apply_logical_czt
 from .handlers.rz import apply_logical_rz
 from .handlers.s import apply_logical_s
 from .handlers.x import apply_logical_x
@@ -45,6 +45,8 @@ TABLE_COMPLEX: Dict[str, Callable] = {
     "hh": apply_logical_hh_merge,
     "cx": apply_logical_cnot,
     "cz": apply_logical_cz,
+    "cxt": apply_logical_cxt,
+    "czt": apply_logical_czt,
 }
 
 SKIPPED_NAMES = {"barrier", "measure"}
