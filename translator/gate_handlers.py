@@ -19,7 +19,7 @@ from .handlers.x import apply_logical_x
 from .handlers.z import apply_logical_z
 from .handlers.swap import apply_logical_swap
 
-BARRIERS = True
+BARRIERS = False
 
 # --- Simple shim so handlers can use op.gate and op.qubits like before ---
 class _OpLike:

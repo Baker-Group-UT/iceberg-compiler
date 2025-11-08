@@ -13,6 +13,7 @@ from .context import TranslationContext
 from .gate_handlers import translate_and_apply
 from .config import TranslatorConfig
 from .merging import preprocess_program_for_merging
+from .passes import cancel_inverse_gates
 
 
 @dataclass
@@ -63,9 +64,11 @@ class Translation:
         if BARRIERS:
             self.context.iceberg_set.BARRIER()
         self.context.iceberg_set.measure()
-
+        print(self.context.iceberg_set.circuit)
+        physical_circuit = cancel_inverse_gates(self.context.iceberg_set.circuit)
+        print(physical_circuit)
         return TranslationResult(
-            circuit=self.context.iceberg_set.circuit,
+            circuit=physical_circuit,
             permutation=self.permutation,
             context=self.context,
             contains_faults=(len(self.context.fault_log) == 0),
@@ -101,6 +104,7 @@ class Translator:
             )
         else:
             processed_circuit = program_circuit
+        processed_circuit = cancel_inverse_gates(processed_circuit)
         translation = Translation(
             permutation=permutation,
             program_circuit=processed_circuit,
