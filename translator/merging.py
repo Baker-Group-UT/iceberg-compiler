@@ -722,11 +722,6 @@ def _build_rewritten_circuit(
                     blocked_qubits[qubit] = record
                 delayed_nodes.setdefault(record, [])
             continue
-        blocking_records = {blocked_qubits[q] for q in node.qargs if q in blocked_qubits}
-        if blocking_records:
-            record = next(iter(blocking_records))
-            delayed_nodes.setdefault(record, []).append(node)
-            continue
         if node in replacements:
             record = replacements[node]
             for planned in record.pre_ops:
@@ -739,6 +734,11 @@ def _build_rewritten_circuit(
             delayed_nodes.pop(record, None)
             for qubit in record.blocked_qubits:
                 blocked_qubits.pop(qubit, None)
+            continue
+        blocking_records = {blocked_qubits[q] for q in node.qargs if q in blocked_qubits}
+        if blocking_records:
+            record = next(iter(blocking_records))
+            delayed_nodes.setdefault(record, []).append(node)
             continue
         new_qc.append(node.op.copy(), node.qargs, node.cargs)
 
