@@ -43,6 +43,7 @@ _ONE_Q_GATES = {
 _TWO_Q_GATES = {
     "cx": lambda c, t: f"CX {c} {t}",
     "cz": lambda c, t: f"CZ {c} {t}",
+    "swap": lambda q0, q1: f"SWAP {q0} {q1}",
 }
 
 
