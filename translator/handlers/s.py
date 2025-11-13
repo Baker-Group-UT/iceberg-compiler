@@ -26,8 +26,8 @@ def apply_logical_s(op, context: TranslationContext) -> bool:
     phys_id   = context.phys_index_for_logical(logical_i)
     patch, slot = context.current_pos_of(phys_id)
 
-    # Apply logical S at the *current* resolved location
-    context.iceberg_set.S(logical_i)
+    # Apply logical S at the *current* resolved location (patch, slot)
+    context.iceberg_set.S_at(patch, slot)
 
     # (Optional verbose trace)
     if getattr(context, "verbose", False):

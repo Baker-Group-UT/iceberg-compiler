@@ -26,7 +26,7 @@ class TranslationResult:
     verbose: bool
     fault_tolerant: bool
 
-BARRIERS = True
+BARRIERS = False
 
 class Translation:
     def __init__(
@@ -64,9 +64,7 @@ class Translation:
         if BARRIERS:
             self.context.iceberg_set.BARRIER()
         self.context.iceberg_set.measure()
-        print(self.context.iceberg_set.circuit)
         physical_circuit = cancel_inverse_gates(self.context.iceberg_set.circuit)
-        print(physical_circuit)
         return TranslationResult(
             circuit=physical_circuit,
             permutation=self.permutation,

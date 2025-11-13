@@ -14,7 +14,7 @@ import qiskit
 from qiskit.circuit.random import random_clifford_circuit
 
 from pipeline.config import PipelineConfig
-from pipeline import generate_circuit, run_full_scan, run_extremal_scan, run_random_scan, run_specific_scan
+from pipeline import generate_circuit, run_full_scan, run_extremal_scan, run_random_scan, run_specific_scan, translate_permutation
 from simulator.config_presets import ScaledSimulator, StandardSimulator
 from packer.packer import pack
 
@@ -30,47 +30,53 @@ from packer.packer import pack
 # )
 # tcirc.measure_all()
 
-tcirc = qiskit.QuantumCircuit(4)
-# tcirc.x(0)
-# tcirc.z(0)
-# tcirc.x(0)
-# tcirc.x(1)
+# orig
+# tcirc = qiskit.QuantumCircuit(4)
+# tcirc.h([0,1,2,3])
 # tcirc.cx(0,2)
-# tcirc.z(1)
-# tcirc.cx(1,2)
-# tcirc.cz(0,2)
-# tcirc.x(2)
+# tcirc.cx(0,1)
+# tcirc.h([0,1,3])
 # tcirc.cz(1,3)
-# tcirc.h(0)
-# tcirc.h(1)
-# tcirc.cx(0,3)
-# tcirc.cx(1,2)
-# tcirc.x(3)
-# tcirc.x(0)
+# tcirc.x([0,1,2,3])
+# tcirc.measure_all()
 
-tcirc.x(0)
-tcirc.x(1)
-
+# relabeled for 
+# [(1,0), (0,0), (1,1), (0,1)]
+tcirc = qiskit.QuantumCircuit(2)
+tcirc.h(0)
+tcirc.s(0)
+tcirc.h(0)
 tcirc.measure_all()
-print(tcirc)
+
+# tcirc = qiskit.QuantumCircuit(2)
+# tcirc.h([0,1])
+# tcirc.cx(0,1)
+# tcirc.h([0,1])
+
+tcirc.draw('mpl', filename="input_circ_relabeled.svg")
 
 config = PipelineConfig(
-    sim_config=ScaledSimulator(alpha=1, repetitions=100_000).with_seed(9).with_noiseless(), #.with_stim(),
+    sim_config=ScaledSimulator(alpha=1, repetitions=50_000).with_stim(),
     verbose=True,
     save=False,
-    seed=4,
 )
 
-# print(pack(pcirc))
+# # print(pack(pcirc))
 
-# res: RunRecord = run_full_scan(pcirc, config)
-# df = res.dataframe.df
+# # res: RunRecord = run_full_scan(pcirc, config)
+# # df = res.dataframe.df
 
 perms = [
-    [(0,0), (0,1), (1,0), (1,1)],
+    [(0,0), (0,1), (1,0), (1,1)], # in this perm, 0 goes 0, 1 goes 1, 2 goes 2, 3 goes 3
+    [(1,0), (0,0), (1,1), (0,1)], # we need to relabel so that this recreates the above
+    # [(1,0), (0,0), (1,1), (0,1)], # we need to relabel so that this recreates the above
+    # [(0,0), (0,1)],
     # [(0,0), (1,0), (2,0), (3,0)],
 ]
 
-# res: RunRecord = run_random_scan(tcirc, 1, config)
-res: RunRecord = run_specific_scan(tcirc, perms,  config)
+out_circ = translate_permutation(tcirc, perms[1])
+out_circ.circuit.draw('mpl', filename="output_circ_relabeled.svg", fold=-1)
+# # res: RunRecord = run_random_scan(tcirc, 1, config)
+res: RunRecord = run_full_scan(tcirc,  config)
 # res: RunRecord = run_full_scan(tcirc, config)
+

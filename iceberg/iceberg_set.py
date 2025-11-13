@@ -196,6 +196,23 @@ class IcebergSet:
             if qset:
                 self.modules[patch].S(qset)
 
+    def S_at(self, patch: int, slot: int | list[int] | set[int]):
+        """Apply logical S to one or more slots in a specific module."""
+        if isinstance(slot, int):
+            slot = {slot}
+        else:
+            slot = set(slot)
+
+        if patch < 0 or patch >= self.num_modules:
+            raise ValueError("Patch out of range")
+
+        for s in slot:
+            if s < 0 or s >= self.k:
+                raise ValueError("Slot out of range")
+
+        if slot:
+            self.modules[patch].S(slot)
+
     def H(self, i: int | Collection[int], fault_tolerant: bool = False):
         """Apply logical H to specified logical qubit(s)."""
         if isinstance(i, int):
