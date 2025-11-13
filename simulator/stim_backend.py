@@ -18,16 +18,9 @@ import numpy as np
 import qiskit
 import stim
 
-# ---------------------------------------------------------------------------
-# Defaults (chosen to mirror simulator.noise_models.DefaultNoiseModel)
-# ---------------------------------------------------------------------------
-_DEFAULT_T1 = 100e-6
-_DEFAULT_T2 = 80e-6
-_DEFAULT_1Q_TIME = 50e-9
-_DEFAULT_2Q_TIME = 300e-9
-_DEFAULT_1Q_GATE_ERROR = 1e-3
-_DEFAULT_2Q_GATE_ERROR = 5e-3
-_DEFAULT_MEAS_TIME = 1e-6
+from simulator.noise_models import StimNoiseParameters, stim_params_from_noise_model
+
+_DEFAULT_STIM_PARAMS = StimNoiseParameters()
 
 # Stim text snippets for basic gates (taken from stim_conversion_updated.ipynb)
 _ONE_Q_GATES = {
@@ -146,6 +139,8 @@ def _convert_qiskit_to_dag(
     qubit_index_map: dict[object, int],
     gate_duration_map: dict[object, float],
     meas_time: float,
+    default_one_qubit_time: float,
+    default_two_qubit_time: float,
 ) -> nx.DiGraph:
     """
     Build a DAG where nodes are GateNode objects annotated with timing metadata.
@@ -165,11 +160,11 @@ def _convert_qiskit_to_dag(
             continue
 
         if len(qubits) == 1:
-            gate_time = meas_time if name == "measure" else gate_duration_map.get(qubits[0], _DEFAULT_1Q_TIME)
+            gate_time = meas_time if name == "measure" else gate_duration_map.get(qubits[0], default_one_qubit_time)
         else:
             gate_time = gate_duration_map.get(
                 qubits,
-                gate_duration_map.get((qubits[1], qubits[0]), _DEFAULT_2Q_TIME),
+                gate_duration_map.get((qubits[1], qubits[0]), default_two_qubit_time),
             )
 
         node = GateNode(
@@ -201,7 +196,13 @@ def _idle_noise_lines(
     T2: float,
 ) -> List[str]:
     """Generate PTA idle noise for the specified duration."""
-    if (not include_noise) or duration <= 0 or not targets:
+    if (
+        (not include_noise)
+        or duration <= 0
+        or not targets
+        or T1 <= 0
+        or T2 <= 0
+    ):
         return []
     probs = analytic_pta_probs_from_T1_T2(duration, T1, T2)
     px = probs["X"]
@@ -214,13 +215,7 @@ def _idle_noise_lines(
 def convert_qiskit_to_stim(
     circuit: qiskit.QuantumCircuit,
     *,
-    T1: float = _DEFAULT_T1,
-    T2: float = _DEFAULT_T2,
-    one_qubit_gate_time: float = _DEFAULT_1Q_TIME,
-    two_qubit_gate_time: float = _DEFAULT_2Q_TIME,
-    single_qubit_error: float = _DEFAULT_1Q_GATE_ERROR,
-    two_qubit_error: float = _DEFAULT_2Q_GATE_ERROR,
-    meas_time: float = _DEFAULT_MEAS_TIME,
+    params: StimNoiseParameters = _DEFAULT_STIM_PARAMS,
     include_noise: bool = True,
     measure_all_if_none: bool = True,
 ) -> Tuple[stim.Circuit, List[Tuple[int, Optional[int]]], int]:
@@ -235,9 +230,25 @@ def convert_qiskit_to_stim(
     if circuit.num_qubits == 0:
         raise ValueError("Stim backend requires at least one qubit in the circuit.")
 
+    noise_params = params or _DEFAULT_STIM_PARAMS
+    T1 = noise_params.T1
+    T2 = noise_params.T2
+    one_qubit_gate_time = noise_params.one_qubit_gate_time
+    two_qubit_gate_time = noise_params.two_qubit_gate_time
+    single_qubit_error = noise_params.one_qubit_error
+    two_qubit_error = noise_params.two_qubit_error
+    meas_time = noise_params.meas_time
+
     qubit_index_map = _build_qubit_index_map(circuit)
     gate_time_map = _default_gate_time_map(circuit.num_qubits, one_qubit_gate_time, two_qubit_gate_time)
-    dag = _convert_qiskit_to_dag(circuit, qubit_index_map, gate_time_map, meas_time)
+    dag = _convert_qiskit_to_dag(
+        circuit,
+        qubit_index_map,
+        gate_time_map,
+        meas_time,
+        one_qubit_gate_time,
+        two_qubit_gate_time,
+    )
 
     stim_lines: List[str] = []
     reset_line = "R " + " ".join(str(i) for i in range(circuit.num_qubits))
@@ -249,14 +260,17 @@ def convert_qiskit_to_stim(
 
     topo_order = list(nx.topological_sort(dag))
     path_lengths: dict[GateNode, float] = {}
+    last_finish_time: dict[int, float] = {i: 0.0 for i in range(circuit.num_qubits)}
 
     for node in topo_order:
         preds = list(dag.predecessors(node))
-        idle_time = max((path_lengths[p] for p in preds), default=0.0)
-        finish_time = idle_time + node.gate_time
+        start_time = max((path_lengths[p] for p in preds), default=0.0)
+        finish_time = start_time + node.gate_time
         path_lengths[node] = finish_time
 
-        stim_lines.extend(_idle_noise_lines(idle_time, node.qubits, include_noise, T1, T2))
+        for q in node.qubits:
+            idle_duration = max(0.0, start_time - last_finish_time.get(q, 0.0))
+            stim_lines.extend(_idle_noise_lines(idle_duration, (q,), include_noise, T1, T2))
 
         if node.instr in _ONE_Q_GATES:
             q = node.qubits[0]
@@ -278,6 +292,9 @@ def convert_qiskit_to_stim(
                 stim_lines.append(f"DEPOLARIZE2({two_qubit_error:.12g}) {ctrl} {tgt}")
         else:
             raise NotImplementedError(f"Unsupported gate for Stim backend: {node.instr}")
+
+        for q in node.qubits:
+            last_finish_time[q] = finish_time
 
     had_measures = any(inst.operation.name == "measure" for inst in circuit.data)
     num_clbits = len(clbits)
@@ -317,6 +334,7 @@ def run_stim_backend(
     seed: Optional[int] = None,
     *,
     include_noise: bool = True,
+    noise_params: Optional[StimNoiseParameters] = None,
     measure_all_if_none: bool = True,
 ) -> dict[str, float]:
     """
@@ -331,6 +349,7 @@ def run_stim_backend(
     """
     stim_circ, meas_map, num_clbits = convert_qiskit_to_stim(
         circuit,
+        params=noise_params or _DEFAULT_STIM_PARAMS,
         include_noise=include_noise,
         measure_all_if_none=measure_all_if_none,
     )

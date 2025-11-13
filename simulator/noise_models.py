@@ -7,6 +7,7 @@ Predefined Qiskit Aer noise models for use with the Simulator.
 # pylint: disable=[C0103]
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Callable, Dict, Optional
 
 from qiskit_aer.noise import (
@@ -16,6 +17,60 @@ from qiskit_aer.noise import (
     depolarizing_error,
     thermal_relaxation_error,
 )
+
+
+@dataclass
+class StimNoiseParameters:
+    T1: float = 100e-6
+    T2: float = 80e-6
+    one_qubit_gate_time: float = 50e-9
+    two_qubit_gate_time: float = 300e-9
+    one_qubit_error: float = 1e-3
+    two_qubit_error: float = 5e-3
+    meas_time: float = 1e-6
+    readout_error: float = 0.02
+
+
+@dataclass
+class StimParameterScaling:
+    T1: float = 0.118848
+    T2: float = 0.736701
+    one_qubit_gate_time: float = 1 # 0.137947
+    two_qubit_gate_time: float = 1 # 0.151854
+    one_qubit_error: float = 1 # 0.856380
+    two_qubit_error: float = 1 # 0.75098
+    meas_time: float = 0.176850
+    readout_error: float = 0.279562
+
+
+def _attach_stim_params(model: NoiseModel, params: StimNoiseParameters) -> NoiseModel:
+    setattr(model, "_stim_params", params)
+    return model
+
+
+def stim_params_from_noise_model(model: Optional[NoiseModel]) -> StimNoiseParameters:
+    if model is not None:
+        params = getattr(model, "_stim_params", None)
+        if isinstance(params, StimNoiseParameters):
+            return params
+    return StimNoiseParameters()
+
+
+def apply_stim_scaling(
+    params: StimNoiseParameters, scaling: Optional[StimParameterScaling]
+) -> StimNoiseParameters:
+    if scaling is None:
+        return params
+    return StimNoiseParameters(
+        T1=params.T1 * scaling.T1,
+        T2=params.T2 * scaling.T2,
+        one_qubit_gate_time=params.one_qubit_gate_time * scaling.one_qubit_gate_time,
+        two_qubit_gate_time=params.two_qubit_gate_time * scaling.two_qubit_gate_time,
+        one_qubit_error=params.one_qubit_error * scaling.one_qubit_error,
+        two_qubit_error=params.two_qubit_error * scaling.two_qubit_error,
+        meas_time=params.meas_time * scaling.meas_time,
+        readout_error=params.readout_error * scaling.readout_error,
+    )
 
 # ---------- utils ----------
 
@@ -67,7 +122,18 @@ def DefaultNoiseModel() -> NoiseModel:
     ro = ReadoutError([[1 - p_meas, p_meas], [p_meas, 1 - p_meas]])
     nm.add_all_qubit_readout_error(ro)
 
-    return nm
+    params = StimNoiseParameters(
+        T1=T1,
+        T2=T2,
+        one_qubit_gate_time=t_1q,
+        two_qubit_gate_time=t_2q,
+        one_qubit_error=p1,
+        two_qubit_error=p2,
+        meas_time=1e-6,
+        readout_error=p_meas,
+    )
+
+    return _attach_stim_params(nm, params)
 
 
 def StochasticNoiseModel() -> NoiseModel:
@@ -83,7 +149,19 @@ def StochasticNoiseModel() -> NoiseModel:
 
     ro = ReadoutError([[1 - p_meas, p_meas], [p_meas, 1 - p_meas]])
     nm.add_all_qubit_readout_error(ro)
-    return nm
+
+    params = StimNoiseParameters(
+        T1=100e-6,
+        T2=80e-6,
+        one_qubit_gate_time=50e-9,
+        two_qubit_gate_time=300e-9,
+        one_qubit_error=p1,
+        two_qubit_error=p2,
+        meas_time=1e-6,
+        readout_error=p_meas,
+    )
+
+    return _attach_stim_params(nm, params)
 
 
 def ScaledNoiseModel(
@@ -154,7 +232,18 @@ def ScaledNoiseModel(
     ro = ReadoutError([[1 - p_meas, p_meas], [p_meas, 1 - p_meas]])
     nm.add_all_qubit_readout_error(ro)
 
-    return nm
+    params = StimNoiseParameters(
+        T1=T1,
+        T2=T2,
+        one_qubit_gate_time=t_1q,
+        two_qubit_gate_time=t_2q,
+        one_qubit_error=p1,
+        two_qubit_error=p2,
+        meas_time=1e-6,
+        readout_error=p_meas,
+    )
+
+    return _attach_stim_params(nm, params)
 
 
 def DistanceDependentNoiseModel(
@@ -209,7 +298,18 @@ def DistanceDependentNoiseModel(
     ro = ReadoutError([[1 - p_meas, p_meas], [p_meas, 1 - p_meas]])
     nm.add_all_qubit_readout_error(ro)
 
-    return nm
+    params = StimNoiseParameters(
+        T1=T1,
+        T2=T2,
+        one_qubit_gate_time=t_1q,
+        two_qubit_gate_time=t_2q,
+        one_qubit_error=p1,
+        two_qubit_error=p2,
+        meas_time=1e-6,
+        readout_error=p_meas,
+    )
+
+    return _attach_stim_params(nm, params)
 
 
 def manhattan_distance(pos1: tuple[int, int], pos2: tuple[int, int]) -> float:

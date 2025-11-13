@@ -8,7 +8,11 @@ from dataclasses import dataclass
 from typing import Optional, Self
 
 from qiskit_aer.noise import NoiseModel
-from .noise_models import noise_model_to_dict, DefaultNoiseModel
+from .noise_models import (
+    noise_model_to_dict,
+    DefaultNoiseModel,
+    StimParameterScaling,
+)
 
 
 @dataclass
@@ -21,6 +25,7 @@ class SimulatorConfig:
     noiseless: bool = False
     seed: Optional[int] = None
     stim: bool = False
+    stim_scaling: Optional[StimParameterScaling] = None
 
     def __post_init__(self):
         # Default to a realistic noise model if none specified and not noiseless
@@ -38,6 +43,7 @@ class SimulatorConfig:
             else None,
             "noiseless": self.noiseless,
             "seed": self.seed,
+            "stim_scaling": self.stim_scaling.__dict__ if self.stim_scaling else None,
         }
 
     def with_noiseless(self, noiseless: bool = True) -> Self:
@@ -54,4 +60,10 @@ class SimulatorConfig:
 
     def with_stim(self, stim: bool = True) -> Self:
         self.stim = stim
+        return self
+
+    def with_stim_scaling(self, scaling: StimParameterScaling = None) -> Self:
+        if scaling is None:
+            scaling = StimParameterScaling()
+        self.stim_scaling = scaling
         return self

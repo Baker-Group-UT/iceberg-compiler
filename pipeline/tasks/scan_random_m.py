@@ -53,6 +53,7 @@ def run_random_scan(program_circuit: qiskit.QuantumCircuit, m: int = 100, config
     simulation_results = []
     for i in trange(len(translated), desc="Simulating circuits", unit=" sim"):
         simulation_results.append(simulator.noisy(translated[i].circuit))
+    print(permutations[0])
 
     # # Step 4: Postselection
     simulation_results = postselect_against_reference(

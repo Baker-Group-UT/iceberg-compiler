@@ -26,7 +26,7 @@ class TranslationResult:
     verbose: bool
     fault_tolerant: bool
 
-BARRIERS = True
+BARRIERS = False
 
 class Translation:
     def __init__(

@@ -22,6 +22,11 @@ from .result_types import SimulationResult
 from .utils import bhattacharyya
 
 from .stim_backend import run_stim_backend
+from .noise_models import (
+    stim_params_from_noise_model,
+    apply_stim_scaling,
+    StimParameterScaling,
+)
 
 class Simulator:
     """
@@ -40,6 +45,7 @@ class Simulator:
         self._seed: Optional[int] = config.seed
         self._noise_model: Optional[NoiseModel] = config.noise_model
         self._stim: bool = config.stim
+        self._stim_scaling: Optional[StimParameterScaling] = config.stim_scaling
 
     # -------- Fluent Configuration Methods --------
 
@@ -63,6 +69,10 @@ class Simulator:
         self._stim = stim
         return self
 
+    def with_stim_scaling(self, scaling: StimParameterScaling | None) -> "Simulator":
+        self._stim_scaling = scaling
+        return self
+
     def clone(self) -> "Simulator":
         return (
             Simulator()
@@ -71,6 +81,7 @@ class Simulator:
             .with_seed(self._seed if self._seed is not None else 0)
             .with_noiseless(self._noiseless)
             .with_stim(self._stim)
+            .with_stim_scaling(self._stim_scaling)
         )
 
     # -------------- ( Helpers ) -------------
@@ -140,11 +151,15 @@ class Simulator:
         # ---- Run via Stim ----
         include_noise = add_noise and (not self._noiseless)
 
+        stim_params = stim_params_from_noise_model(self._noise_model)
+        stim_params = apply_stim_scaling(stim_params, self._stim_scaling)
+
         probs = run_stim_backend(
             circuit=tcirc,
             shots=self._repetitions,
             seed=self._seed,
             include_noise=include_noise,
+            noise_params=stim_params,
         )
         key_order, key_widths = self._key_meta(tcirc)
 
