@@ -9,13 +9,16 @@ counts→probability distribution utilities.
 
 from __future__ import annotations
 
+from collections import Counter
+from contextlib import contextmanager
 from logging import warning
-from typing import Optional
+from typing import Optional, Callable, Sequence, Union, TYPE_CHECKING
 
 from qiskit import QuantumCircuit
 from qiskit.result import Result
 from qiskit_aer import AerSimulator
 from qiskit_aer.noise import NoiseModel  # kept for future use with AerSimulator
+from tqdm.auto import trange
 
 from .config import SimulatorConfig
 from .result_types import SimulationResult
@@ -28,6 +31,11 @@ from .noise_models import (
     StimParameterScaling,
 )
 
+if TYPE_CHECKING:  # pragma: no cover
+    from translator.core import TranslationResult
+
+TranslationLike = Union[QuantumCircuit, "TranslationResult"]
+
 class Simulator:
     """
     Quantum circuit simulator (Qiskit).
@@ -36,6 +44,9 @@ class Simulator:
     Noise is expected to be supplied as a Qiskit Aer `NoiseModel` and will be
     wired in when we add the AerSimulator in the next step.
     """
+
+    _DEFAULT_SHOT_CHUNK = 50_000
+    _SHOT_BAR_TARGET_UPDATES = 100
 
     def __init__(self, config: Optional[SimulatorConfig] = None):
         if config is None:
@@ -46,6 +57,8 @@ class Simulator:
         self._noise_model: Optional[NoiseModel] = config.noise_model
         self._stim: bool = config.stim
         self._stim_scaling: Optional[StimParameterScaling] = config.stim_scaling
+        self._show_shot_progress: bool = True
+        self._shot_chunk_size: int = self._DEFAULT_SHOT_CHUNK
 
     # -------- Fluent Configuration Methods --------
 
@@ -73,6 +86,14 @@ class Simulator:
         self._stim_scaling = scaling
         return self
 
+    def with_shot_progress(self, show: bool = True) -> "Simulator":
+        self._show_shot_progress = show
+        return self
+
+    def with_shot_chunk_size(self, chunk_size: int) -> "Simulator":
+        self._shot_chunk_size = max(1, chunk_size)
+        return self
+
     def clone(self) -> "Simulator":
         return (
             Simulator()
@@ -82,6 +103,8 @@ class Simulator:
             .with_noiseless(self._noiseless)
             .with_stim(self._stim)
             .with_stim_scaling(self._stim_scaling)
+            .with_shot_progress(self._show_shot_progress)
+            .with_shot_chunk_size(self._shot_chunk_size)
         )
 
     # -------------- ( Helpers ) -------------
@@ -134,6 +157,43 @@ class Simulator:
             flipped[flipped_key] = v
         return flipped
 
+    def _shot_chunk_size_for(self, total: int) -> int:
+        """Compute an appropriate chunk size that keeps the shot bar responsive."""
+        adaptive_target = max(total // self._SHOT_BAR_TARGET_UPDATES, 1)
+        return max(1, min(self._shot_chunk_size, adaptive_target))
+
+    def _shot_chunk_generator(self, total: int):
+        """Yield shot chunk sizes used for incremental simulation."""
+        chunk_size = self._shot_chunk_size_for(total)
+        remaining = total
+        while remaining > 0:
+            current = min(chunk_size, remaining)
+            yield current
+            remaining -= current
+
+    @contextmanager
+    def _shot_progress_bar(self, desc: str) -> Callable[[int], None] | None:
+        """
+        Provide a nested tqdm bar that disappears on completion.
+        Returns a callback that updates the bar, or None if disabled.
+        """
+        if (not self._show_shot_progress) or self._repetitions <= 0:
+            yield None
+            return
+
+        bar = trange(
+            self._repetitions,
+            desc=desc,
+            leave=False,
+            unit="shot",
+            position=1,
+            dynamic_ncols=True,
+        )
+        try:
+            yield bar.update
+        finally:
+            bar.close()
+
     # -------- Core Simulation Method --------
 
     def _stimulate(self, circuit: QuantumCircuit, add_noise: bool = True):
@@ -154,13 +214,16 @@ class Simulator:
         stim_params = stim_params_from_noise_model(self._noise_model)
         stim_params = apply_stim_scaling(stim_params, self._stim_scaling)
 
-        probs = run_stim_backend(
-            circuit=tcirc,
-            shots=self._repetitions,
-            seed=self._seed,
-            include_noise=include_noise,
-            noise_params=stim_params,
-        )
+        with self._shot_progress_bar("Shots") as progress_update:
+            probs = run_stim_backend(
+                circuit=tcirc,
+                shots=self._repetitions,
+                seed=self._seed,
+                include_noise=include_noise,
+                noise_params=stim_params,
+                shots_per_chunk=self._shot_chunk_size_for(self._repetitions),
+                progress_callback=progress_update,
+            )
         key_order, key_widths = self._key_meta(tcirc)
 
         if not add_noise:
@@ -197,32 +260,41 @@ class Simulator:
             return {}, [], []
 
         # Run and return raw counts
-        job = sim.run(tcirc, shots=self._repetitions)
-        result = job.result()
+        aggregated_counts: Counter[str] = Counter()
+        first_result: Result | None = None
 
-        key_order, key_widths = self._key_meta(tcirc, result)
+        with self._shot_progress_bar("Shots") as progress_update:
+            for chunk in self._shot_chunk_generator(self._repetitions):
+                job = sim.run(tcirc, shots=chunk)
+                result = job.result()
+                if first_result is None:
+                    first_result = result
 
-        # <+======================================================================================+>*
-        # NOTE: EXTREMELY important Note. AerSim returns are little endian.                         |   HEY READ THE NOTE!!!
-        #  This also includes register order.                                                       |             ,\
-        #  We reverse the bitstring here so we can directly read                                    |             \\\,_
-        #  bit strings into their correct register from L to R                                      |              \` ,\
-        # For example:                                                                              |         __,.-" =__)
-        #   bits B -> L 0101 1111 00 01 != ['m_parity_0', 'm_parity_1', 'm_data_0', 'm_data_1']     |       ."        )
-        #        L -> B 10 00 1111 1010 == ['m_parity_0', 'm_parity_1', 'm_data_0', 'm_data_1']     |    ,_/   ,    \/\_
-        # NOTE: In summary, we invert bit strings to match registers                                |    \_|    )_-\ \_-`
-        #       and so we can print(bitstring[i]) to print the actual ith bit                       |       `-----` `--`
-        #       i.e. 0,1,1,0,1,0,1 -> bits 0,1,2,3,4,5,6                                            |
-        # <+======================================================================================+>*
-        little_endian_counts = result.get_counts(
-            0
-        )  # first (and typically only) circuit
-        counts = self._invert_endianness(little_endian_counts)
-        # ^^^^^^^^^^ IMPORTANT THING ^^^^^^^^^^ #
-        # NOTE: When we invert this here we also HAVE to invert the post selection bitstrings
+                # <+======================================================================================+>*
+                # NOTE: EXTREMELY important Note. AerSim returns are little endian.                         |   HEY READ THE NOTE!!!
+                #  This also includes register order.                                                       |             ,\
+                #  We reverse the bitstring here so we can directly read                                    |             \\\,_
+                #  bit strings into their correct register from L to R                                      |              \` ,\
+                # For example:                                                                              |         __,.-" =__)
+                #   bits B -> L 0101 1111 00 01 != ['m_parity_0', 'm_parity_1', 'm_data_0', 'm_data_1']     |       ."        )
+                #        L -> B 10 00 1111 1010 == ['m_parity_0', 'm_parity_1', 'm_data_0', 'm_data_1']     |    ,_/   ,    \/\_
+                # NOTE: In summary, we invert bit strings to match registers                                |    \_|    )_-\ \_-`
+                #       and so we can print(bitstring[i]) to print the actual ith bit                       |       `-----` `--`
+                #       i.e. 0,1,1,0,1,0,1 -> bits 0,1,2,3,4,5,6                                            |
+                # <+======================================================================================+>*
+                little_endian_counts = result.get_counts(
+                    0
+                )  # first (and typically only) circuit
+                counts = self._invert_endianness(little_endian_counts)
+                aggregated_counts.update(counts)
+
+                if progress_update is not None:
+                    progress_update(chunk)
+
+        key_order, key_widths = self._key_meta(tcirc, first_result)
 
         # counts: Dict[str, int], keys are space-delimited per creg in qc.cregs order
-        probs = self._counts_to_probs(counts)
+        probs = self._counts_to_probs(dict(aggregated_counts))
         return probs, key_order, key_widths
 
     # ---------------------- Public APIs -----------------------
@@ -267,3 +339,28 @@ class Simulator:
             key_order=key_order,
             key_widths=key_widths,
         )
+
+
+def simulate_batch(
+    program_circuit: QuantumCircuit,
+    translations: Sequence[TranslationLike],
+    sim_config: SimulatorConfig,
+    *,
+    desc: str = "Simulating circuits",
+) -> tuple[SimulationResult, list[SimulationResult]]:
+    """
+    Run the ideal simulation for the logical program circuit and noisy simulations
+    for each translated circuit in `translations`.
+
+    Returns a tuple of (ideal_simulation_result, noisy_results_list).
+    """
+    simulator = Simulator(sim_config)
+    ideal_sim_res = simulator.ideal(circuit=program_circuit)
+
+    simulation_results: list[SimulationResult] = []
+    for idx in trange(len(translations), desc=desc, unit=" sim"):
+        translation = translations[idx]
+        circuit = translation.circuit if hasattr(translation, "circuit") else translation
+        simulation_results.append(simulator.noisy(circuit))
+
+    return ideal_sim_res, simulation_results
