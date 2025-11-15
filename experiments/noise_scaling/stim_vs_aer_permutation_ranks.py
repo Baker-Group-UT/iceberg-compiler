@@ -146,12 +146,12 @@ def compute_kendall_distances(
             aer_sim = (
                 StandardSimulator(repetitions=repetitions)
                 .with_noise_model(noise_model)
-                # .with_stim(False)
+                .with_stim(True)
             )
             stim_sim = (
                 StandardSimulator(repetitions=repetitions)
                 .with_noise_model(noise_model)
-                # .with_stim(True)
+                .with_stim(True)
                 # .with_stim_scaling(None)
             )
             aer_config = PipelineConfig(sim_config=aer_sim, verbose=False, save=False)
@@ -215,7 +215,7 @@ def plot_kendall_distances(
         )
 
     ax.set_xlabel("Noise scale (α)")
-    ax.set_ylabel("Normalized Kendall τ distance (Aer vs Stim)")
+    ax.set_ylabel("Normalized Kendall τ distance (Stim vs Stim)")
     ax.set_title("Permutation ranking mismatch across noise scales")
     ax.legend(loc="upper left", frameon=False)
 
@@ -231,8 +231,8 @@ def plot_kendall_distances(
 
 
 def main() -> None:
-    num_circuits = 10
-    repetitions = 2_000
+    num_circuits = 100
+    repetitions = 10_000
     scalars = np.logspace(-1.5, 1.5, num=10)
 
     circuits = [
