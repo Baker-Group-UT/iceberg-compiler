@@ -109,23 +109,23 @@ def plot_mismatch(
     fig, ax = plt.subplots(figsize=(8, 4.5), facecolor="white")
     ax.set_facecolor("white")
 
-    ax.set_yscale("log")
+    # ax.set_yscale("log")
 
     ax.plot(valid_depths, mean, color="#1454d0", linewidth=3, label="Mean mismatch")
-    ax.fill_between(
-        valid_depths,
-        np.clip(mean - std, 1e-12, None),
-        np.clip(mean + std, 1e-12, None),
-        color="#1454d0",
-        alpha=0.35,
-        label="±1σ",
-    )
+    # ax.fill_between(
+    #     valid_depths,
+    #     np.clip(mean - std, 1e-12, None),
+    #     np.clip(mean + std, 1e-12, None),
+    #     color="#1454d0",
+    #     alpha=0.35,
+    #     label="±1σ",
+    # )
     ax.fill_between(
         valid_depths,
         np.clip(min_vals, 1e-12, None),
         np.clip(max_vals, 1e-12, None),
         color="#1454d0",
-        alpha=0.25,
+        alpha=0.35,
         label="Min–max",
     )
     ax.set_xlabel("Circuit depth")

@@ -16,19 +16,19 @@ from qiskit.circuit.random import random_clifford_circuit
 from pipeline.config import PipelineConfig
 from pipeline import generate_circuit, run_full_scan, run_extremal_scan, run_random_scan, run_specific_scan, translate_permutation
 from simulator.config_presets import ScaledSimulator, StandardSimulator
-from packer.packer import pack
+from packer.packer import HeuristicPacker
 
 
-# program_circuit: qiskit.QuantumCircuit = random_clifford_circuit(40, 40, gates=['x', 'z', 'h', 's', 'cx', 'cz'])
+program_circuit: qiskit.QuantumCircuit = random_clifford_circuit(6, 40, gates=['x', 'z', 'h', 's', 'cx', 'cz'])
 
-# target_basis = ['x', 'z', 'h', 's', 'cx', 'cz', 'measure']
+target_basis = ['x', 'z', 'h', 's', 'cx', 'cz', 'measure']
 
 # tcirc = qiskit.transpile(
 #     program_circuit,
 #     basis_gates=target_basis,
 #     optimization_level=2,
 # )
-# tcirc.measure_all()
+program_circuit.measure_all()
 
 # orig
 # tcirc = qiskit.QuantumCircuit(4)
@@ -40,43 +40,29 @@ from packer.packer import pack
 # tcirc.x([0,1,2,3])
 # tcirc.measure_all()
 
-# relabeled for 
-# [(1,0), (0,0), (1,1), (0,1)]
-tcirc = qiskit.QuantumCircuit(2)
-tcirc.h(0)
-tcirc.s(0)
-tcirc.h(0)
-tcirc.measure_all()
-
-# tcirc = qiskit.QuantumCircuit(2)
-# tcirc.h([0,1])
-# tcirc.cx(0,1)
-# tcirc.h([0,1])
-
-tcirc.draw('mpl', filename="input_circ_relabeled.svg")
+# print(tcirc)
 
 config = PipelineConfig(
-    sim_config=ScaledSimulator(alpha=1, repetitions=50_000).with_stim(),
+    sim_config=ScaledSimulator(alpha=1, repetitions=20_000),#.with_stim(),
     verbose=True,
     save=False,
 )
 
-# # print(pack(pcirc))
+packer = HeuristicPacker(max_patches=3)
+packing = packer.pack(program_circuit, approach="balanced")
+print(packing)
+permutation = packer.packing_to_permutation(packing.qubit_to_patch)
+print(permutation)
+# perms = [
+#     [(0,0), (0,1), (1,0), (1,1)], # in this perm, 0 goes 0, 1 goes 1, 2 goes 2, 3 goes 3
+#     [(1,0), (0,0), (1,1), (0,1)], # we need to relabel so that this recreates the above
+#     # [(1,0), (0,0), (1,1), (0,1)], # we need to relabel so that this recreates the above
+#     # [(0,0), (0,1)],
+#     # [(0,0), (1,0), (2,0), (3,0)],
+# ]
 
-# # res: RunRecord = run_full_scan(pcirc, config)
-# # df = res.dataframe.df
-
-perms = [
-    [(0,0), (0,1), (1,0), (1,1)], # in this perm, 0 goes 0, 1 goes 1, 2 goes 2, 3 goes 3
-    [(1,0), (0,0), (1,1), (0,1)], # we need to relabel so that this recreates the above
-    # [(1,0), (0,0), (1,1), (0,1)], # we need to relabel so that this recreates the above
-    # [(0,0), (0,1)],
-    # [(0,0), (1,0), (2,0), (3,0)],
-]
-
-out_circ = translate_permutation(tcirc, perms[1])
-out_circ.circuit.draw('mpl', filename="output_circ_relabeled.svg", fold=-1)
-# # res: RunRecord = run_random_scan(tcirc, 1, config)
-res: RunRecord = run_full_scan(tcirc,  config)
-# res: RunRecord = run_full_scan(tcirc, config)
-
+# out_circ = translate_permutation(tcirc, perms[1])
+# out_circ.circuit.draw('mpl', filename="output_circ_relabeled.svg", fold=-1)
+# # # res: RunRecord = run_random_scan(tcirc, 1, config)
+# res: RunRecord = run_full_scan(tcirc,  config)
+# # res: RunRecord = run_full_scan(tcirc, config)

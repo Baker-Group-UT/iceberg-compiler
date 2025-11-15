@@ -6,14 +6,13 @@ from __future__ import annotations
 import qiskit
 import pandas as pd
 from typing import List
-from tqdm import trange
 
 from pipeline.config                    import PipelineConfig
 from pipeline.analysis.postselection    import postselect_against_reference
 from pipeline.analysis.result_row       import result_to_row
 from pipeline.analysis.print_df         import print_df_table
 from translator.core                    import Translator
-from simulator.simulator                import Simulator
+from simulator.simulator                import simulate_batch
 from repository.run_builder             import RunBuilder
 from repository.repository              import RunRepository
 
@@ -28,11 +27,11 @@ def run_specific_scan(program_circuit: qiskit.QuantumCircuit, permutations: List
     translated = translator.translate_batch(program_circuit, permutations)
 
     # Step 3: Simulate
-    simulator = Simulator(config.sim_config)
-    ideal_sim_res = simulator.ideal(circuit=program_circuit)
-    simulation_results = []
-    for i in trange(len(translated), desc="Simulating circuits", unit=" sim"):
-        simulation_results.append(simulator.noisy(translated[i].circuit))
+    ideal_sim_res, simulation_results = simulate_batch(
+        program_circuit,
+        translated,
+        config.sim_config,
+    )
 
     # Step 4: Postselection
     simulation_results = postselect_against_reference(translated, ideal_sim_res, simulation_results)

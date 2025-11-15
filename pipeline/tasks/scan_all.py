@@ -5,7 +5,6 @@ pipeline.tasks.scan_all.py - Full permutation scan from program circuit.
 from __future__ import annotations
 import qiskit
 import pandas as pd
-from tqdm import trange
 
 from pipeline.config                    import PipelineConfig
 from pipeline.analysis.postselection    import postselect_against_reference
@@ -14,7 +13,7 @@ from pipeline.analysis.print_df         import print_df_table
 from permutations.code_sets             import generate_uniform_code_sets
 from permutations.generator             import generate_permutations
 from translator.core                    import Translator
-from simulator.simulator                import Simulator
+from simulator.simulator                import simulate_batch
 from repository.run_builder             import RunBuilder
 from repository.repository              import RunRepository
 
@@ -34,11 +33,11 @@ def run_full_scan(program_circuit: qiskit.QuantumCircuit, config: PipelineConfig
     translated = translator.translate_batch(program_circuit, permutations)
 
     # # Step 3: Simulate
-    simulator = Simulator(config.sim_config)
-    ideal_sim_res = simulator.ideal(circuit=program_circuit)
-    simulation_results = []
-    for i in trange(len(translated), desc="Simulating circuits", unit=" sim"):
-        simulation_results.append(simulator.noisy(translated[i].circuit))
+    ideal_sim_res, simulation_results = simulate_batch(
+        program_circuit,
+        translated,
+        config.sim_config,
+    )
 
     # # Step 4: Postselection
     simulation_results = postselect_against_reference(
@@ -63,7 +62,7 @@ def run_full_scan(program_circuit: qiskit.QuantumCircuit, config: PipelineConfig
     record = builder.finalize()
     if config.save:
         RunRepository(config.save_dir).save_run(record)
-    if config.verbose:
-        print_df_table(df)
+    # if config.verbose:
+    print_df_table(df)
 
     return record

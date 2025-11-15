@@ -29,6 +29,8 @@ from __future__ import annotations
 import os
 from collections import defaultdict
 from dataclasses import dataclass, field
+from datetime import datetime
+import json
 import math
 from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
@@ -56,7 +58,8 @@ os.environ.setdefault("QISKIT_AER_SHM_DISABLE", "1")
 
 LSR_FLOOR = 1e-6
 DEFAULT_PREP_GATES = ("x", "z", "h", "s", "rz", "cx", "cz")
-DEFAULT_GATES_TO_CALIBRATE = ("x", "z", "h", "s", "rz", "cx", "cz", "hh", "cxt", "czt")
+# DEFAULT_GATES_TO_CALIBRATE = ("x", "z", "h", "s", "rz", "cx", "cz", "hh", "cxt", "czt")
+DEFAULT_GATES_TO_CALIBRATE = ["cx"]
 
 
 def default_permutation(num_patches: int = 2, k_log: int = 2) -> List[Tuple[int, int]]:
@@ -444,8 +447,10 @@ class GateCalibrator:
     ) -> Tuple[TranslationResult, "_Segments", MeasurementLayout]:
         program, prep_len, gate_len = self._build_program(gate)
 
+        print(program)
         translation = Translation(
-            permutation=self.config.permutation,
+            # permutation=self.config.permutation,
+            permutation=[(0,0),(1,0),(0,1),(1,1)],
             program_circuit=program,
             fault_tolerant=self._translator_cfg.fault_tolerant,
             verbose=self._translator_cfg.verbose,
@@ -538,7 +543,8 @@ class GateCalibrator:
     def _random_pair(self) -> Tuple[int, int]:
         if self.num_logical_qubits < 2:
             raise ValueError("Need at least two logical qubits for a two-qubit gate.")
-        i, j = self.rng.choice(self.num_logical_qubits, size=2, replace=False)
+        # i, j = self.rng.choice(self.num_logical_qubits, size=2, replace=False)
+        i, j = 0, 1
         return int(i), int(j)
 
     def _random_patch_with_two_slots(self) -> Tuple[int, List[int]]:
@@ -573,6 +579,42 @@ def calibrate_gates(
     return calibrator.calibrate(gates)
 
 
+def _save_calibration_results(
+    summaries: Dict[str, GateCalibrationSummary],
+    output_dir: str = "results",
+) -> str:
+    """
+    Persist calibration summaries as JSON in ``output_dir`` and return the path.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    path = os.path.join(output_dir, f"gate_calibration_{timestamp}.json")
+    payload = {
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "gates": {gate: summary.to_dict() for gate, summary in summaries.items()},
+    }
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2)
+    return path
+def _print_calibration_results(summaries: Dict[str, GateCalibrationSummary]) -> None:
+    """
+    Pretty-print aggregate stats for each calibrated gate.
+    """
+    if not summaries:
+        print("No calibration results to display.")
+        return
+    print("Gate calibration summary:")
+    for gate in sorted(summaries):
+        summary = summaries[gate]
+        stats = summary.stats()
+        print(
+            f"  {gate.upper():>4} | samples={len(summary.samples):3d} | "
+            f"tvd_mean={stats['tvd_mean']:.4e} ± {stats['tvd_std']:.2e} | "
+            f"lsr_mean={stats['lsr_mean']:.4e} ± {stats['lsr_std']:.2e} | "
+            f"expected_error={stats['expected_error']:.4e}"
+        )
+
+
 __all__ = [
     "GateCalibrationConfig",
     "GateCalibrationSample",
@@ -582,4 +624,7 @@ __all__ = [
 ]
 
 if __name__ == "__main__":
-    calibrate_gates()
+    _summaries = calibrate_gates()
+    _print_calibration_results(_summaries)
+    _output_path = _save_calibration_results(_summaries)
+    print(f"Saved calibration results to {_output_path}")

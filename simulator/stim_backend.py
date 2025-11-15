@@ -10,7 +10,7 @@ probabilities keyed by Qiskit's classical register ordering.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 import math
 
 import networkx as nx
@@ -311,15 +311,6 @@ def convert_qiskit_to_stim(
     return stim_circuit, meas_map, num_clbits
 
 
-def _sample_stim_circuit(
-    stim_circ: stim.Circuit,
-    shots: int,
-    seed: Optional[int] = None,
-) -> np.ndarray:
-    sampler = stim_circ.compile_sampler(seed=seed)
-    return sampler.sample(shots=shots)
-
-
 def quasi_from_counts(counts: dict[str, int]) -> dict[str, float]:
     total = sum(counts.values()) or 1
     return {k: v / total for k, v in counts.items()}
@@ -336,6 +327,8 @@ def run_stim_backend(
     include_noise: bool = True,
     noise_params: Optional[StimNoiseParameters] = None,
     measure_all_if_none: bool = True,
+    shots_per_chunk: Optional[int] = None,
+    progress_callback: Optional[Callable[[int], None]] = None,
 ) -> dict[str, float]:
     """
     Entry point for Simulator._stimulate().
@@ -346,6 +339,8 @@ def run_stim_backend(
         seed: Optional RNG seed.
         include_noise: If False, the Stim circuit is generated in the error-free mode.
         measure_all_if_none: Measure every qubit if the circuit lacks explicit measurements.
+        shots_per_chunk: Batch size to use when sampling so progress can be streamed.
+        progress_callback: Optional callable invoked with each completed chunk.
     """
     stim_circ, meas_map, num_clbits = convert_qiskit_to_stim(
         circuit,
@@ -356,16 +351,27 @@ def run_stim_backend(
     if not meas_map:
         return {}
 
-    samples = _sample_stim_circuit(stim_circ, shots=shots, seed=seed)
     counts: dict[str, int] = {}
+    if shots <= 0:
+        return {}
 
-    for row in samples:
-        mem = [0] * max(num_clbits, 1)
-        for k, (_, ci) in enumerate(meas_map):
-            if ci is None or ci >= len(mem):
-                continue
-            mem[ci] = int(row[k])
-        key = _format_key_by_cregs(mem, circuit)
-        counts[key] = counts.get(key, 0) + 1
+    sampler = stim_circ.compile_sampler(seed=seed)
+    chunk_size = max(1, shots_per_chunk or shots)
+    remaining = shots
+
+    while remaining > 0:
+        current = min(chunk_size, remaining)
+        samples = sampler.sample(shots=current)
+        for row in samples:
+            mem = [0] * max(num_clbits, 1)
+            for k, (_, ci) in enumerate(meas_map):
+                if ci is None or ci >= len(mem):
+                    continue
+                mem[ci] = int(row[k])
+            key = _format_key_by_cregs(mem, circuit)
+            counts[key] = counts.get(key, 0) + 1
+        if progress_callback is not None:
+            progress_callback(current)
+        remaining -= current
 
     return quasi_from_counts(counts)

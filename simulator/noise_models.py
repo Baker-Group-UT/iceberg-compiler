@@ -33,14 +33,14 @@ class StimNoiseParameters:
 
 @dataclass
 class StimParameterScaling:
-    T1: float = 0.118848
-    T2: float = 0.736701
+    T1: float = 1 # 0.118848
+    T2: float = 1 # 0.736701
     one_qubit_gate_time: float = 1 # 0.137947
     two_qubit_gate_time: float = 1 # 0.151854
     one_qubit_error: float = 1 # 0.856380
     two_qubit_error: float = 1 # 0.75098
-    meas_time: float = 0.176850
-    readout_error: float = 0.279562
+    meas_time: float = 1 # 0.176850
+    readout_error: float = 1 # 0.279562
 
 
 def _attach_stim_params(model: NoiseModel, params: StimNoiseParameters) -> NoiseModel:
@@ -204,9 +204,15 @@ def ScaledNoiseModel(
 
     # Scale probabilities linearly and clamp to reasonable maxima
     # (kept conservative to avoid singular matrices or non-CP maps).
-    p1 = base_p1 * alpha
-    p2 = base_p2 * alpha
-    p_meas = base_p_meas * alpha if scale_readout else base_p_meas
+    p1 = min(base_p1 * alpha, 1)
+    p2 = min(base_p2 * alpha, 1)
+    if scale_readout:
+        p_meas = min(base_p_meas * alpha, 1.0 - 1e-9)
+    else:
+        p_meas = base_p_meas
+    # p1 = base_p1 * alpha
+    # p2 = base_p2 * alpha
+    # p_meas = base_p_meas * alpha if scale_readout else base_p_meas
 
     # Shorten T1/T2 as alpha grows (alpha=1 -> baseline; alpha=10 -> 10x shorter)
     T1 = base_T1 / alpha
