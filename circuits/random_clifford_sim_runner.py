@@ -207,7 +207,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--circuits-dir",
         type=Path,
-        default=None,
+        default=Path("circuit_set/clifford_circuits"),
         help="Directory containing source .qasm files (auto-detected by default).",
     )
     parser.add_argument(

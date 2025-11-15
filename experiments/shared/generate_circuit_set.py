@@ -30,6 +30,7 @@ def save_random_qasm_circuit(
 
     # Generate the circuit
     circuit: QuantumCircuit = random_clifford_circuit(num_qubits=n_qubits, num_gates=depth, seed=seed)
+    print(circuit)
     # circuit: QuantumCircuit = random_clifford_circuit(num_qubits=n_qubits, num_gates=depth, seed=seed)
 
     # Convert to OpenQASM2
@@ -55,8 +56,8 @@ def save_random_qasm_circuit(
 def fill_random_qasm_dataset(
     num_samples: int = 10,
     n_qubits: int = 10,
-    depth_min: int = 10,
-    depth_max: int = 20,
+    depth_min: int = 30,
+    depth_max: int = 40,
     dataset_dir: str = "dataset",
     master_seed: int | None = None,
 ) -> list[str]:
@@ -101,5 +102,5 @@ def fill_random_qasm_dataset(
 
 # Example usage:
 if __name__ == "__main__":
-    paths = fill_random_qasm_dataset(10_000, dataset_dir="clifford_circuits")
+    paths = fill_random_qasm_dataset(10, dataset_dir="circuit_set/clifford_circuits")
     # print("\n".join(paths))
