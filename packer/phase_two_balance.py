@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Literal, Tuple, Set
+from typing import Dict, List, Optional, Literal, Tuple, Set, Sequence
 
 from qiskit import QuantumCircuit
 
@@ -25,17 +25,41 @@ def balance_graph(
     approach: Literal["balanced", "greedy", "defensive"] = "balanced",
 ) -> BalanceResult:
     chosen_budget = graph.solo_budget_min if solo_budget is None else solo_budget
-    if chosen_budget < graph.solo_budget_min or chosen_budget > graph.solo_budget_max:
-        raise ValueError(
-            f"Solo budget {chosen_budget} is outside "
-            f"[{graph.solo_budget_min}, {graph.solo_budget_max}]"
-        )
+    load, mean_weight = _prepare_load(graph)
+    return _execute_balance(graph, load, mean_weight, chosen_budget, approach)
 
+
+def balance_graph_multi(
+    graph: GraphHeuristics,
+    solo_budgets: Sequence[int],
+    approach: Literal["balanced", "greedy", "defensive"] = "balanced",
+) -> Dict[int, BalanceResult]:
+    load, mean_weight = _prepare_load(graph)
+    results: Dict[int, BalanceResult] = {}
+    for budget in solo_budgets:
+        results[budget] = _execute_balance(graph, load, mean_weight, budget, approach)
+    return results
+
+
+def _prepare_load(graph: GraphHeuristics) -> Tuple[List[EdgeItem], float]:
     load: List[EdgeItem] = list(graph.edges)
     load.sort(key=lambda e: e.weight)
-    mean_weight = (
-        sum(edge.weight for edge in load) / len(load) if load else 0.0
-    )
+    mean_weight = sum(edge.weight for edge in load) / len(load) if load else 0.0
+    return load, mean_weight
+
+
+def _execute_balance(
+    graph: GraphHeuristics,
+    load: List[EdgeItem],
+    mean_weight: float,
+    solo_budget: int,
+    approach: Literal["balanced", "greedy", "defensive"],
+) -> BalanceResult:
+    if solo_budget < graph.solo_budget_min or solo_budget > graph.solo_budget_max:
+        raise ValueError(
+            f"Solo budget {solo_budget} is outside "
+            f"[{graph.solo_budget_min}, {graph.solo_budget_max}]"
+        )
 
     unassigned: Set[int] = set(graph.nodes.keys())
     decisions: List[Decision] = []
@@ -44,7 +68,7 @@ def balance_graph(
     patch_contents: Dict[int, List[int]] = {}
     patch_locked: Dict[int, bool] = {}
     next_patch_id = 0
-    solo_budget_remaining = chosen_budget
+    solo_budget_remaining = solo_budget
 
     def create_patch(locked: bool = False) -> Optional[int]:
         nonlocal next_patch_id
@@ -299,7 +323,7 @@ def balance_graph(
                 partner = anchor if (existing_members or idx > 0) else qubit
                 decisions.append(("same", partner, qubit))
 
-    solo_budget_used = chosen_budget - solo_budget_remaining
+    solo_budget_used = solo_budget - solo_budget_remaining
 
     return BalanceResult(
         decisions=decisions,

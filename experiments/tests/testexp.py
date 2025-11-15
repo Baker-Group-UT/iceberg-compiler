@@ -48,10 +48,11 @@ config = PipelineConfig(
     save=False,
 )
 
-packer = HeuristicPacker(max_patches=21)
-packing = packer.pack(program_circuit, 0, approach="balanced")
+packer = HeuristicPacker(max_patches=3)
+packing = packer.pack(program_circuit, approach="balanced")
 print(packing)
-
+permutation = packer.packing_to_permutation(packing.qubit_to_patch)
+print(permutation)
 # perms = [
 #     [(0,0), (0,1), (1,0), (1,1)], # in this perm, 0 goes 0, 1 goes 1, 2 goes 2, 3 goes 3
 #     [(1,0), (0,0), (1,1), (0,1)], # we need to relabel so that this recreates the above
@@ -65,4 +66,3 @@ print(packing)
 # # # res: RunRecord = run_random_scan(tcirc, 1, config)
 # res: RunRecord = run_full_scan(tcirc,  config)
 # # res: RunRecord = run_full_scan(tcirc, config)
-
