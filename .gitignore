@@ -16,3 +16,5 @@ paper/
 *.svg
 circuit_set/
 circuit_sims/
+packing_violins_5k/
+packing_violins/

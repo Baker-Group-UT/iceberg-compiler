@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from logging import warning
 import random
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Literal, Tuple, Set, Sequence
@@ -217,6 +218,29 @@ def _execute_balance(
         right -= 1
         return right_edge, "bad"
 
+    def _assign_scattered(qubits: Sequence[int]) -> bool:
+        for qubit in qubits:
+            best_patch: Optional[int] = None
+            best_weight: Optional[float] = None
+            for patch_id, members in patch_contents.items():
+                if patch_locked.get(patch_id, False):
+                    continue
+                if len(members) >= graph.patch_capacity:
+                    continue
+                weight = _patch_weight(patch_id)
+                if best_patch is None or weight < best_weight:
+                    best_patch = patch_id
+                    best_weight = weight
+            if best_patch is None:
+                return False
+            if not assign_qubit_to_patch(qubit, best_patch):
+                return False
+        return True
+
+    def _patch_weight(patch_id: int) -> float:
+        members = patch_contents.get(patch_id, [])
+        return sum(graph.nodes[q].base_cost for q in members)
+
     def handle_single_qubit() -> bool:
         if len(unassigned) != 1:
             return False
@@ -228,6 +252,8 @@ def _execute_balance(
             min_capacity=1, allow_new=False, allow_locked=False
         )
         if existing_patch is None:
+            if _assign_scattered([remaining]):
+                return True
             return False
         before = list(patch_contents.get(existing_patch, []))
         if not assign_qubit_to_patch(remaining, existing_patch):
@@ -235,7 +261,7 @@ def _execute_balance(
         partner = before[0] if before else remaining
         decisions.append(("same", partner, remaining))
         return True
-
+    # print()
     # for item in load:
     #     print(item)
     # print()
@@ -256,12 +282,12 @@ def _execute_balance(
             if edge.i not in unassigned:
                 continue
             if side == "good":
-                ignored.add(key)
-            else:
                 if solo_budget_remaining > 0 and solo_qubit(edge.i):
                     decisions.append(("solo", edge.i, None))
                 else:
                     ignored.add(key)
+            else:
+                ignored.add(key)
             continue
 
         if edge.j is None:
@@ -300,20 +326,24 @@ def _execute_balance(
                     min_capacity=1, allow_new=False, allow_locked=False
                 )
                 if existing_patch is None:
-                    raise ValueError(
-                        "Unable to place final qubit without exceeding solo budget."
-                    )
-                before = list(patch_contents.get(existing_patch, []))
-                if not assign_qubit_to_patch(qubit, existing_patch):
-                    raise ValueError(
-                        f"Failed to assign qubit {qubit} to patch {existing_patch}."
-                    )
-                partner = before[0] if before else qubit
-                decisions.append(("same", partner, qubit))
+                    if not _assign_scattered([qubit]):
+                        raise ValueError(
+                            "Unable to place final qubit without exceeding solo budget."
+                        )
+                else:
+                    before = list(patch_contents.get(existing_patch, []))
+                    if not assign_qubit_to_patch(qubit, existing_patch):
+                        raise ValueError(
+                            f"Failed to assign qubit {qubit} to patch {existing_patch}."
+                        )
+                    partner = before[0] if before else qubit
+                    decisions.append(("same", partner, qubit))
                 continue
 
             patch_id = find_patch_with_space(min_capacity=len(batch))
             if patch_id is None:
+                if _assign_scattered(batch):
+                    continue
                 raise ValueError("Unable to assign all qubits within patch limits.")
             existing_members = list(patch_contents.get(patch_id, []))
             anchor = existing_members[0] if existing_members else batch[0]

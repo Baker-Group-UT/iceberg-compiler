@@ -42,6 +42,8 @@ SOLO_TWO_QUBIT_OPTIMIZATIONS: Dict[str, str] = {
     "CZ": "CZT",
 }
 
+NEGATE_SOLO_COST = True
+
 
 def gate_cost(gate_name: str, gate_lsr_table: Dict[str, float]) -> float:
     """Return -log10(lsr) for a gate."""
@@ -122,7 +124,8 @@ def build_graph(
             base_cost=base,
             solo_cost=solo,
         )
-        edges.append(EdgeItem(kind="solo", i=qubit, j=None, weight=solo))
+        solo_weight = -solo if NEGATE_SOLO_COST else solo
+        edges.append(EdgeItem(kind="solo", i=qubit, j=None, weight=solo_weight))
 
     for i in range(num_qubits):
         for j in range(i + 1, num_qubits):

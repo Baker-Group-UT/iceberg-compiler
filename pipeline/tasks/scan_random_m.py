@@ -6,6 +6,7 @@ from __future__ import annotations
 from logging import warning
 import qiskit
 import pandas as pd
+from typing import List
 
 from pipeline.config                    import PipelineConfig
 from pipeline.analysis.postselection    import postselect_against_reference
@@ -20,7 +21,7 @@ from repository.repository              import RunRepository
 
 REPEAT_LIMIT = 2500
 
-def run_random_scan(program_circuit: qiskit.QuantumCircuit, m: int = 100, config: PipelineConfig = PipelineConfig()):
+def run_random_scan(program_circuit: qiskit.QuantumCircuit, m: int = 100, config: PipelineConfig = PipelineConfig(), added_perms: List[List[tuple]] = None):
     """
     Runs a permutation scan for m random permutations of the provided logical circuit using the given config.
     Returns a finalized RunRecord and saves it via RunRepository.
@@ -41,6 +42,10 @@ def run_random_scan(program_circuit: qiskit.QuantumCircuit, m: int = 100, config
             warning("Permutation set incomplete, reached 2,500 addition failures to permutation set.")
         else:
             warning(f"Permutation set incomplete. For some reason, the permutation set if not of length m but length {len(permutations)}")
+
+    if added_perms is not None:
+        for perm in added_perms:
+            permutations.append(perm)
 
     # Step 2: Translate logical to physical
     translator = Translator(config=config.translator_config)

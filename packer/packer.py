@@ -27,7 +27,7 @@ DEFAULT_LSR_TABLE = {
     "MEASURE": 1,
 }
 
-WARN_ON_BUDGET_FILTER = True
+WARN_ON_BUDGET_FILTER = False
 
 @dataclass
 class PackingCandidate:
@@ -67,7 +67,7 @@ class HeuristicPacker:
         max_patches: int = None,
         enable_phase_three: bool = False,
         explore_all_solo_budgets: bool = True,
-        explore_all_approaches: bool = False,
+        explore_all_approaches: bool = True,
     ) -> None:
         self.gate_lsr_table = gate_lsr_table  # raw LSRs, e.g., {"H": 0.95871, "X": 0.99763, ...}
         self.patch_capacity = patch_capacity  # k
@@ -122,8 +122,7 @@ class HeuristicPacker:
         else:
             budgets_to_try = [base_budget]
         budgets_to_try = self._filter_feasible_budgets(budgets_to_try, graph)
-
-        print(budgets_to_try)
+        budgets_to_try = budgets_to_try[::-1] # Try it from the top down
 
         approaches_to_try: List[str] = [approach]
         if explore_approaches_flag:
