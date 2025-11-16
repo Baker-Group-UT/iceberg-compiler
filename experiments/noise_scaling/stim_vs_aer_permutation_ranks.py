@@ -1,10 +1,10 @@
 """
 Compare Qiskit Aer vs Stim permutation rankings across noise scales.
 
-For each random circuit and noise scaling factor we run the logical permutation
-scan twice (once per backend), sort the permutations by
-`logical_total_variation_distance` and `logical_selection_rate`, and measure how
-different the Aer and Stim orderings are via the normalized Kendall τ distance.
+For each random circuit and noise scaling factor we run a full Stim permutation
+scan, pick a handful of permutations that cover a wide performance range,
+simulate that subset with Aer, and then compare the Aer vs Stim rankings via
+the normalized Kendall τ distance.
 """
 
 from __future__ import annotations
@@ -24,13 +24,6 @@ from pipeline import run_full_scan, run_specific_scan
 from pipeline.config import PipelineConfig
 from simulator.config_presets import StandardSimulator
 from simulator.noise_models import ScaledNoiseModel
-
-# Representative permutations (same as other noise scaling experiments)
-PERM_GROUP = [(0, 0), (0, 1), (1, 0), (1, 1)]
-PERM_INNER_SWAP = [(0, 0), (1, 0), (0, 1), (1, 1)]
-PERM_OUTER_SWAP = [(1, 1), (0, 1), (1, 0), (0, 0)]
-PERM_DIFF = [(0, 0), (1, 0), (2, 0), (3, 0)]
-PERMUTATIONS: List[List[Tuple[int, int]]] = [PERM_GROUP, PERM_INNER_SWAP, PERM_OUTER_SWAP, PERM_DIFF]
 
 
 @dataclass(frozen=True)
@@ -53,6 +46,9 @@ METRIC_SPECS: Sequence[MetricSpec] = (
     ),
 )
 
+TVD_COLUMN = "logical_total_variation_distance"
+MAX_SELECTED_PERMUTATIONS = 5
+
 
 def build_circuit(seed: int = 17, qubits: int = 4, depth: int = 25) -> QuantumCircuit:
     """Generate and transpile a random Clifford circuit for the experiment."""
@@ -71,16 +67,53 @@ def build_circuit(seed: int = 17, qubits: int = 4, depth: int = 25) -> QuantumCi
     return program_circuit
 
 
-def run_scan_with_backend(
-    tcirc: QuantumCircuit,
-    sim_config: PipelineConfig,
-):
-    """Convenience wrapper for run_specific_scan so we can swap configs."""
-    return run_specific_scan(
-        program_circuit=tcirc,
-        permutations=PERMUTATIONS,
-        config=sim_config,
+def _normalize_permutation(perm: Sequence[Sequence[int]]) -> List[Tuple[int, int]]:
+    """Ensure permutations are stored as tuples for repeatable downstream use."""
+    return [tuple(pair) for pair in perm]
+
+
+def select_tvd_spread_permutations(
+    df,
+    *,
+    column: str = TVD_COLUMN,
+    max_count: int = MAX_SELECTED_PERMUTATIONS,
+) -> List[List[Tuple[int, int]]]:
+    """
+    Select permutations whose logical TVD values are maximally spread apart.
+    """
+    subset = (
+        df[["perm_key", "permutation", column]]
+        .dropna(subset=[column])
+        .sort_values(by=column, ascending=True, kind="mergesort")
     )
+    if subset.empty:
+        return []
+
+    values = subset[column].to_numpy()
+    target_count = min(max_count, len(subset))
+    if target_count == len(subset):
+        selected = subset
+    else:
+        chosen_indices: List[int] = [0]
+        if target_count > 1 and len(subset) > 1:
+            chosen_indices.append(len(subset) - 1)
+
+        while len(chosen_indices) < target_count:
+            remaining = [idx for idx in range(len(subset)) if idx not in chosen_indices]
+            best_idx = None
+            best_distance = -np.inf
+            for idx in remaining:
+                distance = min(abs(values[idx] - values[c]) for c in chosen_indices)
+                if distance > best_distance:
+                    best_distance = distance
+                    best_idx = idx
+            if best_idx is None:
+                break
+            chosen_indices.append(best_idx)
+
+        chosen_indices.sort()
+        selected = subset.iloc[chosen_indices]
+    return [_normalize_permutation(perm) for perm in selected["permutation"].tolist()]
 
 
 def _ranking_map(
@@ -143,26 +176,36 @@ def compute_kendall_distances(
     for ci, tcirc in enumerate(circuits):
         for si, scalar in enumerate(scalars):
             noise_model = ScaledNoiseModel(alpha=scalar)
-            aer_sim = (
-                StandardSimulator(repetitions=repetitions)
-                .with_noise_model(noise_model)
-                .with_stim(True)
-            )
             stim_sim = (
                 StandardSimulator(repetitions=repetitions)
                 .with_noise_model(noise_model)
                 .with_stim(True)
                 # .with_stim_scaling(None)
             )
-            aer_config = PipelineConfig(sim_config=aer_sim, verbose=False, save=False)
             stim_config = PipelineConfig(sim_config=stim_sim, verbose=False, save=False)
 
-            aer_record = run_scan_with_backend(tcirc, aer_config)
-            stim_record = run_scan_with_backend(tcirc, stim_config)
-            aer_df = aer_record.dataframe.df
+            stim_record = run_full_scan(tcirc, stim_config)
             stim_df = stim_record.dataframe.df
+            permutations = select_tvd_spread_permutations(stim_df)
+            print(permutations)
+            if not permutations:
+                for metric in METRIC_SPECS:
+                    distances[metric.column][ci, si] = np.nan
+                print(
+                    f"[circuit {ci + 1}/{len(circuits)}] "
+                    f"alpha={scalar:.3e} | no valid permutations selected"
+                )
+                continue
 
-            line_items = []
+            aer_sim = (
+                StandardSimulator(repetitions=repetitions)
+                .with_noise_model(noise_model)
+            )
+            aer_config = PipelineConfig(sim_config=aer_sim, verbose=False, save=False)
+            aer_record = run_specific_scan(tcirc, permutations, aer_config)
+            aer_df = aer_record.dataframe.df
+
+            line_items = [f"perms={len(permutations)}"]
             for metric in METRIC_SPECS:
                 distance = kendall_distance_for_metric(aer_df, stim_df, metric)
                 distances[metric.column][ci, si] = distance
@@ -215,7 +258,7 @@ def plot_kendall_distances(
         )
 
     ax.set_xlabel("Noise scale (α)")
-    ax.set_ylabel("Normalized Kendall τ distance (Stim vs Stim)")
+    ax.set_ylabel("Normalized Kendall τ distance (Stim vs Aer)")
     ax.set_title("Permutation ranking mismatch across noise scales")
     ax.legend(loc="upper left", frameon=False)
 
@@ -231,12 +274,12 @@ def plot_kendall_distances(
 
 
 def main() -> None:
-    num_circuits = 100
-    repetitions = 10_000
+    num_circuits = 10
+    repetitions = 50_000
     scalars = np.logspace(-1.5, 1.5, num=10)
 
     circuits = [
-        build_circuit(seed=1000 + idx, qubits=2, depth=25)
+        build_circuit(seed=1000 + idx, qubits=3, depth=10)
         for idx in range(num_circuits)
     ]
 
