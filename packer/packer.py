@@ -8,22 +8,23 @@ from typing import Dict, List, Tuple, Optional, Literal, Any
 import qiskit  # adjust import if needed
 
 from .phase_one_graph import build_graph, GraphHeuristics
-from .phase_two_balance import balance_graph_multi
+from .phase_two_balance import balance_graph_multi, BalanceResult
+from .phase_three_map import compute_grid_aligned_mapping, PatchLayoutMetadata
 
 GateName = str
 LSRTable = Dict[GateName, float]
 
 DEFAULT_LSR_TABLE = {
-    "X":   0.99763,
-    "Z":   0.99763,
-    "H":   0.95871,
-    "HH":  0.98625,
-    "CX":  0.96106,
-    "CXT": 0.96106,
-    "CZ":  0.96670,
-    "CZT": 0.96108,
-    "RZ":  0.98502,
-    "S":   0.98870,
+    "X":   9.9961e-01,
+    "Z":   9.9961e-01,
+    "H":   9.8686e-01,
+    "HH":  9.9047e-01,
+    "CX":  9.8828e-01,
+    "CXT": 9.8537e-01,
+    "CZ":  9.9078e-01,
+    "CZT": 9.8537e-01,
+    "RZ":  9.9399e-01,
+    "S":   9.9659e-01,
     "MEASURE": 1,
 }
 
@@ -37,6 +38,7 @@ class PackingCandidate:
     approach: str
     solo_budget: int
     patch_weights: Dict[int, float]
+    patch_layout: Optional[PatchLayoutMetadata] = None
 
 
 @dataclass
@@ -49,6 +51,7 @@ class PackerResult:
     solo_budget: int
     candidates: Dict[str, PackingCandidate]
     patch_weights: Dict[int, float]
+    patch_layout: Optional[PatchLayoutMetadata] = None
 
 
 class HeuristicPacker:
@@ -65,7 +68,7 @@ class HeuristicPacker:
         gate_lsr_table: LSRTable = None,
         patch_capacity: int = 2,
         max_patches: int = None,
-        enable_phase_three: bool = False,
+        enable_phase_three: bool = True,
         explore_all_solo_budgets: bool = True,
         explore_all_approaches: bool = True,
     ) -> None:
@@ -82,6 +85,7 @@ class HeuristicPacker:
     def pack(
         self,
         program_circuit: qiskit.QuantumCircuit,
+        max_patches: int = None,
         approach: Literal["balanced", "greedy", "defensive"] = "balanced",
         enable_phase_three: Optional[bool] = None,
         explore_solo_budgets: Optional[bool] = None,
@@ -95,11 +99,14 @@ class HeuristicPacker:
           - Run phase_two_balance.balance(...) with the chosen approach and solo_budget
           - Convert phase-two decisions into a final qubit_to_patch mapping
         """
+        if max_patches is None:
+            max_patches = self.max_patches
+
         graph: GraphHeuristics = build_graph(
             program_circuit=program_circuit,
             gate_lsr_table=self.gate_lsr_table,
             patch_capacity=self.patch_capacity,
-            max_patches=self.max_patches,
+            max_patches=max_patches,
         )
 
         phase_three_enabled = (
@@ -163,7 +170,7 @@ class HeuristicPacker:
         best_candidate = all_candidates[best_key]
 
         if phase_three_enabled:
-            best_balance_result = self._apply_phase_three(best_balance_result)
+            best_balance_result = self._apply_phase_three(best_balance_result, graph)
             best_candidate = self._build_candidate(
                 best_balance_result,
                 best_candidate.approach,
@@ -180,16 +187,43 @@ class HeuristicPacker:
             solo_budget=best_candidate.solo_budget,
             candidates=all_candidates,
             patch_weights=best_candidate.patch_weights,
+            patch_layout=best_candidate.patch_layout,
         )
 
-    def _apply_phase_three(self, phase_two_result: Any) -> Any:
+    def _apply_phase_three(self, phase_two_result: Any, graph: GraphHeuristics) -> Any:
         """
-        Placeholder for the optional distance-dependent assignment phase.
+        Apply a distance-aware patch relabeling so physical adjacency matches
+        logical interaction strength.
 
         Input/output contracts mirror Phase 2 so downstream code can treat the
         result uniformly whether or not phase three logic is enabled.
         """
-        # TODO: implement distance-aware refinements to the mapping.
+        qubit_to_patch: Optional[Dict[int, int]] = self._extract_field(
+            phase_two_result,
+            "qubit_to_patch",
+        )
+        if not qubit_to_patch:
+            return phase_two_result
+
+        try:
+            remapped, layout = compute_grid_aligned_mapping(graph, qubit_to_patch)
+            # print(remapped, layout)
+        except ValueError:
+            return phase_two_result
+
+        if isinstance(phase_two_result, BalanceResult):
+            phase_two_result.qubit_to_patch = remapped
+            phase_two_result.patch_layout = layout
+            return phase_two_result
+
+        if isinstance(phase_two_result, dict):
+            updated = dict(phase_two_result)
+            updated["qubit_to_patch"] = remapped
+            updated["patch_layout"] = layout
+            return updated
+
+        setattr(phase_two_result, "qubit_to_patch", remapped)
+        setattr(phase_two_result, "patch_layout", layout)
         return phase_two_result
 
     def _candidate_key(self, approach: str, solo_budget: int) -> str:
@@ -223,6 +257,7 @@ class HeuristicPacker:
         decisions: List[Tuple[str, int, Optional[int]]] = list(
             self._extract_field(source, "decisions", [])
         )
+        patch_layout: Optional[PatchLayoutMetadata] = self._extract_field(source, "patch_layout")
         mapping_copy = dict(mapping)
         patches_used = len(set(mapping_copy.values()))
         patch_weights: Dict[int, float] = {}
@@ -239,6 +274,7 @@ class HeuristicPacker:
             approach=approach,
             solo_budget=solo_budget,
             patch_weights=patch_weights,
+            patch_layout=patch_layout,
         )
 
     def _extract_field(self, source: Any, field: str, default: Any = None) -> Any:

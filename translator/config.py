@@ -13,6 +13,7 @@ class TranslatorConfig:
     n_code: int = 4  # Default [[4,2,2]] code size
     enable_hh_merging: bool = True
     allow_transversal_swap_merges: bool = True
+    encode_override: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -21,4 +22,5 @@ class TranslatorConfig:
             "n_code": self.n_code,
             "enable_hh_merging": self.enable_hh_merging,
             "allow_transversal_swap_merges": self.allow_transversal_swap_merges,
+            "encode_override": self.encode_override,
         }

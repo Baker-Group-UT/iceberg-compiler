@@ -20,12 +20,15 @@ from qiskit_aer import AerSimulator
 from qiskit_aer.noise import NoiseModel  # kept for future use with AerSimulator
 from tqdm.auto import trange
 
+from simulator.grid_constructor import build_physical_qubit_positions
+
 from .config import SimulatorConfig
 from .result_types import SimulationResult
 from .utils import bhattacharyya
 
 from .stim_backend import run_stim_backend
 from .noise_models import (
+    DistanceDependentNoiseModel,
     stim_params_from_noise_model,
     apply_stim_scaling,
     StimParameterScaling,
@@ -54,6 +57,7 @@ class Simulator:
         self._repetitions: int = config.repetitions
         self._noiseless: bool = config.noiseless
         self._seed: Optional[int] = config.seed
+        self._distance_based_noise = config.distance_based_noise
         self._noise_model: Optional[NoiseModel] = config.noise_model
         self._stim: bool = config.stim
         self._stim_scaling: Optional[StimParameterScaling] = config.stim_scaling
@@ -240,6 +244,11 @@ class Simulator:
         Execute `circuit` with Qiskit's AerSimulator and return a counts dict.
         Uses class config: repetitions (shots), seed, noiseless, and noise_model.
         """
+
+        if self._distance_based_noise and add_noise:
+            layout = build_physical_qubit_positions(circuit.num_qubits // 6)
+            n_model = DistanceDependentNoiseModel(layout=layout)
+            self._noise_model = n_model
 
         if self._stim:
             return self._stimulate(circuit, add_noise=add_noise)

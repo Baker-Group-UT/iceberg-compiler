@@ -5,6 +5,7 @@ noise scaling (alpha), grouped by number of codes used.
 
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.ticker import LogLocator
 import seaborn as sns
 import pandas as pd
 
@@ -13,8 +14,22 @@ from pipeline import run_full_scan, run_extremal_scan
 from simulator import ScaledNoiseModel, SimulatorConfig
 from experiments.shared.example_circuits import n_ghz_state
 
+plt.rcParams.update(
+    {
+        "font.family": "Helvetica",
+        "font.sans-serif": "Helvetica",
+        "font.size": 20,
+        "axes.titlesize": 20,
+        "axes.labelsize": 20,
+        "xtick.labelsize": 16,
+        "ytick.labelsize": 16,
+        "legend.fontsize": 20,
+        "figure.titlesize": 20,
+    }
+)
+
 # Sweep over alphas (noise scaling)
-alphas = np.logspace(-2, 1.5, num=50)  # [0.001 ... 10]
+alphas = np.logspace(-1.5, 1, num=20)  # [0.001 ... 10]
 all_grouped_dfs = []
 
 for alpha in alphas:
@@ -22,7 +37,7 @@ for alpha in alphas:
 
     # Build noise model
     noise_model = ScaledNoiseModel(alpha=alpha)
-    sim_config = SimulatorConfig(noise_model=noise_model, repetitions=100)
+    sim_config = SimulatorConfig(noise_model=noise_model, repetitions=10_000)
 
     # Configure pipeline
     config = PipelineConfig(
@@ -46,28 +61,33 @@ final_df = pd.concat(all_grouped_dfs, ignore_index=True)
 # clipping for logit scale
 final_df["logical_selection_rate"] = final_df["logical_selection_rate"].clip(1e-6, 1 - 1e-6)
 # Plot
-fig, ax = plt.subplots(figsize=(12, 6))
+fig, ax = plt.subplots(figsize=(18, 6))
 
 sns.lineplot(
     data=final_df,
     x="alpha",
     y="logical_selection_rate",
     hue="codes_used",
-    marker="o",
+    linewidth=3.6,
     ax=ax,
     palette="viridis"
 )
 
 ax.set_xscale("log")
 ax.set_yscale("logit")
-ax.set_xlabel("Noise Scaling Factor (alpha)", fontsize=12)
-ax.set_ylabel("Logical Selection Rate", fontsize=12)
-ax.set_title("Logical Selection Rate vs Noise Scaling (Grouped by Codes Used)", fontsize=14)
-# ax.set_ylim(0, 1.05)
-ax.grid(True)
+ax.xaxis.set_major_locator(LogLocator(base=10, numticks=8))
+ax.set_xlabel("Noise Scaling Factor (alpha)")
+ax.set_ylabel("Logical Selection Rate")
+ax.set_title("Logical Selection Rate vs Noise Scaling (Grouped by Codes Used)")
+ax.grid(True, which="both", linestyle="--", linewidth=0.4)
+for spine in ["top", "right"]:
+    ax.spines[spine].set_visible(False)
 
 # Optional: Legend formatting
 ax.legend(title="Codes Used", bbox_to_anchor=(1.02, 0.5), loc="center left", borderaxespad=0)
 
 plt.tight_layout()
+
+plt.savefig("logical_selection_rate_vs_alpha.svg", format="svg", dpi=300)
+
 plt.show()

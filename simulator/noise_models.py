@@ -21,14 +21,20 @@ from qiskit_aer.noise import (
 
 @dataclass
 class StimNoiseParameters:
-    T1: float = 100e-6
-    T2: float = 80e-6
-    one_qubit_gate_time: float = 50e-9
-    two_qubit_gate_time: float = 300e-9
-    one_qubit_error: float = 1e-3
-    two_qubit_error: float = 5e-3
-    meas_time: float = 1e-6
-    readout_error: float = 0.02
+
+    p1, p2 = 1.623e-4, 3.5e-3
+    p_meas = 3.906e-3
+    T1, T2 = 314.29e-6, 340.61e-6
+    t_1q, t_2q = 32e-9, 88e-9
+
+    T1: float = 314.29e-6
+    T2: float = 340.61e-6
+    one_qubit_gate_time: float = 32e-9
+    two_qubit_gate_time: float = 88e-9
+    one_qubit_error: float = 1.623e-4
+    two_qubit_error: float = 3.5e-3
+    meas_time: float = 2584e-9
+    readout_error: float = 3.906e-3
 
 
 @dataclass
@@ -99,13 +105,19 @@ def noise_model_to_dict(model: NoiseModel) -> Dict:
 def DefaultNoiseModel() -> NoiseModel:
     nm = NoiseModel()
 
-    oneq_ops = ["x", "sx", "rz", "h"]
+    oneq_ops = ["x", "z", "s", "rz", "h"]
     twoq_ops = ["cx", "cz"]
 
-    p1, p2 = 1e-3, 5e-3
-    p_meas = 0.02
+    # Old Defaults
+    # p1, p2 = 1e-3, 5e-3
+    # p_meas = 0.02
     T1, T2 = 100e-6, 80e-6
-    t_1q, t_2q = 50e-9, 300e-9
+    # t_1q, t_2q = 50e-9, 300e-9
+    # IBM Pittsburgh
+    p1, p2 = 1.623e-4, 3.5e-3
+    p_meas = 3.906e-3
+    # T1, T2 = 300e-6, 350e-6
+    t_1q, t_2q = 32e-9, 88e-9
 
     dep1 = depolarizing_error(p1, 1)
     thr1 = thermal_relaxation_error(T1, T2, t_1q)
@@ -253,12 +265,12 @@ def ScaledNoiseModel(
 
 
 def DistanceDependentNoiseModel(
-    layout: Dict[int, tuple[int, int]],
+    *,
+    layout: Dict[int, tuple[int, int]] = None,
     distance_function: Callable[
         [float, float, float, float],
         Callable[[tuple[int, int], tuple[int, int]], QuantumError],
-    ],
-    *,
+    ] = None,
     p1: float = 1e-3,
     p2: float = 5e-3,
     p_meas: float = 0.02,
@@ -281,8 +293,16 @@ def DistanceDependentNoiseModel(
         t_1q, t_2q: Gate times for 1q and 2q gates.
         oneq_ops, twoq_ops: Gate name lists to attach 1q/2q errors to.
     """
+    if layout is None:
+        raise ValueError("DistanceDependentNoiseModel requires a qubit layout.")
+
     if twoq_ops is None:
         twoq_ops = ["cx", "cz"]
+    if oneq_ops is None:
+        oneq_ops = ["x", "sx", "rz", "h"]
+
+    if distance_function is None:
+        distance_function = distance_noise_function
 
     nm = NoiseModel()
 
@@ -336,14 +356,13 @@ def distance_noise_function(
     """
 
     def error_function(pos1: tuple[int, int], pos2: tuple[int, int]) -> QuantumError:
-        distance = dist(pos1, pos2)
+        distance = dist(pos1, pos2) # * 1e-8
         time_to_move = 2 * distance / movement_speed
-        nonlocal t_2q
-        t_2q = t_2q + time_to_move
-        scaled_p2 = min(p2 * distance, 0.5)
-        dep2 = depolarizing_error(scaled_p2, 2)
-        thr2 = thermal_relaxation_error(T1, T2, t_2q).tensor(
-            thermal_relaxation_error(T1, T2, t_2q)
+        time_2q = t_2q + time_to_move
+        # print(distance, time_to_move, time_2q, p2)
+        dep2 = depolarizing_error(p2, 2)
+        thr2 = thermal_relaxation_error(T1, T2, time_2q).tensor(
+            thermal_relaxation_error(T1, T2, time_2q)
         )
         return dep2.compose(thr2)
 

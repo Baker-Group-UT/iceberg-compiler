@@ -3,11 +3,14 @@ from __future__ import annotations
 from logging import warning
 import random
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Literal, Tuple, Set, Sequence
+from typing import Dict, List, Optional, Literal, Tuple, Set, Sequence, TYPE_CHECKING
 
 from qiskit import QuantumCircuit
 
 from .phase_one_graph import GraphHeuristics, EdgeItem, build_graph
+
+if TYPE_CHECKING:
+    from .phase_three_map import PatchLayoutMetadata
 
 
 Decision = Tuple[str, int, Optional[int]]
@@ -18,6 +21,7 @@ class BalanceResult:
     decisions: List[Decision]
     qubit_to_patch: Dict[int, int]
     solo_budget_used: int
+    patch_layout: Optional["PatchLayoutMetadata"] = None
 
 
 def balance_graph(
@@ -27,6 +31,7 @@ def balance_graph(
 ) -> BalanceResult:
     chosen_budget = graph.solo_budget_min if solo_budget is None else solo_budget
     load, mean_weight = _prepare_load(graph)
+    # load=load[::-1] 
     return _execute_balance(graph, load, mean_weight, chosen_budget, approach)
 
 
@@ -44,7 +49,7 @@ def balance_graph_multi(
 
 def _prepare_load(graph: GraphHeuristics) -> Tuple[List[EdgeItem], float]:
     load: List[EdgeItem] = list(graph.edges)
-    load.sort(key=lambda e: e.weight)
+    load.sort(key=lambda e: e.weight, reverse=False)
     mean_weight = sum(edge.weight for edge in load) / len(load) if load else 0.0
     return load, mean_weight
 
@@ -64,7 +69,6 @@ def _execute_balance(
 
     unassigned: Set[int] = set(graph.nodes.keys())
     decisions: List[Decision] = []
-    ignored: Set[Decision] = set()
     qubit_to_patch: Dict[int, int] = {}
     patch_contents: Dict[int, List[int]] = {}
     patch_locked: Dict[int, bool] = {}
@@ -189,35 +193,6 @@ def _execute_balance(
             return False
         return True
 
-    left = 0
-    right = len(load) - 1
-
-    def get_next_edge() -> Optional[Tuple[EdgeItem, str]]:
-        nonlocal left, right
-        if left > right:
-            return None
-        if approach == "greedy":
-            edge = load[left]
-            left += 1
-            return edge, "good"
-        if approach == "defensive":
-            edge = load[right]
-            right -= 1
-            return edge, "good"
-        # balanced
-        left_edge = load[left]
-        right_edge = load[right]
-        if left == right:
-            left += 1
-            return left_edge, "good"
-        left_delta = abs(left_edge.weight - mean_weight)
-        right_delta = abs(right_edge.weight - mean_weight)
-        if left_delta >= right_delta:
-            left += 1
-            return left_edge, "good"
-        right -= 1
-        return right_edge, "bad"
-
     def _assign_scattered(qubits: Sequence[int]) -> bool:
         for qubit in qubits:
             best_patch: Optional[int] = None
@@ -241,76 +216,30 @@ def _execute_balance(
         members = patch_contents.get(patch_id, [])
         return sum(graph.nodes[q].base_cost for q in members)
 
-    def handle_single_qubit() -> bool:
-        if len(unassigned) != 1:
-            return False
-        remaining = next(iter(unassigned))
-        if solo_budget_remaining > 0 and solo_qubit(remaining):
-            decisions.append(("solo", remaining, None))
-            return True
-        existing_patch = find_patch_with_space(
-            min_capacity=1, allow_new=False, allow_locked=False
-        )
-        if existing_patch is None:
-            if _assign_scattered([remaining]):
-                return True
-            return False
-        before = list(patch_contents.get(existing_patch, []))
-        if not assign_qubit_to_patch(remaining, existing_patch):
-            return False
-        partner = before[0] if before else remaining
-        decisions.append(("same", partner, remaining))
-        return True
-    # print()
-    # for item in load:
-    #     print(item)
-    # print()
-    while left <= right and unassigned:
-        if len(unassigned) == 1 and handle_single_qubit():
-            continue
-        next_item = get_next_edge()
-        # print(next_item)
-        if next_item is None:
+    solo_edges = [edge for edge in load if edge.kind == "solo"]
+    solo_edges.sort(key=lambda e: e.weight, reverse=True)
+    for edge in solo_edges:
+        if solo_budget_remaining <= 0:
             break
-        edge, side = next_item
-        key = (edge.kind, edge.i, edge.j)
-
-        if key in ignored:
+        if edge.i not in unassigned:
             continue
+        if solo_qubit(edge.i):
+            decisions.append(("solo", edge.i, None))
 
-        if edge.kind == "solo":
-            if edge.i not in unassigned:
-                continue
-            if side == "good":
-                if solo_budget_remaining > 0 and solo_qubit(edge.i):
-                    decisions.append(("solo", edge.i, None))
-                else:
-                    ignored.add(key)
-            else:
-                ignored.add(key)
-            continue
+    pair_edges = [
+        edge for edge in load if edge.kind in ("same", "diff") and edge.j is not None
+    ]
+    pair_edges.sort(key=lambda e: e.weight, reverse=True)
 
-        if edge.j is None:
-            continue
+    for edge in pair_edges:
         if edge.i not in unassigned or edge.j not in unassigned:
             continue
-
-        if side == "good":
-            if edge.kind == "same":
-                if group_same(edge.i, edge.j):
-                    decisions.append(("same", edge.i, edge.j))
-                else:
-                    ignored.add(key)
-            elif edge.kind == "diff":
-                ignored.add(key)
+        if edge.kind == "same":
+            if group_same(edge.i, edge.j):
+                decisions.append(("same", edge.i, edge.j))
         else:
-            if edge.kind == "diff":
-                if group_diff(edge.i, edge.j):
-                    decisions.append(("diff", edge.i, edge.j))
-                else:
-                    ignored.add(key)
-            else:
-                ignored.add(key)
+            if group_diff(edge.i, edge.j):
+                decisions.append(("diff", edge.i, edge.j))
 
     if unassigned:
         remaining = sorted(unassigned)
@@ -359,6 +288,7 @@ def _execute_balance(
         decisions=decisions,
         qubit_to_patch=qubit_to_patch,
         solo_budget_used=solo_budget_used,
+        patch_layout=None,
     )
 
 
@@ -386,6 +316,13 @@ def _smoke_test() -> None:
     print("=== Phase-Two Balance Smoke Test ===")
     random.seed(9)
     qc = _generate_random_circuit()
+    # qc = QuantumCircuit(4)
+    # qc.h(0)
+    # qc.h(3)
+    # qc.x(1)
+    # qc.cx(0,1)
+    # qc.cx(3,2)
+    # qc.z(2)
     print("Random circuit:")
     print(qc.draw())
     gate_lsr_table = {
@@ -402,7 +339,7 @@ def _smoke_test() -> None:
         program_circuit=qc,
         gate_lsr_table=gate_lsr_table,
         patch_capacity=2,
-        max_patches=7,
+        max_patches=4,
     )
     print(
         f"Graph: {len(graph.nodes)} nodes, {len(graph.edges)} edges, "
@@ -411,7 +348,7 @@ def _smoke_test() -> None:
 
     result = balance_graph(
         graph,
-        solo_budget=7,
+        solo_budget=3,
         approach="defensive",
     )
     print("\nDecisions (press Enter to step through):")

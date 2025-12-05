@@ -32,6 +32,7 @@ class TranslationContext:
     fault_log: List[str]
     fault_tolerant: bool
     verbose: bool
+    encode_override: bool
 
     # Keep a handle to the *program* circuit being translated (for find_bit, etc.)
     qc: QuantumCircuit
@@ -134,6 +135,7 @@ class TranslationContext:
             fault_log=[],
             fault_tolerant=fault_tolerant,
             verbose=verbose,
+            encode_override=encode_override,
             qc=program_circuit,               # <- store program circuit for handlers
             k_log=k_log,
             state_positions=state_positions,
@@ -149,4 +151,5 @@ class TranslationContext:
             translation.program_circuit,
             fault_tolerant=translation.fault_tolerant,
             verbose=translation.verbose,
+            encode_override=translation.encode_override,
         )

@@ -36,14 +36,20 @@ class Translation:
         *,
         fault_tolerant: bool = False,
         verbose: bool = False,
+        encode_override: bool = False,
     ):
         self.permutation = permutation
         self.program_circuit = program_circuit
         self.fault_tolerant = fault_tolerant
         self.verbose = verbose
+        self.encode_override = encode_override
 
         self.context = TranslationContext.from_config(
-            permutation, program_circuit, fault_tolerant=fault_tolerant, verbose=verbose
+            permutation,
+            program_circuit,
+            fault_tolerant=fault_tolerant,
+            verbose=verbose,
+            encode_override=encode_override,
         )
 
     def translate_gate(self, op):
@@ -60,11 +66,13 @@ class Translation:
                 # permutation should be marked as infeasible in set
                 raise RuntimeWarning("Gate application failed!")
 
-        self.context.iceberg_set.decode()
-        if BARRIERS:
-            self.context.iceberg_set.BARRIER()
-        self.context.iceberg_set.measure()
+        if not self.encode_override:
+            self.context.iceberg_set.decode()
+            if BARRIERS:
+                self.context.iceberg_set.BARRIER()
+            self.context.iceberg_set.measure()
         physical_circuit = cancel_inverse_gates(self.context.iceberg_set.circuit)
+        physical_circuit = self.context.iceberg_set.circuit
         return TranslationResult(
             circuit=physical_circuit,
             permutation=self.permutation,
@@ -85,6 +93,7 @@ class Translator:
         self.n_code = config.n_code
         self.enable_hh_merging = config.enable_hh_merging
         self.allow_transversal_swap_merges = config.allow_transversal_swap_merges
+        self.encode_override = config.encode_override
 
     def translate(
         self,
@@ -108,6 +117,7 @@ class Translator:
             program_circuit=processed_circuit,
             fault_tolerant=self.fault_tolerant,
             verbose=self.verbose,
+            encode_override=self.encode_override,
         )
         return translation.translate_circuit()
 
