@@ -21,6 +21,7 @@ class SimulatorConfig:
     Dataclass for storing and quickly instantiating the Simulator class.
     """
     repetitions: int = 1000
+    distance_based_noise = False
     noise_model: Optional[NoiseModel] = None
     noiseless: bool = False
     seed: Optional[int] = None
@@ -45,6 +46,10 @@ class SimulatorConfig:
             "seed": self.seed,
             "stim_scaling": self.stim_scaling.__dict__ if self.stim_scaling else None,
         }
+
+    def with_distance_based_noise(self, distance_based_noise: bool = True) -> Self:
+        self.distance_based_noise = distance_based_noise
+        return self
 
     def with_noiseless(self, noiseless: bool = True) -> Self:
         self.noiseless = noiseless

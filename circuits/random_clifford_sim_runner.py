@@ -8,6 +8,7 @@ This script scans a directory of OpenQASM files (defaulting to
 For every processed circuit, the script writes results under
 ``circuit_sims/<circuit_id>/``:
 
+* ``original_openqasm.qasm`` – the raw OpenQASM text that was ingested.
 * ``original_dag.json`` – serialized qubit-timeline DAG of the source circuit.
 * ``noiseless_dag.json`` and ``noiseless_counts.json`` – DAG snapshot plus shot
   distribution for the measured circuit.
@@ -169,6 +170,7 @@ def process_circuits(
         logical_circuit = loads(qasm_source)
         sim_base_circuit = _prepare_for_simulation(logical_circuit)
 
+        _write_text(dest_dir / "original_openqasm.qasm", qasm_source)
         _write_dag_json(dest_dir / "original_dag.json", logical_circuit)
         _write_json(
             dest_dir / "metadata.json",
@@ -183,21 +185,21 @@ def process_circuits(
             },
         )
 
-        noiseless = _apply_noise(sim_base_circuit, noise=None)
-        noiseless_counts = _simulate(noiseless, shots)
-        _write_dag_json(dest_dir / "noiseless_dag.json", noiseless)
-        _write_json(dest_dir / "noiseless_counts.json", noiseless_counts)
+        # noiseless = _apply_noise(sim_base_circuit, noise=None)
+        # noiseless_counts = _simulate(noiseless, shots)
+        # _write_dag_json(dest_dir / "noiseless_dag.json", noiseless)
+        # _write_json(dest_dir / "noiseless_counts.json", noiseless_counts)
 
-        for variant_index, noise in enumerate(
-            _build_noise_specs(rng, logical_circuit.num_qubits, num_variants, noise_gates),
-            start=1,
-        ):
-            noisy_circuit = _apply_noise(sim_base_circuit, noise)
-            variant_counts = _simulate(noisy_circuit, shots)
+        # for variant_index, noise in enumerate(
+        #     _build_noise_specs(rng, logical_circuit.num_qubits, num_variants, noise_gates),
+        #     start=1,
+        # ):
+        #     noisy_circuit = _apply_noise(sim_base_circuit, noise)
+        #     variant_counts = _simulate(noisy_circuit, shots)
 
-            tag = f"variant_{variant_index}_{noise.gate}{noise.qubit}"
-            _write_dag_json(dest_dir / f"{tag}_dag.json", noisy_circuit)
-            _write_json(dest_dir / f"{tag}_counts.json", variant_counts)
+        #     tag = f"variant_{variant_index}_{noise.gate}{noise.qubit}"
+        #     _write_dag_json(dest_dir / f"{tag}_dag.json", noisy_circuit)
+        #     _write_json(dest_dir / f"{tag}_counts.json", variant_counts)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -219,7 +221,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--limit",
         type=int,
-        default=10,
+        default=-1,
         help="Number of circuits to simulate (<=0 means all). Default: 100.",
     )
     parser.add_argument(

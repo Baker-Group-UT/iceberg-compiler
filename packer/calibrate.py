@@ -58,16 +58,23 @@ os.environ.setdefault("QISKIT_AER_SHM_DISABLE", "1")
 
 LSR_FLOOR = 1e-6
 DEFAULT_PREP_GATES = ("x", "z", "h", "s", "rz", "cx", "cz")
-# DEFAULT_GATES_TO_CALIBRATE = ("x", "z", "h", "s", "rz", "cx", "cz", "hh", "cxt", "czt")
-DEFAULT_GATES_TO_CALIBRATE = ["cx"]
+DEFAULT_GATES_TO_CALIBRATE = ("x", "z", "h", "s", "rz", "cx", "cz", "hh")
+# DEFAULT_GATES_TO_CALIBRATE = ["cx", "cxt"]
 
 
-def default_permutation(num_patches: int = 2, k_log: int = 2) -> List[Tuple[int, int]]:
+def default_permutation(
+    gate: Optional[str] = None,
+    num_patches: int = 2,
+    k_log: int = 2,
+) -> List[Tuple[int, int]]:
     """
-    Build a default logical-to-physical permutation with ``num_patches`` codes.
-    Each patch contributes ``k_log`` logical slots.
+    Build a default logical-to-physical permutation for ``gate``.  Non-CXT/CZT
+    gates default to a single patch while transversal CXT/CZT gates retain two
+    patches.  Each patch contributes ``k_log`` logical slots.
     """
-    return [(patch, slot) for patch in range(num_patches) for slot in range(k_log)]
+    normalized_gate = gate.lower() if gate else None
+    patch_count = num_patches if normalized_gate in {"cxt", "czt"} else 1
+    return [(patch, slot) for patch in range(patch_count) for slot in range(k_log)]
 
 
 def _slice_circuit(source: QuantumCircuit, start: int, stop: int) -> QuantumCircuit:
@@ -206,7 +213,7 @@ class GateCalibrationConfig:
     """
 
     permutation: List[Tuple[int, int]] = field(default_factory=default_permutation)
-    trials_per_gate: int = 2
+    trials_per_gate: int = 1000
     prep_depth_range: Tuple[int, int] = (2, 6)
     prep_gate_set: Sequence[str] = field(default_factory=lambda: DEFAULT_PREP_GATES)
     gates: Sequence[str] = field(default_factory=lambda: DEFAULT_GATES_TO_CALIBRATE)
@@ -319,6 +326,8 @@ class GateCalibrator:
         gates = list(gates) if gates is not None else list(self.config.gates)
         summaries: Dict[str, GateCalibrationSummary] = {}
         for gate in gates:
+            self.config.permutation = default_permutation(gate=gate)
+            self._patch_slots = self._build_patch_slots(self.config.permutation)
             summaries[gate] = self.calibrate_gate(gate)
         return summaries
 
@@ -447,10 +456,10 @@ class GateCalibrator:
     ) -> Tuple[TranslationResult, "_Segments", MeasurementLayout]:
         program, prep_len, gate_len = self._build_program(gate)
 
-        print(program)
+        # print(program)
         translation = Translation(
-            # permutation=self.config.permutation,
-            permutation=[(0,0),(1,0),(0,1),(1,1)],
+            permutation=self.config.permutation,
+            # permutation=[(0,0),(1,0),(0,1),(1,1)],
             program_circuit=program,
             fault_tolerant=self._translator_cfg.fault_tolerant,
             verbose=self._translator_cfg.verbose,
@@ -481,7 +490,7 @@ class GateCalibrator:
             pre_stop = len(iceberg_circuit.data)
         if gate_stop is None:
             gate_stop = len(iceberg_circuit.data)
-
+        # print(translation.context.iceberg_set.circuit)
         translation.context.iceberg_set.decode()
         translation.context.iceberg_set.measure()
 

@@ -212,3 +212,68 @@ def random_permutation_from_circuit(
         nodes_used = len({p for p, _ in assignment})
         return assignment, nodes_used
     return assignment
+
+def permutation_with_n_codes(
+    *,
+    q: int,
+    n_codes: int,
+    seed: int | None = None,
+) -> List[Tuple[int, int]]:
+    """
+    Construct a single permutation that uses exactly ``n_codes`` distinct patches.
+
+    Parameters
+    ----------
+    q : int
+        Total number of logical qubits (length of the permutation).
+    n_codes : int
+        Number of distinct patch ids to use within the permutation. Must satisfy
+        ``1 <= n_codes <= q``.
+    seed : int | None, optional
+        Optional seed for deterministic randomness.
+
+    Returns
+    -------
+    List[Tuple[int, int]]
+        List of (patch_id, slot_index) pairs of length ``q`` using exactly
+        ``n_codes`` distinct patch_ids.
+
+    Raises
+    ------
+    ValueError
+        If ``n_codes`` is less than 1 or greater than ``q``.
+    """
+    if n_codes < 1:
+        raise ValueError("n_codes must be at least 1.")
+    if q < n_codes:
+        raise ValueError("q must be >= n_codes to use that many codes.")
+    max_capacity = 2 * n_codes
+    if q > max_capacity:
+        raise ValueError(
+            "Cannot place more than two qubits per patch. "
+            f"q={q} exceeds max capacity {max_capacity} for n_codes={n_codes}."
+        )
+
+    rng = random.Random(seed)
+    patch_ids = list(range(n_codes))
+
+    # Ensure each code appears at least once, then distribute remaining slots
+    # randomly while respecting the 2-qubit-per-patch limit.
+    slot_usage: Dict[int, int] = {pid: 1 for pid in patch_ids}
+    sequence = patch_ids.copy()
+    remaining = q - n_codes
+    while remaining:
+        available = [pid for pid in patch_ids if slot_usage[pid] < 2]
+        pid = rng.choice(available)
+        sequence.append(pid)
+        slot_usage[pid] += 1
+        remaining -= 1
+    rng.shuffle(sequence)
+
+    slot_usage = {pid: 0 for pid in patch_ids}
+    permutation: List[Tuple[int, int]] = []
+    for pid in sequence:
+        permutation.append((pid, slot_usage[pid]))
+        slot_usage[pid] += 1
+
+    return permutation

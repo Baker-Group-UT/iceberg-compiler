@@ -3,6 +3,7 @@ run_scan.py - high level test file
 """
 
 from pipeline.analysis import print_df
+from simulator import DistanceDependentNoiseModel
 from translator.core import TranslationResult
 
 
@@ -18,59 +19,57 @@ from pipeline import generate_circuit, run_full_scan, run_extremal_scan, run_ran
 from simulator.config_presets import ScaledSimulator, StandardSimulator
 from packer.packer import HeuristicPacker, PackerResult
 
-program_circuit: qiskit.QuantumCircuit = random_clifford_circuit(15, 50, gates=['x', 'z', 'h', 's', 'cx', 'cz'])
-
-# target_basis = ['x', 'z', 'h', 's', 'cx', 'cz', 'measure']
-
-# tcirc = qiskit.transpile(
-#     program_circuit,
-#     basis_gates=target_basis,
-#     optimization_level=2,
+# program_circuit: qiskit.QuantumCircuit = random_clifford_circuit(
+#     5, 
+#     20, 
+#     gates=['x', 'z', 'h', 'cx', 'cz'],
+#     seed=5
 # )
-program_circuit.measure_all()
-
-# orig
+# # program_circuit.measure_all()
+# # tcirc=program_circuit
+# # orig
 # tcirc = qiskit.QuantumCircuit(4)
-# tcirc.h([0,1,2,3])
-# tcirc.cx(0,2)
+# tcirc.h(0)
+# tcirc.h(3)
+# tcirc.x(1)
 # tcirc.cx(0,1)
-# tcirc.h([0,1,3])
-# tcirc.cz(1,3)
-# tcirc.x([0,1,2,3])
+# tcirc.cx(3,2)
+# # tcirc.h(2)
+# tcirc.z(2)
 # tcirc.measure_all()
 
 # print(tcirc)
 
-config = PipelineConfig(
-    sim_config=ScaledSimulator(alpha=1, repetitions=25_000).with_stim(),
-    verbose=True,
-    save=False,
-)
-print(program_circuit)
-packer = HeuristicPacker(max_patches=8)
-packing = packer.pack(program_circuit, approach="balanced")
-permutation20 = packer.packing_to_permutation(packing.qubit_to_patch)
-print(permutation20)
+# config = PipelineConfig(
+#     sim_config=StandardSimulator(repetitions=50_000),#.with_stim(),
+#     # sim_config=ScaledSimulator(repetitions=10_000, alpha=1),
+#     verbose=False
+# )
 
-packer = HeuristicPacker(max_patches=10)
-packing = packer.pack(program_circuit, approach="balanced")
-permutation28 = packer.packing_to_permutation(packing.qubit_to_patch)
-print(permutation28)
+# packer = HeuristicPacker()
+# packing2 = packer.pack(tcirc, max_patches=3)
+# packing4 = packer.pack(tcirc, max_patches=4)
+# perm2 = packer.packing_to_permutation(packing2.qubit_to_patch)
+# perm4 = packer.packing_to_permutation(packing4.qubit_to_patch)
 
-packer = HeuristicPacker(max_patches=13)
-packing: PackerResult = packer.pack(program_circuit, approach="balanced")
-permutation35 = packer.packing_to_permutation(packing.qubit_to_patch)
-print(permutation35)
 # perms = [
-#     [(0,0), (0,1), (1,0), (1,1)], # in this perm, 0 goes 0, 1 goes 1, 2 goes 2, 3 goes 3
-#     [(1,0), (0,0), (1,1), (0,1)], # we need to relabel so that this recreates the above
-#     # [(1,0), (0,0), (1,1), (0,1)], # we need to relabel so that this recreates the above
-#     # [(0,0), (0,1)],
-#     # [(0,0), (1,0), (2,0), (3,0)],
+#     perm2,
+#     perm4,
 # ]
 
-# out_circ = translate_permutation(tcirc, perms[1])
-# out_circ.circuit.draw('mpl', filename="output_circ_relabeled.svg", fold=-1)
-# # # res: RunRecord = run_random_scan(tcirc, 1, config)
-res: RunRecord = run_random_scan(program_circuit,  40, config=config, added_perms=[permutation20, permutation28, permutation35])
-# # res: RunRecord = run_full_scan(tcirc, config)
+# # res = run_specific_scan(tcirc, perms, config)
+# res = run_full_scan(program_circuit=tcirc, config=config, added_perms=perms)
+# # res = run_random_scan(program_circuit=tcirc, m=20, config=config, added_perms=perms)
+# print_df.print_df_table(res.dataframe.df)
+
+qc = qiskit.QuantumCircuit(3)
+qc.h(0)
+qc.x(1)
+qc.z(2)
+qc.barrier()
+qc.x(1)
+qc.barrier()
+qc.cx(0,1)
+qc.cz(2,1)
+qc.h(1)
+qc.draw('mpl', filename="testcirc.svg")

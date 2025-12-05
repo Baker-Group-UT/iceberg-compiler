@@ -286,7 +286,15 @@ def _generate_random_circuit(
 def _smoke_test() -> None:
     random.seed(42)
     # random.seed(45)
-    qc = _generate_random_circuit(num_qubits=6, num_gates=20)
+    # qc = _generate_random_circuit(num_qubits=6, num_gates=20)
+    qc = QuantumCircuit(4)
+    qc.h(0)
+    qc.h(3)
+    qc.x(1)
+    qc.cx(0,1)
+    qc.cx(3,2)
+    qc.z(2)
+
     gate_lsr_table = {
         "X": 0.997,
         "Z": 0.997,

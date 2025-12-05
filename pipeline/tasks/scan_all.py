@@ -3,6 +3,7 @@ pipeline.tasks.scan_all.py - Full permutation scan from program circuit.
 """
 
 from __future__ import annotations
+from typing import List
 import qiskit
 import pandas as pd
 
@@ -18,7 +19,7 @@ from repository.run_builder             import RunBuilder
 from repository.repository              import RunRepository
 
 
-def run_full_scan(program_circuit: qiskit.QuantumCircuit, config: PipelineConfig = PipelineConfig()):
+def run_full_scan(program_circuit: qiskit.QuantumCircuit, config: PipelineConfig = PipelineConfig(), added_perms: List[List[tuple]] = None):
     """
     Runs a full permutation scan for the provided logical circuit using the given config.
     Returns a finalized RunRecord and saves it via RunRepository.
@@ -62,7 +63,7 @@ def run_full_scan(program_circuit: qiskit.QuantumCircuit, config: PipelineConfig
     record = builder.finalize()
     if config.save:
         RunRepository(config.save_dir).save_run(record)
-    # if config.verbose:
-    print_df_table(df)
+    if config.verbose:
+        print_df_table(df)
 
     return record
