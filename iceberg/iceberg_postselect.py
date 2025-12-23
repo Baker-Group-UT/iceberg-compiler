@@ -45,6 +45,7 @@ def split_qiskit_bitstring(
 
 # ===================== PUBLIC FUNCTIONS =====================
 
+# TODO: expand postselect to give more information about percent keywords leaked?
 def iceberg_postselect(dist: Dict[str, float], key_order: List[str]) -> Dict[str, any]:
     """
     Qiskit-style postselection.

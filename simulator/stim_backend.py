@@ -1,80 +1,123 @@
-"""
-stim_backend.py
-----------------
-Stim-based backend used by simulator.Simulator when `with_stim(True)` is
-selected. The backend converts a Qiskit QuantumCircuit into a Stim circuit,
-optionally injects idle + gate noise (matching the original
-`stim_conversion_updated.ipynb` prototype), samples it, and returns normalized
-probabilities keyed by Qiskit's classical register ordering.
-"""
-from __future__ import annotations
+# This function is for stim. It needs to look at the circuit and create a minimal
+# paulichannel noise model
+# based off of the qubit interactions. I.e.
+# We should not create a fully connected graph of the different
+# pauli error channels, just the ones that are actually used in the circuit.
+# pylint: disable = ['E1101']
 
-from dataclasses import dataclass
-from typing import Callable, List, Optional, Tuple
-import math
-
-import networkx as nx
-import numpy as np
+from typing import List
 import qiskit
 import stim
+import math
 
-from simulator.noise_models import StimNoiseParameters, stim_params_from_noise_model
+from .noise_models import (manhattan_distance)
 
-_DEFAULT_STIM_PARAMS = StimNoiseParameters()
-
-# Stim text snippets for basic gates (taken from stim_conversion_updated.ipynb)
-_ONE_Q_GATES = {
-    "h": lambda q: f"H {q}",
-    "x": lambda q: f"X {q}",
-    "y": lambda q: f"Y {q}",
-    "z": lambda q: f"Z {q}",
-    "s": lambda q: f"S {q}",
-    "sdg": lambda q: f"S_DAG {q}",
-    "reset": lambda q: f"R {q}",
-    "measure": lambda q: f"M {q}",
-}
-_TWO_Q_GATES = {
-    "cx": lambda c, t: f"CX {c} {t}",
-    "cz": lambda c, t: f"CZ {c} {t}",
-    "swap": lambda q0, q1: f"SWAP {q0} {q1}",
+ONE_Q = {
+    "h": "H",
+    "x": "X",
+    "y": "Y",
+    "z": "Z",
+    "s": "S",
+    "measure": "M",
 }
 
+TWO_Q = {
+    "cx": "CX",
+    "cz": "CZ",
+    "swap": "SWAP",
+}
 
-# ---------------------------------------------------------------------------
-# Helper functions
-# ---------------------------------------------------------------------------
-def analytic_pta_probs_from_T1_T2(
-    t_gate: float,
-    T1: float,
-    T2: float,
-) -> dict[str, float]:
+NOISE_PARAMS = {
+    "distance_scalar": 1.0,
+    "movement_speed": 1.0,
+    "p1": 1e-3,
+    "p2": 5e-3,
+    "p_meas": 0.02,
+    "T1": 100e-6,
+    "T2": 80e-6,
+    "t_1q": 50e-9,
+    "t_2q": 300e-9,
+}
+
+def _clamp_arr(vals: List[float]) -> List[float]:
+    ret: List[float] = []
+    for val in vals:
+        val = max(0.0, min(1.0, val))
+        ret.append(val)
+    return ret
+
+def _normalize_probs(vals: List[float]) -> List[float]:
+    z = sum(vals)
+    if z <= 0:
+        return [1.0, 0.0, 0.0, 0.0]
+    return [v / z for v in vals]
+
+def _pauli_twirl_approx(t: float, T1: float, T2: float) -> List[float]:
+    p_x = p_y = (1 - math.exp(-t / T1)) / 4
+    p_z = (1 - math.exp(-t / T2)) / 2 - (1 - math.exp(-t / T1)) / 4
+    p_i = 1 - p_x - p_y - p_z
+    p = _normalize_probs(_clamp_arr([p_i, p_x, p_y, p_z]))
+    return p
+
+def _noise_from_distance(q0: int, q1: int, layout) -> List[float]:
+    pos0, pos1 = layout[q0], layout[q1]
+    distance = manhattan_distance(pos0, pos1) * 1e-8 * NOISE_PARAMS["distance_scalar"]
+    time_to_move = 2 * distance / NOISE_PARAMS["movement_speed"]
+    time_2q = NOISE_PARAMS["t_2q"] + time_to_move
+
+    q = _pauli_twirl_approx(time_2q, NOISE_PARAMS["T1"], NOISE_PARAMS["T2"])
+    return q
+
+def add_distance_noise(stim_circuit: stim.Circuit, qubits: list[int], layout) -> None:
     """
-    Analytic PTA probabilities for amplitude damping + dephasing over time `t_gate`.
-
-    Matches the expressions used in the original notebook port.
-    Returns dict {\"I\",\"X\",\"Y\",\"Z\"} (sums to 1.0 within floating error).
+    Add a distance based DEPOLARIZE2 instruction that's probability scales off of the 
+    distance between two qubits. Should be called only for qubits which interact in the circuit.
     """
-    if T1 <= 0 or T2 <= 0 or t_gate < 0:
-        raise ValueError("T1, T2 must be positive and t_gate non-negative")
+    if len(qubits) != 2:
+        return
+    q0, q1 = qubits
 
-    A = math.exp(-t_gate / (2.0 * T1))
-    B = math.exp(-t_gate / T2)
-    exp_minus_t_over_T1 = A * A  # e^{-t/T1}
+    p2 = NOISE_PARAMS["p2"]
+    if p2 > 0:
+        stim_circuit.append("DEPOLARIZE2", [q0, q1], [p2])
 
-    qx = (1.0 - exp_minus_t_over_T1) / 4.0
-    qy = qx
-    qI = ((1.0 - A) ** 2) / 4.0 + B
-    qZ = ((1.0 + A) ** 2) / 4.0 - B
+    if layout is not None:
+        p_i, p_x, p_y, p_z = _noise_from_distance(q0, q1, layout)
+        if p_x > 0 or p_y > 0 or p_z > 0:
+            stim_circuit.append("PAULI_CHANNEL_1", [q0], [p_x, p_y, p_z])
+            stim_circuit.append("PAULI_CHANNEL_1", [q1], [p_x, p_y, p_z])
 
-    q = np.array([qI, qx, qy, qZ], dtype=float)
-    q = np.maximum(q, 0.0)
-    Z = q.sum()
-    if Z == 0.0:
-        q = np.array([1.0, 0.0, 0.0, 0.0])
-    else:
-        q = q / Z
-    return {"I": float(q[0]), "X": float(q[1]), "Y": float(q[2]), "Z": float(q[3])}
+def add_single_qubit_noise(stim_circuit: stim.Circuit, qubits: list[int], gate_name: str) -> None:
+    if gate_name == "measure":
+        return
+    p1 = NOISE_PARAMS["p1"]
+    if p1 > 0:
+        stim_circuit.append("DEPOLARIZE1", qubits, [p1])
 
+def qiskit_to_stim(circuit: qiskit.QuantumCircuit, layout=None, include_noise: bool = True) -> stim.Circuit:
+    out = stim.Circuit()
+    # basically convert each instruction to stim, inject noise for distance (potench idle later)
+    for inst in circuit.data:
+        op = inst.operation
+        name = op.name.lower()
+        qubits = [circuit.find_bit(q).index for q in inst.qubits]
+        if name in ONE_Q: # one qubit interactions
+            out.append(ONE_Q[name], qubits)
+            if include_noise:
+                add_single_qubit_noise(out, qubits, name)
+        elif name in TWO_Q: # two qubit interactions
+            out.append(TWO_Q[name], qubits)
+            if include_noise:
+                add_distance_noise(out, qubits, layout)
+        elif name == "barrier":
+            continue
+        else:
+            raise NotImplementedError(f"Unsupported gate for Stim: {name}")
+    return out
+
+def _quasi_from_counts(counts: dict[str, int]) -> dict[str, float]:
+    total = sum(counts.values()) or 1
+    return {k: v / total for k, v in counts.items()}
 
 def _format_key_by_cregs(mem: List[int], circuit: qiskit.QuantumCircuit) -> str:
     """
@@ -91,274 +134,48 @@ def _format_key_by_cregs(mem: List[int], circuit: qiskit.QuantumCircuit) -> str:
         parts.append("".join(str(int(b)) for b in reversed(reg_bits)))
     return " ".join(parts)
 
-
-def _build_qubit_index_map(circuit: qiskit.QuantumCircuit) -> dict[object, int]:
-    """Flatten registers into a bijection between Qiskit qubits and integer ids."""
-    mapping: dict[object, int] = {}
-    for idx, q in enumerate(circuit.qubits):
-        mapping[q] = idx
-        mapping[idx] = q  # reverse lookup used for ancilla detection
-    return mapping
-
-
-def _default_gate_time_map(
-    num_qubits: int,
-    one_qubit_gate_time: float,
-    two_qubit_gate_time: float,
-) -> dict[object, float]:
-    """
-    Build a simple duration lookup for every qubit and ordered qubit pair.
-    """
-    gate_time_map: dict[object, float] = {i: one_qubit_gate_time for i in range(num_qubits)}
-    for i in range(num_qubits):
-        for j in range(num_qubits):
-            if i == j:
-                continue
-            gate_time_map[(i, j)] = two_qubit_gate_time
-    return gate_time_map
-
-
-@dataclass(eq=False)
-class GateNode:
-    """
-    Lightweight node wrapper for the DAG conversion.
-    """
-
-    qubits: Tuple[int, ...]
-    instr: str
-    gate_time: float
-    index: int
-    clbits: Tuple[qiskit.circuit.Clbit, ...]
-
-    def __hash__(self) -> int:
-        return hash(self.index)
-
-
-def _convert_qiskit_to_dag(
-    circuit: qiskit.QuantumCircuit,
-    qubit_index_map: dict[object, int],
-    gate_duration_map: dict[object, float],
-    meas_time: float,
-    default_one_qubit_time: float,
-    default_two_qubit_time: float,
-) -> nx.DiGraph:
-    """
-    Build a DAG where nodes are GateNode objects annotated with timing metadata.
-    """
-    dag = nx.DiGraph()
-    qubit_last_used: dict[int, GateNode] = {}
-    node_index = 0
-
-    for inst in circuit.data:
-        op = inst.operation
-        name = op.name.lower()
-        if name == "barrier":
-            continue
-
-        qubits = tuple(qubit_index_map[q] for q in inst.qubits)
-        if not qubits:
-            continue
-
-        if len(qubits) == 1:
-            gate_time = meas_time if name == "measure" else gate_duration_map.get(qubits[0], default_one_qubit_time)
-        else:
-            gate_time = gate_duration_map.get(
-                qubits,
-                gate_duration_map.get((qubits[1], qubits[0]), default_two_qubit_time),
-            )
-
-        node = GateNode(
-            qubits=qubits,
-            instr=name,
-            gate_time=gate_time,
-            index=node_index,
-            clbits=tuple(inst.clbits),
-        )
-        node_index += 1
-        dag.add_node(node)
-
-        for q in node.qubits:
-            if q in qubit_last_used:
-                dag.add_edge(qubit_last_used[q], node)
-            qubit_last_used[q] = node
-
-    return dag
-
-
-# ---------------------------------------------------------------------------
-# Conversion + sampling
-# ---------------------------------------------------------------------------
-def _idle_noise_lines(
-    duration: float,
-    targets: Tuple[int, ...],
-    include_noise: bool,
-    T1: float,
-    T2: float,
-) -> List[str]:
-    """Generate PTA idle noise for the specified duration."""
-    if (
-        (not include_noise)
-        or duration <= 0
-        or not targets
-        or T1 <= 0
-        or T2 <= 0
-    ):
-        return []
-    probs = analytic_pta_probs_from_T1_T2(duration, T1, T2)
-    px = probs["X"]
-    py = probs["Y"]
-    pz = probs["Z"]
-    tgt_str = " ".join(str(t) for t in targets)
-    return [f"PAULI_CHANNEL_1({px:.12g},{py:.12g},{pz:.12g}) {tgt_str}"]
-
-
-def convert_qiskit_to_stim(
-    circuit: qiskit.QuantumCircuit,
-    *,
-    params: StimNoiseParameters = _DEFAULT_STIM_PARAMS,
-    include_noise: bool = True,
-    measure_all_if_none: bool = True,
-) -> Tuple[stim.Circuit, List[Tuple[int, Optional[int]]], int]:
-    """
-    Convert a Qiskit circuit into Stim text, mirroring stim_conversion_updated.ipynb.
-
-    Returns:
-        stim.Circuit,
-        measurement map [(qubit_index, classical_index|None) ...] in measurement order,
-        num classical bits (after auto-measure logic, if any)
-    """
-    if circuit.num_qubits == 0:
-        raise ValueError("Stim backend requires at least one qubit in the circuit.")
-
-    noise_params = params or _DEFAULT_STIM_PARAMS
-    T1 = noise_params.T1
-    T2 = noise_params.T2
-    one_qubit_gate_time = noise_params.one_qubit_gate_time
-    two_qubit_gate_time = noise_params.two_qubit_gate_time
-    single_qubit_error = noise_params.one_qubit_error
-    two_qubit_error = noise_params.two_qubit_error
-    meas_time = noise_params.meas_time
-
-    qubit_index_map = _build_qubit_index_map(circuit)
-    gate_time_map = _default_gate_time_map(circuit.num_qubits, one_qubit_gate_time, two_qubit_gate_time)
-    dag = _convert_qiskit_to_dag(
-        circuit,
-        qubit_index_map,
-        gate_time_map,
-        meas_time,
-        one_qubit_gate_time,
-        two_qubit_gate_time,
-    )
-
-    stim_lines: List[str] = []
-    reset_line = "R " + " ".join(str(i) for i in range(circuit.num_qubits))
-    stim_lines.append(reset_line)
-
-    meas_map: List[Tuple[int, Optional[int]]] = []
-    clbits = list(circuit.clbits)
-    clbit_index = {cb: idx for idx, cb in enumerate(clbits)}
-
-    topo_order = list(nx.topological_sort(dag))
-    path_lengths: dict[GateNode, float] = {}
-    last_finish_time: dict[int, float] = {i: 0.0 for i in range(circuit.num_qubits)}
-
-    for node in topo_order:
-        preds = list(dag.predecessors(node))
-        start_time = max((path_lengths[p] for p in preds), default=0.0)
-        finish_time = start_time + node.gate_time
-        path_lengths[node] = finish_time
-
-        for q in node.qubits:
-            idle_duration = max(0.0, start_time - last_finish_time.get(q, 0.0))
-            stim_lines.extend(_idle_noise_lines(idle_duration, (q,), include_noise, T1, T2))
-
-        if node.instr in _ONE_Q_GATES:
-            q = node.qubits[0]
-            stim_lines.append(_ONE_Q_GATES[node.instr](q))
-
-            if node.instr == "measure":
-                clbits_for_gate = node.clbits if node.clbits else ()
-                for cb in clbits_for_gate:
-                    meas_map.append((q, clbit_index.get(cb)))
-                if not clbits_for_gate:
-                    meas_map.append((q, None))
-            elif include_noise and node.instr != "reset":
-                stim_lines.append(f"DEPOLARIZE1({single_qubit_error:.12g}) {q}")
-
-        elif node.instr in _TWO_Q_GATES:
-            ctrl, tgt = node.qubits
-            stim_lines.append(_TWO_Q_GATES[node.instr](ctrl, tgt))
-            if include_noise:
-                stim_lines.append(f"DEPOLARIZE2({two_qubit_error:.12g}) {ctrl} {tgt}")
-        else:
-            raise NotImplementedError(f"Unsupported gate for Stim backend: {node.instr}")
-
-        for q in node.qubits:
-            last_finish_time[q] = finish_time
-
-    had_measures = any(inst.operation.name == "measure" for inst in circuit.data)
-    num_clbits = len(clbits)
-
-    if (not had_measures) and measure_all_if_none:
-        for qi in range(circuit.num_qubits):
-            stim_lines.append(f"M {qi}")
-            meas_map.append((qi, qi))
-        num_clbits = max(num_clbits, circuit.num_qubits)
-
-    stim_text = "\n".join(stim_lines)
-    # pylint: disable=no-member
-    stim_circuit = stim.Circuit(stim_program_text=stim_text)
-    return stim_circuit, meas_map, num_clbits
-
-
-def quasi_from_counts(counts: dict[str, int]) -> dict[str, float]:
-    total = sum(counts.values()) or 1
-    return {k: v / total for k, v in counts.items()}
-
-
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
 def run_stim_backend(
     circuit: qiskit.QuantumCircuit,
-    shots: int = 10_000,
-    seed: Optional[int] = None,
     *,
+    shots: int = 10_000,
+    seed: int | None = None,
     include_noise: bool = True,
-    noise_params: Optional[StimNoiseParameters] = None,
-    measure_all_if_none: bool = True,
-    shots_per_chunk: Optional[int] = None,
-    progress_callback: Optional[Callable[[int], None]] = None,
-) -> dict[str, float]:
-    """
-    Entry point for Simulator._stimulate().
+    noise_params=None,
+    shots_per_chunk: int | None = None,
+    progress_callback=None,
+    layout=None,
+):
+    if noise_params is not None:
+        NOISE_PARAMS["T1"] = getattr(noise_params, "T1", NOISE_PARAMS["T1"])
+        NOISE_PARAMS["T2"] = getattr(noise_params, "T2", NOISE_PARAMS["T2"])
+        NOISE_PARAMS["t_1q"] = getattr(noise_params, "one_qubit_gate_time", NOISE_PARAMS["t_1q"])
+        NOISE_PARAMS["t_2q"] = getattr(noise_params, "two_qubit_gate_time", NOISE_PARAMS["t_2q"])
+        NOISE_PARAMS["p1"] = getattr(noise_params, "one_qubit_error", NOISE_PARAMS["p1"])
+        NOISE_PARAMS["p2"] = getattr(noise_params, "two_qubit_error", NOISE_PARAMS["p2"])
+        NOISE_PARAMS["p_meas"] = getattr(noise_params, "readout_error", NOISE_PARAMS["p_meas"])
 
-    Args:
-        circuit: QuantumCircuit to simulate.
-        shots: Number of samples to draw.
-        seed: Optional RNG seed.
-        include_noise: If False, the Stim circuit is generated in the error-free mode.
-        measure_all_if_none: Measure every qubit if the circuit lacks explicit measurements.
-        shots_per_chunk: Batch size to use when sampling so progress can be streamed.
-        progress_callback: Optional callable invoked with each completed chunk.
-    """
-    stim_circ, meas_map, num_clbits = convert_qiskit_to_stim(
-        circuit,
-        params=noise_params or _DEFAULT_STIM_PARAMS,
-        include_noise=include_noise,
-        measure_all_if_none=measure_all_if_none,
-    )
-    if not meas_map:
+    sc = qiskit_to_stim(circuit, layout=layout, include_noise=include_noise)
+    sampler = sc.compile_sampler(seed=seed)
+    clbits = list(circuit.clbits)
+    clbit_index = {cb: idx for idx, cb in enumerate(clbits)}
+    meas_map = []
+    for inst in circuit.data:
+        if inst.operation.name.lower() != "measure":
+            continue
+        q = circuit.find_bit(inst.qubits[0]).index
+        if inst.clbits:
+            for cb in inst.clbits:
+                meas_map.append((q, clbit_index.get(cb)))
+        else:
+            meas_map.append((q, None))
+
+    num_clbits = len(clbits)
+    if not meas_map or shots <= 0:
         return {}
 
     counts: dict[str, int] = {}
-    if shots <= 0:
-        return {}
-
-    sampler = stim_circ.compile_sampler(seed=seed)
     chunk_size = max(1, shots_per_chunk or shots)
     remaining = shots
-
     while remaining > 0:
         current = min(chunk_size, remaining)
         samples = sampler.sample(shots=current)
@@ -374,4 +191,4 @@ def run_stim_backend(
             progress_callback(current)
         remaining -= current
 
-    return quasi_from_counts(counts)
+    return _quasi_from_counts(counts)

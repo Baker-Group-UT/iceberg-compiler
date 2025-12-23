@@ -267,6 +267,7 @@ def ScaledNoiseModel(
 def DistanceDependentNoiseModel(
     *,
     layout: Dict[int, tuple[int, int]] = None,
+    distance_scalar: float = 1,
     distance_function: Callable[
         [float, float, float, float],
         Callable[[tuple[int, int], tuple[int, int]], QuantumError],
@@ -311,7 +312,7 @@ def DistanceDependentNoiseModel(
     err1 = dep1.compose(thr1)
     nm.add_all_qubit_quantum_error(err1, oneq_ops)
 
-    df = distance_function(T1, T2, t_2q, p2)
+    df = distance_function(T1, T2, t_2q, p2, distance_scalar)
     for q1 in layout:
         for q2 in layout:
             if q1 >= q2:
@@ -347,6 +348,7 @@ def distance_noise_function(
     T2: float,
     t_2q: float,
     p2: float,
+    distance_scalar: float = 1,
     dist: Callable[[tuple[int, int], tuple[int, int]], float] = manhattan_distance,
     movement_speed: float = 0.5,
 ) -> Callable[[tuple[int, int], tuple[int, int]], QuantumError]:
@@ -356,7 +358,7 @@ def distance_noise_function(
     """
 
     def error_function(pos1: tuple[int, int], pos2: tuple[int, int]) -> QuantumError:
-        distance = dist(pos1, pos2) # * 1e-8
+        distance = dist(pos1, pos2) * 1e-8 * distance_scalar
         time_to_move = 2 * distance / movement_speed
         time_2q = t_2q + time_to_move
         # print(distance, time_to_move, time_2q, p2)

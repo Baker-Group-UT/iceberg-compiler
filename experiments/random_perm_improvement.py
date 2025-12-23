@@ -262,7 +262,7 @@ def metrics_dataframe(metrics: Sequence[ScanMetrics]) -> pd.DataFrame:
 def main() -> None:
     exp_cfg = ExperimentConfig()
     pipeline_config = PipelineConfig(
-        sim_config=StandardSimulator(repetitions=exp_cfg.repetitions).with_stim(),
+        sim_config=StandardSimulator(repetitions=exp_cfg.repetitions).with_stim().with_distance_based_noise(),
         verbose=False,
         fault_tolerant=False,
         save=False,
