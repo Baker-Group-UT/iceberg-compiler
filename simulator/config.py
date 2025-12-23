@@ -22,6 +22,7 @@ class SimulatorConfig:
     """
     repetitions: int = 1000
     distance_based_noise = False
+    distance_scalar = 1
     noise_model: Optional[NoiseModel] = None
     noiseless: bool = False
     seed: Optional[int] = None
@@ -47,8 +48,9 @@ class SimulatorConfig:
             "stim_scaling": self.stim_scaling.__dict__ if self.stim_scaling else None,
         }
 
-    def with_distance_based_noise(self, distance_based_noise: bool = True) -> Self:
+    def with_distance_based_noise(self, distance_based_noise: bool = True, distance_scalar: float = 1) -> Self:
         self.distance_based_noise = distance_based_noise
+        self.distance_scalar = distance_scalar
         return self
 
     def with_noiseless(self, noiseless: bool = True) -> Self:

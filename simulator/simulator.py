@@ -58,6 +58,7 @@ class Simulator:
         self._noiseless: bool = config.noiseless
         self._seed: Optional[int] = config.seed
         self._distance_based_noise = config.distance_based_noise
+        self._distance_scalar = config.distance_scalar
         self._noise_model: Optional[NoiseModel] = config.noise_model
         self._stim: bool = config.stim
         self._stim_scaling: Optional[StimParameterScaling] = config.stim_scaling
@@ -200,7 +201,7 @@ class Simulator:
 
     # -------- Core Simulation Method --------
 
-    def _stimulate(self, circuit: QuantumCircuit, add_noise: bool = True):
+    def _stimulate(self, circuit: QuantumCircuit, add_noise: bool = True, layout=None):
         """
         Execute `circuit` and return a (probs, key_order, key_widths) tuple.
         This version uses the Stim backend (quasi-probabilities), replacing Aer sim.run().
@@ -227,6 +228,7 @@ class Simulator:
                 noise_params=stim_params,
                 shots_per_chunk=self._shot_chunk_size_for(self._repetitions),
                 progress_callback=progress_update,
+                layout=layout,
             )
         key_order, key_widths = self._key_meta(tcirc)
 
@@ -247,8 +249,11 @@ class Simulator:
 
         if self._distance_based_noise and add_noise:
             layout = build_physical_qubit_positions(circuit.num_qubits // 6)
-            n_model = DistanceDependentNoiseModel(layout=layout)
-            self._noise_model = n_model
+            if not self._stim:
+                n_model = DistanceDependentNoiseModel(layout=layout, distance_scalar=self._distance_scalar)
+                self._noise_model = n_model
+            else:
+                return self._stimulate(circuit, add_noise=add_noise, layout=layout)
 
         if self._stim:
             return self._stimulate(circuit, add_noise=add_noise)
