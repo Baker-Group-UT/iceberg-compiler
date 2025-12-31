@@ -44,36 +44,36 @@ from packer.packer import HeuristicPacker, PackerResult
 # tcirc.cx(0,1)
 # tcirc.measure_all()
 tcirc: qiskit.QuantumCircuit = random_clifford_circuit(
-    30,
-    100,
-    gates=['x', 'z', 'h', 'cx', 'cz'],
-    # seed=5
+    num_qubits=10,
+    num_gates=100,
+    gates=['x', 'z', 'h', 's', 'cx', 'cz'],
+    seed=11
 )
 tcirc.measure_all()
-print(tcirc)
 
 config = PipelineConfig(
-    sim_config=StandardSimulator(repetitions=50_000).with_distance_based_noise().with_stim(),
+    sim_config=ScaledSimulator(alpha=0.5,repetitions=100_000).with_distance_based_noise().with_stim(),
     # sim_config=ScaledSimulator(repetitions=10_000, alpha=1),
-    verbose=False
+    verbose=False,
+    seed=5,
 )
 
-packer = HeuristicPacker()
-packing6 = packer.pack(tcirc, max_patches=16)
-packing8 = packer.pack(tcirc, max_patches=20)
-packing10 = packer.pack(tcirc, max_patches=24)
-packing12 = packer.pack(tcirc, max_patches=28)
-perm6 = packer.packing_to_permutation(packing6.qubit_to_patch)
-perm8 = packer.packing_to_permutation(packing8.qubit_to_patch)
-perm10 = packer.packing_to_permutation(packing10.qubit_to_patch)
-perm12 = packer.packing_to_permutation(packing12.qubit_to_patch)
+# packer = HeuristicPacker()
+# packing6 = packer.pack(tcirc, max_patches=16)
+# packing8 = packer.pack(tcirc, max_patches=20)
+# packing10 = packer.pack(tcirc, max_patches=24)
+# packing12 = packer.pack(tcirc, max_patches=28)
+# perm6 = packer.packing_to_permutation(packing6.qubit_to_patch)
+# perm8 = packer.packing_to_permutation(packing8.qubit_to_patch)
+# perm10 = packer.packing_to_permutation(packing10.qubit_to_patch)
+# perm12 = packer.packing_to_permutation(packing12.qubit_to_patch)
 
-perms = [
-    perm6,
-    perm8,
-    perm10,
-    perm12,
-]
+# perms = [
+#     perm6,
+#     perm8,
+#     perm10,
+#     perm12,
+# ]
 # perms = [
 #     [(0,0), (0,1)],
 #     [(0,0), (1,0)]
@@ -81,7 +81,7 @@ perms = [
 
 # res = run_specific_scan(tcirc, perms, config)
 # # res = run_full_scan(program_circuit=tcirc, config=config, added_perms=perms)
-res = run_random_scan(program_circuit=tcirc, m=20, config=config, added_perms=perms)
+res = run_random_scan(program_circuit=tcirc, m=1, config=config)#, added_perms=perms)
 print_df.print_df_table(res.dataframe.df)
 
 # qc = qiskit.QuantumCircuit(3)

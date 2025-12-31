@@ -207,7 +207,20 @@ def ScaledNoiseModel(
         NoiseModel with depolarizing + thermal + (optionally) readout errors scaled by alpha.
     """
     if alpha <= 0:
-        return NoiseModel()
+        # Return an explicitly noiseless model, but still attach stim params so the
+        # Stim backend doesn't fall back to nonzero default parameters.
+        nm = NoiseModel()
+        params = StimNoiseParameters(
+            T1=float("inf"),
+            T2=float("inf"),
+            one_qubit_gate_time=0.0,
+            two_qubit_gate_time=0.0,
+            one_qubit_error=0.0,
+            two_qubit_error=0.0,
+            meas_time=0.0,
+            readout_error=0.0,
+        )
+        return _attach_stim_params(nm, params)
 
     if oneq_ops is None:
         oneq_ops = ["x", "sx", "rz", "h"]

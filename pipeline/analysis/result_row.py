@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import Dict, Any
 from pipeline.analysis.result_types import PostselectedSimulationResult
 from pipeline.config import PipelineConfig
-from evaluator.gate_count_stats import extract_gate_count, total_gates
+from evaluator.gate_count_stats import extract_gate_count, total_gates, one_two_qubit_gate_totals
 
 
 def result_to_row(sim_result: PostselectedSimulationResult, pipeline_config: PipelineConfig) -> Dict[str, Any]:
@@ -30,6 +30,8 @@ def result_to_row(sim_result: PostselectedSimulationResult, pipeline_config: Pip
 
     gate_count = extract_gate_count(sim_result.circuit)
     total_gate_count = total_gates(gate_count)
+    one_q_gates, two_q_gates = one_two_qubit_gate_totals(sim_result.circuit)
+    circuit_depth = sim_result.circuit.depth()
 
     return {
         # Core identifiers
@@ -56,6 +58,9 @@ def result_to_row(sim_result: PostselectedSimulationResult, pipeline_config: Pip
         # Gate metrics
         "gate_count": gate_count,
         "total_gates": total_gate_count,
+        "one_qubit_gates": one_q_gates,
+        "two_qubit_gates": two_q_gates,
+        "circuit_depth": circuit_depth,
         "contains_faults": sim_result.contains_faults,
         "fault_tolerant": pipeline_config.fault_tolerant,
     }

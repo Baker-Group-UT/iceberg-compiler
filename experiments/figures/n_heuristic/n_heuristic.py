@@ -84,7 +84,7 @@ def build_pipeline_config(repetitions: int) -> PipelineConfig:
     Construct a quiet pipeline config with the requested simulator repetitions.
     """
     return PipelineConfig(
-        sim_config=StandardSimulator(repetitions=repetitions),#.with_stim(),
+        sim_config=StandardSimulator(repetitions=repetitions).with_stim().with_distance_based_noise(),
         verbose=False,
         save=False,
     )
@@ -269,12 +269,12 @@ def summarize_results(df: pd.DataFrame) -> None:
 
 def parse_args() -> ExperimentSettings:
     parser = argparse.ArgumentParser(description="n-codes heuristic vs random permutation experiment")
-    parser.add_argument("--min-codes", type=int, default=2, help="Minimum number of codes to evaluate.")
-    parser.add_argument("--max-codes", type=int, default=6, help="Maximum number of codes to evaluate.")
+    parser.add_argument("--min-codes", type=int, default=20, help="Minimum number of codes to evaluate.")
+    parser.add_argument("--max-codes", type=int, default=24, help="Maximum number of codes to evaluate.")
     parser.add_argument(
         "--samples-per-code",
         type=int,
-        default=30,
+        default=10,
         help="Number of trials per codes value (must be even).",
     )
     parser.add_argument(
@@ -283,7 +283,7 @@ def parse_args() -> ExperimentSettings:
         default=2,
         help="Logical qubits simulated per code (determines circuit width).",
     )
-    parser.add_argument("--n-gates", type=int, default=25, help="Depth passed to random_clifford_circuit.")
+    parser.add_argument("--n-gates", type=int, default=200, help="Depth passed to random_clifford_circuit.")
     parser.add_argument(
         "--repetitions",
         type=int,
