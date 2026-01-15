@@ -52,6 +52,7 @@ def _normalize_probs(vals: List[float]) -> List[float]:
         return [1.0, 0.0, 0.0, 0.0]
     return [v / z for v in vals]
 
+# NOTE: Twirled symmetric depolarizing channel is a symmetric depolarizing channel
 def _pauli_twirl_approx(t: float, T1: float, T2: float) -> List[float]:
     p_x = p_y = (1 - math.exp(-t / T1)) / 4
     p_z = (1 - math.exp(-t / T2)) / 2 - (1 - math.exp(-t / T1)) / 4
@@ -94,6 +95,7 @@ def add_single_qubit_noise(stim_circuit: stim.Circuit, qubits: list[int], gate_n
     if p1 > 0:
         stim_circuit.append("DEPOLARIZE1", qubits, [p1])
 
+# NOTE: consider adding back in idle time errors
 def qiskit_to_stim(circuit: qiskit.QuantumCircuit, layout=None, include_noise: bool = True) -> stim.Circuit:
     out = stim.Circuit()
     # basically convert each instruction to stim, inject noise for distance (potench idle later)
@@ -101,13 +103,19 @@ def qiskit_to_stim(circuit: qiskit.QuantumCircuit, layout=None, include_noise: b
         op = inst.operation
         name = op.name.lower()
         qubits = [circuit.find_bit(q).index for q in inst.qubits]
-        if name in ONE_Q: # one qubit interactions
+        if name == "measure":
+            if include_noise:
+                p_meas = NOISE_PARAMS["p_meas"]
+                if p_meas > 0:
+                    out.append("X_ERROR", qubits, [p_meas])
+            out.append("M", qubits)
+        elif name in ONE_Q: # one qubit interactions
             out.append(ONE_Q[name], qubits)
             if include_noise:
                 add_single_qubit_noise(out, qubits, name)
         elif name in TWO_Q: # two qubit interactions
             out.append(TWO_Q[name], qubits)
-            if include_noise:
+            if include_noise and name != "swap":
                 add_distance_noise(out, qubits, layout)
         elif name == "barrier":
             continue
@@ -144,6 +152,7 @@ def run_stim_backend(
     shots_per_chunk: int | None = None,
     progress_callback=None,
     layout=None,
+    distance_scalar: float | None = None,
 ):
     if noise_params is not None:
         NOISE_PARAMS["T1"] = getattr(noise_params, "T1", NOISE_PARAMS["T1"])
@@ -153,6 +162,8 @@ def run_stim_backend(
         NOISE_PARAMS["p1"] = getattr(noise_params, "one_qubit_error", NOISE_PARAMS["p1"])
         NOISE_PARAMS["p2"] = getattr(noise_params, "two_qubit_error", NOISE_PARAMS["p2"])
         NOISE_PARAMS["p_meas"] = getattr(noise_params, "readout_error", NOISE_PARAMS["p_meas"])
+    if distance_scalar is not None:
+        NOISE_PARAMS["distance_scalar"] = distance_scalar
 
     sc = qiskit_to_stim(circuit, layout=layout, include_noise=include_noise)
     sampler = sc.compile_sampler(seed=seed)

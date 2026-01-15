@@ -229,6 +229,7 @@ class Simulator:
                 shots_per_chunk=self._shot_chunk_size_for(self._repetitions),
                 progress_callback=progress_update,
                 layout=layout,
+                distance_scalar=self._distance_scalar if layout is not None else None,
             )
         key_order, key_widths = self._key_meta(tcirc)
 
@@ -250,7 +251,19 @@ class Simulator:
         if self._distance_based_noise and add_noise:
             layout = build_physical_qubit_positions(circuit.num_qubits // 6)
             if not self._stim:
-                n_model = DistanceDependentNoiseModel(layout=layout, distance_scalar=self._distance_scalar)
+                stim_params = stim_params_from_noise_model(self._noise_model)
+                stim_params = apply_stim_scaling(stim_params, self._stim_scaling)
+                n_model = DistanceDependentNoiseModel(
+                    layout=layout,
+                    distance_scalar=self._distance_scalar,
+                    p1=stim_params.one_qubit_error,
+                    p2=stim_params.two_qubit_error,
+                    p_meas=stim_params.readout_error,
+                    T1=stim_params.T1,
+                    T2=stim_params.T2,
+                    t_1q=stim_params.one_qubit_gate_time,
+                    t_2q=stim_params.two_qubit_gate_time,
+                )
                 self._noise_model = n_model
             else:
                 return self._stimulate(circuit, add_noise=add_noise, layout=layout)

@@ -7,7 +7,13 @@ from typing import Dict, List, Optional, Literal, Tuple, Set, Sequence, TYPE_CHE
 
 from qiskit import QuantumCircuit
 
-from .phase_one_graph import GraphHeuristics, EdgeItem, build_graph
+from .phase_one_graph import (
+    GraphHeuristics,
+    EdgeItem,
+    build_graph,
+    DEFAULT_WORK_TABLE,
+    DEFAULT_WORK_WEIGHTS,
+)
 
 if TYPE_CHECKING:
     from .phase_three_map import PatchLayoutMetadata
@@ -216,8 +222,28 @@ def _execute_balance(
         members = patch_contents.get(patch_id, [])
         return sum(graph.nodes[q].base_cost for q in members)
 
+    def _sort_solo_edges(edges: List[EdgeItem]) -> None:
+        if approach == "greedy":
+            edges.sort(key=lambda e: e.weight, reverse=True)
+            return
+        if approach == "defensive":
+            edges.sort(key=lambda e: e.weight, reverse=False)
+            return
+        edges.sort(key=lambda e: (abs(e.weight - mean_weight), -e.weight))
+
+    def _sort_pair_edges(edges: List[EdgeItem]) -> None:
+        if approach == "greedy":
+            edges.sort(key=lambda e: e.weight, reverse=True)
+            return
+        if approach == "defensive":
+            edges.sort(key=lambda e: (0 if e.kind == "diff" else 1, -e.weight))
+            return
+        edges.sort(
+            key=lambda e: (abs(e.weight - mean_weight), 0 if e.kind == "same" else 1)
+        )
+
     solo_edges = [edge for edge in load if edge.kind == "solo"]
-    solo_edges.sort(key=lambda e: e.weight, reverse=True)
+    _sort_solo_edges(solo_edges)
     for edge in solo_edges:
         if solo_budget_remaining <= 0:
             break
@@ -229,7 +255,7 @@ def _execute_balance(
     pair_edges = [
         edge for edge in load if edge.kind in ("same", "diff") and edge.j is not None
     ]
-    pair_edges.sort(key=lambda e: e.weight, reverse=True)
+    _sort_pair_edges(pair_edges)
 
     for edge in pair_edges:
         if edge.i not in unassigned or edge.j not in unassigned:
@@ -325,19 +351,10 @@ def _smoke_test() -> None:
     # qc.z(2)
     print("Random circuit:")
     print(qc.draw())
-    gate_lsr_table = {
-        "X": 0.997,
-        "Z": 0.997,
-        "H": 0.958,
-        "HH": 0.986,
-        "CX": 0.961,
-        "CXT": 0.961,
-        "CZ": 0.967,
-        "CZT": 0.961,
-    }
     graph = build_graph(
         program_circuit=qc,
-        gate_lsr_table=gate_lsr_table,
+        gate_work_table=DEFAULT_WORK_TABLE,
+        work_weights=DEFAULT_WORK_WEIGHTS,
         patch_capacity=2,
         max_patches=4,
     )

@@ -4,6 +4,7 @@ pipeline.tasks.scan_all.py - Full permutation scan from program circuit.
 
 from __future__ import annotations
 from logging import warning
+import random
 import qiskit
 import pandas as pd
 from typing import List
@@ -31,8 +32,10 @@ def run_random_scan(program_circuit: qiskit.QuantumCircuit, m: int = 100, config
     code_sets = generate_uniform_code_sets(q)
     failures = 0
     permutations = []
+    rng = random.Random(config.seed)
     while(len(permutations) < m and failures < REPEAT_LIMIT):
-        perm = random_permutation_from_circuit(program_circuit, code_sets)
+        perm_seed = rng.randrange(2**63 - 1)
+        perm = random_permutation_from_circuit(program_circuit, code_sets, seed=perm_seed)
         if perm not in permutations:
             permutations.append(perm)
         else:

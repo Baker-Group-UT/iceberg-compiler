@@ -7,26 +7,17 @@ from typing import Dict, List, Tuple, Optional, Literal, Any
 
 import qiskit  # adjust import if needed
 
-from .phase_one_graph import build_graph, GraphHeuristics
+from .phase_one_graph import (
+    build_graph,
+    GraphHeuristics,
+    WorkTable,
+    DEFAULT_WORK_TABLE,
+    DEFAULT_WORK_WEIGHTS,
+)
 from .phase_two_balance import balance_graph_multi, BalanceResult
 from .phase_three_map import compute_grid_aligned_mapping, PatchLayoutMetadata
 
 GateName = str
-LSRTable = Dict[GateName, float]
-
-DEFAULT_LSR_TABLE = {
-    "X":   9.9961e-01,
-    "Z":   9.9961e-01,
-    "H":   9.8686e-01,
-    "HH":  9.9047e-01,
-    "CX":  9.8828e-01,
-    "CXT": 9.8537e-01,
-    "CZ":  9.9078e-01,
-    "CZT": 9.8537e-01,
-    "RZ":  9.9399e-01,
-    "S":   9.9659e-01,
-    "MEASURE": 1,
-}
 
 WARN_ON_BUDGET_FILTER = False
 
@@ -59,28 +50,32 @@ class HeuristicPacker:
     High-level entrypoint for the heuristic packing algorithm.
 
     This class orchestrates:
-      - Phase 1: graph construction based on gate LSRs and the program circuit.
+      - Phase 1: graph construction based on gate work counts and the program circuit.
       - Phase 2: load-balancing heuristic over the graph to pick a mapping.
     """
 
     def __init__(
         self,
-        gate_lsr_table: LSRTable = None,
+        gate_work_table: WorkTable | None = None,
+        work_weights: Tuple[float, float] | None = None,
         patch_capacity: int = 2,
         max_patches: int = None,
         enable_phase_three: bool = True,
         explore_all_solo_budgets: bool = True,
         explore_all_approaches: bool = True,
     ) -> None:
-        self.gate_lsr_table = gate_lsr_table  # raw LSRs, e.g., {"H": 0.95871, "X": 0.99763, ...}
+        self.gate_work_table = gate_work_table
+        self.work_weights = work_weights
         self.patch_capacity = patch_capacity  # k
         self.max_patches = max_patches        # m
         self.enable_phase_three = enable_phase_three
         self.explore_all_solo_budgets = explore_all_solo_budgets
         self.explore_all_approaches = explore_all_approaches
 
-        if self.gate_lsr_table is None:
-            self.gate_lsr_table = DEFAULT_LSR_TABLE
+        if self.gate_work_table is None:
+            self.gate_work_table = DEFAULT_WORK_TABLE
+        if self.work_weights is None:
+            self.work_weights = DEFAULT_WORK_WEIGHTS
 
     def pack(
         self,
@@ -104,7 +99,8 @@ class HeuristicPacker:
 
         graph: GraphHeuristics = build_graph(
             program_circuit=program_circuit,
-            gate_lsr_table=self.gate_lsr_table,
+            gate_work_table=self.gate_work_table,
+            work_weights=self.work_weights,
             patch_capacity=self.patch_capacity,
             max_patches=max_patches,
         )
@@ -235,12 +231,12 @@ class HeuristicPacker:
             return (float("inf"), float("inf"), float("inf"), candidate.patches_used)
         total_weight = sum(weights)
         max_weight = max(weights)
-        mean_weight = total_weight / len(weights)
+        mean_weight = total_weight / len(weights)  # work per used patch
         spread = sum(abs(w - mean_weight) for w in weights) / len(weights)
         return (
             max_weight,
             spread,
-            total_weight,
+            mean_weight,
             candidate.patches_used,  # placeholder for potential future use
         )
 

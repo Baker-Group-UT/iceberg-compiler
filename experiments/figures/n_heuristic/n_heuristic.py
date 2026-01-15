@@ -2,12 +2,12 @@
 n_heuristic.py
 ---------------
 
-Experiment driver that compares the heuristic packer's assignment against a
+Experiment driver that compares the merge-maximizing packer's assignment against a
 random permutation that uses the same number of codes. For each requested
 ``n_codes`` value we:
 
 1. Build a random Clifford circuit.
-2. Pack it with ``HeuristicPacker`` restricted to ``n_codes`` patches.
+2. Pack it with ``MergeMaximizingPacker`` restricted to ``n_codes`` patches.
 3. Build a random permutation with ``permutation_with_n_codes`` using the
    same ``q`` and ``n_codes``.
 4. Run a specific scan for the packed permutation vs. the random one.
@@ -35,7 +35,7 @@ import pandas as pd
 import qiskit
 from qiskit.circuit.random import random_clifford_circuit
 
-from packer.packer import HeuristicPacker
+from packer.merge_packer import MergeMaximizingPacker
 from permutations.generator import permutation_with_n_codes
 from pipeline.config import PipelineConfig
 from pipeline.tasks.scan_specific import run_specific_scan
@@ -84,7 +84,7 @@ def build_pipeline_config(repetitions: int) -> PipelineConfig:
     Construct a quiet pipeline config with the requested simulator repetitions.
     """
     return PipelineConfig(
-        sim_config=StandardSimulator(repetitions=repetitions),#.with_stim(),
+        sim_config=StandardSimulator(repetitions=repetitions).with_stim(),#.with_distance_based_noise(),
         verbose=False,
         save=False,
     )
@@ -141,7 +141,7 @@ def extract_metric(df: pd.DataFrame, permutation: Perm, metric_column: str) -> f
 
 
 def run_single_trial(
-    packer: HeuristicPacker,
+    packer: MergeMaximizingPacker,
     config: PipelineConfig,
     settings: ExperimentSettings,
     target_codes: int,
@@ -163,8 +163,8 @@ def run_single_trial(
     )
     tcirc = program_circuit
 
-    packing = packer.pack(tcirc, max_patches=target_codes)
-    packed_perm = packer.packing_to_permutation(packing.qubit_to_patch, num_qubits=tcirc.num_qubits)
+    packing = packer.pack(tcirc, num_codes=target_codes)
+    packed_perm = packing.permutation
     codes_used = len({p for p, _ in packed_perm})
 
     random_perm_seed = None
@@ -202,7 +202,7 @@ def run_experiment(settings: ExperimentSettings) -> pd.DataFrame:
     Run the configured number of trials for each n_codes value and collect results.
     """
     config = build_pipeline_config(settings.simulator_repetitions)
-    packer = HeuristicPacker()
+    packer = MergeMaximizingPacker()
     rng = random.Random(settings.random_seed)
 
     rows: List[Dict[str, float | int | Perm]] = []
@@ -243,7 +243,7 @@ def plot_results(df: pd.DataFrame, settings: ExperimentSettings) -> None:
 
     ax.set_xlabel("Codes used")
     ax.set_ylabel("Percent reduction in logical TVD")
-    ax.set_title("Heuristic packing vs. random permutation")
+    ax.set_title("Merge-maximizing packing vs. random permutation")
     ax.axhline(0, color="#636363", linestyle="--", linewidth=1)
     fig.tight_layout()
 
@@ -268,13 +268,15 @@ def summarize_results(df: pd.DataFrame) -> None:
 
 
 def parse_args() -> ExperimentSettings:
-    parser = argparse.ArgumentParser(description="n-codes heuristic vs random permutation experiment")
-    parser.add_argument("--min-codes", type=int, default=2, help="Minimum number of codes to evaluate.")
-    parser.add_argument("--max-codes", type=int, default=6, help="Maximum number of codes to evaluate.")
+    parser = argparse.ArgumentParser(
+        description="n-codes merge-maximizing packer vs random permutation experiment"
+    )
+    parser.add_argument("--min-codes", type=int, default=20, help="Minimum number of codes to evaluate.")
+    parser.add_argument("--max-codes", type=int, default=24, help="Maximum number of codes to evaluate.")
     parser.add_argument(
         "--samples-per-code",
         type=int,
-        default=30,
+        default=10,
         help="Number of trials per codes value (must be even).",
     )
     parser.add_argument(
@@ -283,11 +285,11 @@ def parse_args() -> ExperimentSettings:
         default=2,
         help="Logical qubits simulated per code (determines circuit width).",
     )
-    parser.add_argument("--n-gates", type=int, default=25, help="Depth passed to random_clifford_circuit.")
+    parser.add_argument("--n-gates", type=int, default=200, help="Depth passed to random_clifford_circuit.")
     parser.add_argument(
         "--repetitions",
         type=int,
-        default=25_000,
+        default=100_000,
         help="Simulator repetitions per run.",
     )
     parser.add_argument(
