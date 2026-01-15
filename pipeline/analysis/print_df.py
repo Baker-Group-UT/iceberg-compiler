@@ -54,6 +54,8 @@ def print_df_table(
     header: str = "Run table",
     float_precision: int = 6,
     max_rows: int | None = None,
+    sort_by: str | None = None,
+    hide_permutation: bool = False,
     stream: TextIO = sys.stdout,
     show_index: bool = True,
 ) -> None:
@@ -74,32 +76,54 @@ def print_df_table(
     wanted = [
         "permutation",
         "codes_used",
-        "fidelity",
-        "logical_error_rate",
+        # "fidelity",
+        # "logical_error_rate",
         # "logical_fidelity",
         "logical_selection_rate",
         "logical_total_variation_distance",
-        "total_gates",
+        "code_equality_entropy",
+        "depth_equality_entropy",
+        # "total_gates",
+        "one_qubit_gates",
+        "two_qubit_gates",
+        "circuit_depth",
         # "contains_faults",
         # "fault_tolerant",
         # "postselected_dist",
     ]
+    if hide_permutation and "permutation" in wanted:
+        wanted.remove("permutation")
     rename = {
         "codes_used": "# codes",
         "logical_selection_rate": "selection rate",
         "logical_total_variation_distance": "TVD",
+        "code_equality_entropy": "code equality",
+        "depth_equality_entropy": "depth equality",
+        "one_qubit_gates": "#1q",
+        "two_qubit_gates": "#2q",
         "total_gates": "gate count",
+        "circuit_depth": "depth",
         "contains_faults": "contains faults",
         # "fault_tolerant": "fault tolerant",
     }
 
     cols = [c for c in wanted if c in df.columns]
     dfx = df.loc[:, cols].copy()
+    if sort_by is not None and sort_by in dfx.columns:
+        dfx = dfx.sort_values(sort_by, ascending=True)
     if max_rows is not None:
         dfx = dfx.head(max_rows)
 
     # Numeric formatting
-    for c in ("fidelity", "logical_error_rate", "logical_fidelity", "logical_selection_rate", "logical_total_variation_distance"):
+    for c in (
+        "fidelity",
+        "logical_error_rate",
+        "logical_fidelity",
+        "logical_selection_rate",
+        "logical_total_variation_distance",
+        "code_equality_entropy",
+        "depth_equality_entropy",
+    ):
         if c in dfx.columns:
             dfx[c] = pd.to_numeric(dfx[c], errors="coerce").round(float_precision)
 
@@ -142,6 +166,8 @@ def print_df_verbose(
     float_precision: int = 6,
     stream: TextIO = sys.stdout,
     max_rows: int | None = None,
+    sort_by: str | None = None,
+    hide_permutation: bool = False,
 ) -> None:
     """
     Print selected fields per row, with custom labels:
@@ -161,20 +187,29 @@ def print_df_verbose(
     cols = [
         ("permutation", "permutation"),
         ("codes_used", "# codes"),
+        ("one_qubit_gates", "#1q"),
+        ("two_qubit_gates", "#2q"),
+        ("circuit_depth", "depth"),
         ("fidelity", "fidelity"),
         ("logical_error_rate", "logical_error_rate"),
         ("logical_fidelity", "logical_fidelity"),
         ("logical_selection_rate", "selection rate"),
         ("logical_total_variation_distance", "TVD"),
+        ("code_equality_entropy", "code equality"),
+        ("depth_equality_entropy", "depth equality"),
         ("gate_count", "gate count"),
         ("contains_faults", "contains faults"),
         ("fault_tolerant", "fault tolerant"),
     ]
+    if hide_permutation:
+        cols = [entry for entry in cols if entry[0] != "permutation"]
 
     n = len(df) if hasattr(df, "__len__") else None
     hdr = f"{header}" + (f" (n={n})" if n is not None else "")
     print(hdr, file=stream)
 
+    if sort_by is not None and hasattr(df, "sort_values") and sort_by in getattr(df, "columns", []):
+        df = df.sort_values(sort_by, ascending=True)
     iterable = df.iterrows() if hasattr(df, "iterrows") else enumerate(_to_list(df))
     for idx, row in iterable:
         if max_rows is not None and idx >= max_rows:
@@ -191,18 +226,28 @@ def print_df_verbose(
         # Build lines
         perm = get("permutation")
         codes = get("codes_used")
+        one_q = get("one_qubit_gates")
+        two_q = get("two_qubit_gates")
+        depth = get("circuit_depth")
         fid = _fmt_float(get("fidelity"), float_precision)
         l_err = _fmt_float(get("logical_error_rate"), float_precision)
         l_fid = _fmt_float(get("logical_fidelity"), float_precision)
         sel = _fmt_float(get("logical_selection_rate"), float_precision)
         tvd = _fmt_float(get("logical_total_variation_distance"), float_precision)
+        work_conc = _fmt_float(get("code_equality_entropy"), float_precision)
+        depth_eq = _fmt_float(get("depth_equality_entropy"), float_precision)
         gcount = _format_gate_count(get("gate_count"))
         faults = get("contains_faults")
         ft = get("fault_tolerant")
 
-        print(f"[{idx:>3}] permutation: {perm}", file=stream)
+        if not hide_permutation:
+            print(f"[{idx:>3}] permutation: {perm}", file=stream)
         print(f"      # codes: {codes}", file=stream)
+        print(f"      #1q: {one_q} | #2q: {two_q} | depth: {depth}", file=stream)
         print(f"      fidelity: {fid} | logical_fidelity: {l_fid} | logical_error_rate: {l_err}", file=stream)
-        print(f"      selection rate: {sel} | TVD: {tvd}", file=stream)
+        print(
+            f"      selection rate: {sel} | TVD: {tvd} | code equality: {work_conc} | depth equality: {depth_eq}",
+            file=stream,
+        )
         print(f"      gate count: {gcount}", file=stream)
         print(f"      contains faults: {faults} | fault tolerant: {ft}", file=stream)

@@ -19,7 +19,7 @@ class PipelineConfig:
     save_dir: str = "results/pipeline"
     sim_config: SimulatorConfig = field(default_factory=SimulatorConfig)
     translator_config: TranslatorConfig = field(default_factory=TranslatorConfig)
-    seed: int = 1
+    seed: int = None
 
     def with_ft(self, ft: bool = True, ft_chance: float = -1.0): 
         self.fault_tolerant = ft

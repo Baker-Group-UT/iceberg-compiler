@@ -6,7 +6,13 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from qiskit import QuantumCircuit
 
-from .phase_one_graph import GraphHeuristics, EdgeItem, build_graph
+from .phase_one_graph import (
+    GraphHeuristics,
+    EdgeItem,
+    build_graph,
+    DEFAULT_WORK_TABLE,
+    DEFAULT_WORK_WEIGHTS,
+)
 
 EdgeGroups = Dict[str, List[EdgeItem]]
 
@@ -295,19 +301,10 @@ def _smoke_test() -> None:
     qc.cx(3,2)
     qc.z(2)
 
-    gate_lsr_table = {
-        "X": 0.997,
-        "Z": 0.997,
-        "H": 0.958,
-        "HH": 0.986,
-        "CX": 0.961,
-        "CXT": 0.961,
-        "CZ": 0.967,
-        "CZT": 0.961,
-    }
     graph = build_graph(
         qc,
-        gate_lsr_table=gate_lsr_table,
+        gate_work_table=DEFAULT_WORK_TABLE,
+        work_weights=DEFAULT_WORK_WEIGHTS,
         patch_capacity=2,
         max_patches=8,
     )

@@ -115,7 +115,7 @@ def qiskit_to_stim(circuit: qiskit.QuantumCircuit, layout=None, include_noise: b
                 add_single_qubit_noise(out, qubits, name)
         elif name in TWO_Q: # two qubit interactions
             out.append(TWO_Q[name], qubits)
-            if include_noise:
+            if include_noise and name != "swap":
                 add_distance_noise(out, qubits, layout)
         elif name == "barrier":
             continue
