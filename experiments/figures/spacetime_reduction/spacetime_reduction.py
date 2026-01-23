@@ -103,7 +103,7 @@ def compute_metrics(
 def run_experiment(settings: ExperimentSettings) -> pd.DataFrame:
     config = PipelineConfig()
     rng = random.Random(settings.random_seed)
-    packer = MergeMaximizingPacker(solo_strategy="pair_then_solo")
+    packer = MergeMaximizingPacker(solo_strategy="most_hadamards")
 
     rows: List[Dict[str, int | float]] = []
     min_codes = math.ceil(settings.n_qubits / 2)
@@ -209,8 +209,8 @@ def parse_args() -> ExperimentSettings:
     parser = argparse.ArgumentParser(
         description="Gate/depth reduction analysis without simulation."
     )
-    parser.add_argument("--n-qubits", type=int, default=100, help="Number of logical qubits.")
-    parser.add_argument("--n-gates", type=int, default=1000, help="Depth passed to random_clifford_circuit.")
+    parser.add_argument("--n-qubits", type=int, default=20, help="Number of logical qubits.")
+    parser.add_argument("--n-gates", type=int, default=200, help="Depth passed to random_clifford_circuit.")
     parser.add_argument("--num-circuits", type=int, default=10, help="Number of random circuits.")
     parser.add_argument(
         "--random-perms",
