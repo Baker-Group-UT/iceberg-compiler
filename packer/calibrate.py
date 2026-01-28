@@ -420,7 +420,7 @@ class GateCalibrator:
         Apply optional HH/CXT/CZT merging followed by local inverse cancellation.
         """
         processed = circuit
-        if self._translator_cfg.enable_hh_merging:
+        if self._translator_cfg.enable_merging:
             processed = preprocess_program_for_merging(
                 processed,
                 self.config.permutation,

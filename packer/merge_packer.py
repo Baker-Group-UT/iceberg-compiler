@@ -204,15 +204,23 @@ def _score_pair(stats: PairMergeStats, weights: MergeWeights) -> float:
     w2 = weights.w2
     h_cost = gate_cost("H", DEFAULT_WORK_TABLE, w1=w1, w2=w2)
     hh_cost = gate_cost("HH", DEFAULT_WORK_TABLE, w1=w1, w2=w2)
+    x_cost = gate_cost("X", DEFAULT_WORK_TABLE, w1=w1, w2=w2)
+    xx_cost = gate_cost("XX", DEFAULT_WORK_TABLE, w1=w1, w2=w2)
+    z_cost = gate_cost("Z", DEFAULT_WORK_TABLE, w1=w1, w2=w2)
+    zz_cost = gate_cost("ZZ", DEFAULT_WORK_TABLE, w1=w1, w2=w2)
     cx_cost = gate_cost("CX", DEFAULT_WORK_TABLE, w1=w1, w2=w2)
     cxt_cost = gate_cost("CXT", DEFAULT_WORK_TABLE, w1=w1, w2=w2)
     cz_cost = gate_cost("CZ", DEFAULT_WORK_TABLE, w1=w1, w2=w2)
     czt_cost = gate_cost("CZT", DEFAULT_WORK_TABLE, w1=w1, w2=w2)
     hh_savings = 2.0 * h_cost - hh_cost
+    xx_savings = 2.0 * x_cost - xx_cost
+    zz_savings = 2.0 * z_cost - zz_cost
     cx_savings = 2.0 * cx_cost - cxt_cost
     cz_savings = 2.0 * cz_cost - czt_cost
     return (
         stats.hh_merges * hh_savings
+        + stats.xx_merges * xx_savings
+        + stats.zz_merges * zz_savings
         + stats.cx_merges * cx_savings
         + stats.cz_merges * cz_savings
     )

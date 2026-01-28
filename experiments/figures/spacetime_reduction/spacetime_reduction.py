@@ -27,10 +27,10 @@ from typing import Dict, List, Sequence, Tuple
 import matplotlib.pyplot as plt
 import pandas as pd
 import qiskit
-from qiskit.circuit.random import random_clifford_circuit
 from tqdm import tqdm
 
 from evaluator.gate_count_stats import one_two_qubit_gate_totals
+from experiments.shared.random_circuits import random_gate_circuit
 from packer.merge_packer import MergeMaximizingPacker
 from permutations.generator import permutation_with_n_codes
 from pipeline.config import PipelineConfig
@@ -78,11 +78,11 @@ def build_random_circuit(
     n_gates: int,
     seed: int | None,
 ) -> qiskit.QuantumCircuit:
-    circuit = random_clifford_circuit(
-        n_qubits,
-        n_gates,
-        # seed=seed,
+    circuit = random_gate_circuit(
+        num_qubits=n_qubits,
+        num_gates=n_gates,
         gates=GATE_SET,
+        seed=seed,
     )
     circuit.measure_all()
     return circuit

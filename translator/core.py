@@ -65,16 +65,17 @@ class Translation:
                 # TODO: make this pass further up the chain so we don't hault
                 # permutation should be marked as infeasible in set
                 raise RuntimeWarning("Gate application failed!")
+            if BARRIERS:
+                self.context.iceberg_set.BARRIER()
 
         if not self.encode_override:
             self.context.iceberg_set.decode()
             if BARRIERS:
                 self.context.iceberg_set.BARRIER()
             self.context.iceberg_set.measure()
-        physical_circuit = cancel_inverse_gates(self.context.iceberg_set.circuit)
-        physical_circuit = self.context.iceberg_set.circuit
+        processed_gates = cancel_inverse_gates(self.context.iceberg_set.circuit)
         return TranslationResult(
-            circuit=physical_circuit,
+            circuit=processed_gates,
             permutation=self.permutation,
             context=self.context,
             contains_faults=(len(self.context.fault_log) == 0),
@@ -91,7 +92,7 @@ class Translator:
         self.fault_tolerant = config.fault_tolerant
         self.verbose = config.verbose
         self.n_code = config.n_code
-        self.enable_hh_merging = config.enable_hh_merging
+        self.enable_merging = config.enable_merging
         self.allow_transversal_swap_merges = config.allow_transversal_swap_merges
         self.encode_override = config.encode_override
 
@@ -103,15 +104,15 @@ class Translator:
         """
         Translate a program circuit and a permutation into a physical circuit.
         """
-        if self.enable_hh_merging:
+        processed_circuit = cancel_inverse_gates(program_circuit)
+        if self.enable_merging:
             processed_circuit = preprocess_program_for_merging(
-                program_circuit,
+                processed_circuit,
                 permutation,
                 allow_transversal_swap_merges=self.allow_transversal_swap_merges,
             )
         else:
             processed_circuit = program_circuit
-        processed_circuit = cancel_inverse_gates(processed_circuit)
         translation = Translation(
             permutation=permutation,
             program_circuit=processed_circuit,
