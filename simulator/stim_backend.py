@@ -11,6 +11,7 @@ import stim
 import math
 
 from .noise_models import (manhattan_distance)
+from .scheduler import compute_idle_times
 
 ONE_Q = {
     "h": "H",
@@ -35,6 +36,7 @@ NOISE_PARAMS = {
     "p_meas": 0.02,
     "T1": 100e-6,
     "T2": 80e-6,
+    "idle_time_scalar": 0.0,
     "t_1q": 50e-9,
     "t_2q": 300e-9,
 }
@@ -98,11 +100,31 @@ def add_single_qubit_noise(stim_circuit: stim.Circuit, qubits: list[int], gate_n
 # NOTE: consider adding back in idle time errors
 def qiskit_to_stim(circuit: qiskit.QuantumCircuit, layout=None, include_noise: bool = True) -> stim.Circuit:
     out = stim.Circuit()
+    last_time = [0.0] * circuit.num_qubits
     # basically convert each instruction to stim, inject noise for distance (potench idle later)
     for inst in circuit.data:
         op = inst.operation
         name = op.name.lower()
         qubits = [circuit.find_bit(q).index for q in inst.qubits]
+        if name == "barrier":
+            continue
+        gate_time = 0.0
+        if name in ONE_Q:
+            gate_time = NOISE_PARAMS["t_1q"]
+        elif name in TWO_Q:
+            gate_time = NOISE_PARAMS["t_2q"]
+        if include_noise and qubits:
+            idle_times = compute_idle_times(qubits, last_time, gate_time)
+            idle_time_scalar = NOISE_PARAMS["idle_time_scalar"]
+            if idle_time_scalar != 0:
+                for q, t_idle in idle_times:
+                    t_idle *= idle_time_scalar
+                    if t_idle > 0:
+                        p_i, p_x, p_y, p_z = _pauli_twirl_approx(
+                            t_idle, NOISE_PARAMS["T1"], NOISE_PARAMS["T2"]
+                        )
+                        if p_x > 0 or p_y > 0 or p_z > 0:
+                            out.append("PAULI_CHANNEL_1", [q], [p_x, p_y, p_z])
         if name == "measure":
             if include_noise:
                 p_meas = NOISE_PARAMS["p_meas"]
@@ -117,8 +139,6 @@ def qiskit_to_stim(circuit: qiskit.QuantumCircuit, layout=None, include_noise: b
             out.append(TWO_Q[name], qubits)
             if include_noise and name != "swap":
                 add_distance_noise(out, qubits, layout)
-        elif name == "barrier":
-            continue
         else:
             raise NotImplementedError(f"Unsupported gate for Stim: {name}")
     return out
@@ -157,6 +177,9 @@ def run_stim_backend(
     if noise_params is not None:
         NOISE_PARAMS["T1"] = getattr(noise_params, "T1", NOISE_PARAMS["T1"])
         NOISE_PARAMS["T2"] = getattr(noise_params, "T2", NOISE_PARAMS["T2"])
+        NOISE_PARAMS["idle_time_scalar"] = getattr(
+            noise_params, "idle_time_scalar", NOISE_PARAMS["idle_time_scalar"]
+        )
         NOISE_PARAMS["t_1q"] = getattr(noise_params, "one_qubit_gate_time", NOISE_PARAMS["t_1q"])
         NOISE_PARAMS["t_2q"] = getattr(noise_params, "two_qubit_gate_time", NOISE_PARAMS["t_2q"])
         NOISE_PARAMS["p1"] = getattr(noise_params, "one_qubit_error", NOISE_PARAMS["p1"])

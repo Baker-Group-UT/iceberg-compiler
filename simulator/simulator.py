@@ -57,8 +57,10 @@ class Simulator:
         self._repetitions: int = config.repetitions
         self._noiseless: bool = config.noiseless
         self._seed: Optional[int] = config.seed
-        self._distance_based_noise = config.distance_based_noise
+        self._distance_noise = config.distance_noise
         self._distance_scalar = config.distance_scalar
+        self._idle_noise = config.idle_noise
+        self._idle_time_scalar = config.idle_time_scalar
         self._noise_model: Optional[NoiseModel] = config.noise_model
         self._stim: bool = config.stim
         self._stim_scaling: Optional[StimParameterScaling] = config.stim_scaling
@@ -218,6 +220,9 @@ class Simulator:
 
         stim_params = stim_params_from_noise_model(self._noise_model)
         stim_params = apply_stim_scaling(stim_params, self._stim_scaling)
+        stim_params.idle_time_scalar = (
+            self._idle_time_scalar if self._idle_noise else 0.0
+        )
 
         with self._shot_progress_bar("Shots") as progress_update:
             probs = run_stim_backend(
@@ -248,7 +253,7 @@ class Simulator:
         Uses class config: repetitions (shots), seed, noiseless, and noise_model.
         """
 
-        if self._distance_based_noise and add_noise:
+        if self._distance_noise and add_noise:
             layout = build_physical_qubit_positions(circuit.num_qubits // 6)
             if not self._stim:
                 stim_params = stim_params_from_noise_model(self._noise_model)

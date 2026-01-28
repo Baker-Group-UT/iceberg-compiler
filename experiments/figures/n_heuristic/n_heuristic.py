@@ -84,7 +84,7 @@ def build_pipeline_config(repetitions: int) -> PipelineConfig:
     Construct a quiet pipeline config with the requested simulator repetitions.
     """
     return PipelineConfig(
-        sim_config=StandardSimulator(repetitions=repetitions).with_stim(),#.with_distance_based_noise(),
+        sim_config=StandardSimulator(repetitions=repetitions).with_stim(),#.with_distance_noise(),
         verbose=False,
         save=False,
     )

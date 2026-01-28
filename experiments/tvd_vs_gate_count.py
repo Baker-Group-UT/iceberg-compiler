@@ -153,7 +153,7 @@ def main(argv: list[str] | None = None) -> int:
     circuit = _build_random_circuit(cfg)
     sim_cfg = (
         ScaledSimulator(alpha=0.5, repetitions=cfg.repetitions, seed=cfg.seed)
-        .with_distance_based_noise(distance_scalar=cfg.distance_scalar)
+        .with_distance_noise(distance_scalar=cfg.distance_scalar)
         .with_stim()
     )
     pipeline_cfg = PipelineConfig(sim_config=sim_cfg, verbose=False, save=False, seed=cfg.seed)

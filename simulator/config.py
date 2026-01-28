@@ -21,8 +21,10 @@ class SimulatorConfig:
     Dataclass for storing and quickly instantiating the Simulator class.
     """
     repetitions: int = 1000
-    distance_based_noise = False
-    distance_scalar = 1
+    distance_noise = False
+    distance_scalar = 1.0
+    idle_noise = False
+    idle_time_scalar = 1.0
     noise_model: Optional[NoiseModel] = None
     noiseless: bool = False
     seed: Optional[int] = None
@@ -40,6 +42,10 @@ class SimulatorConfig:
         """
         return {
             "repetitions": self.repetitions,
+            "distance_noise": self.distance_noise,
+            "distance_scalar": self.distance_scalar,
+            "idle_noise": self.idle_noise,
+            "idle_time_scalar": self.idle_time_scalar,
             "noise_model": noise_model_to_dict(self.noise_model)
             if self.noise_model
             else None,
@@ -48,9 +54,14 @@ class SimulatorConfig:
             "stim_scaling": self.stim_scaling.__dict__ if self.stim_scaling else None,
         }
 
-    def with_distance_based_noise(self, distance_based_noise: bool = True, distance_scalar: float = 1) -> Self:
-        self.distance_based_noise = distance_based_noise
+    def with_distance_noise(self, distance_scalar: float = 1, distance_noise: bool = True) -> Self:
         self.distance_scalar = distance_scalar
+        self.distance_noise = distance_noise
+        return self
+
+    def with_idle_noise(self, idle_time_scalar: float = 1.0,  idle_noise: bool = True) -> Self:
+        self.idle_time_scalar = idle_time_scalar
+        self.idle_noise = idle_noise
         return self
 
     def with_noiseless(self, noiseless: bool = True) -> Self:
