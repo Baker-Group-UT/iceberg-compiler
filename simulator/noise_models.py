@@ -35,6 +35,7 @@ class StimNoiseParameters:
     two_qubit_error: float = 3.5e-3
     meas_time: float = 2584e-9
     readout_error: float = 3.906e-3
+    idle_time_scalar: float = 0.0
 
 
 @dataclass
@@ -47,6 +48,7 @@ class StimParameterScaling:
     two_qubit_error: float = 1 # 0.75098
     meas_time: float = 1 # 0.176850
     readout_error: float = 1 # 0.279562
+    idle_time_scalar: float = 1
 
 
 def _attach_stim_params(model: NoiseModel, params: StimNoiseParameters) -> NoiseModel:
@@ -76,6 +78,7 @@ def apply_stim_scaling(
         two_qubit_error=params.two_qubit_error * scaling.two_qubit_error,
         meas_time=params.meas_time * scaling.meas_time,
         readout_error=params.readout_error * scaling.readout_error,
+        idle_time_scalar=params.idle_time_scalar * scaling.idle_time_scalar,
     )
 
 # ---------- utils ----------

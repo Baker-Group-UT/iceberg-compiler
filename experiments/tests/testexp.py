@@ -63,14 +63,17 @@ def sparse_trivial_packing(num_qubits: int):
 if __name__ == "__main__":
     from translator.merging import preprocess_program_for_merging
 
-    qc = random_gate_circuit(num_qubits=2, num_gates=20, gates=["h", "x", "cx"])
+    qc = random_gate_circuit(num_qubits=2, num_gates=20, gates=["h", "x", "cx"], seed=10)
     qc.measure_all()
 
     config = PipelineConfig(
-        sim_config=ScaledSimulator(alpha=0.25,repetitions=10_000).with_stim().with_noiseless(),
+        sim_config=ScaledSimulator(alpha=0.25,repetitions=10_000)
+        .with_stim()
+        .with_distance_noise(1e-10)
+        .with_idle_noise(1e-10),
         # sim_config=ScaledSimulator(repetitions=10_000, alpha=1),
         verbose=True,
-        # seed=5,
+        seed=5,
     )
     print(qc)
     t_merg: RunRecord = run_specific_scan(program_circuit=qc, permutations=[[(0, 0), (0, 1)]], config=config)

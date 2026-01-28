@@ -55,7 +55,7 @@ class MergeMaximizingPacker:
         self,
         *,
         patch_capacity: int = 2,
-        solo_strategy: SoloStrategy = "pair_then_solo",
+        solo_strategy: SoloStrategy = "most_gates",
         merge_weights: Optional[MergeWeights] = None,
         top_k: int = 1,
         num_paths: int = 1,

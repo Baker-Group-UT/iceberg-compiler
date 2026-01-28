@@ -285,7 +285,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             sim_cfg = (
                 ScaledSimulator(alpha=0.5, repetitions=rep, seed=run_seed)
-                .with_distance_based_noise(distance_scalar=cfg.distance_scalar)
+                .with_distance_noise(distance_scalar=cfg.distance_scalar)
                 .with_stim()
             )
             pipeline_cfg = PipelineConfig(sim_config=sim_cfg, verbose=False, save=False, seed=run_seed)
