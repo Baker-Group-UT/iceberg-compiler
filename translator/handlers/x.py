@@ -36,3 +36,32 @@ def apply_logical_x(op, context: TranslationContext) -> bool:
         context.fault_log.append(f"[trace] X on logical {phys_id} -> (p{patch},s{slot})")
 
     return True
+
+
+def apply_logical_xx_merge(op, context: TranslationContext) -> None:
+    """
+    Apply a pre-merged XX macro on the given patch.
+    """
+    logical_indices = [context.qc.find_bit(q).index for q in op.qubits]
+    patch_ids = []
+    slots = []
+    global_indices = []
+    for logical_i in logical_indices:
+        p, s = context.permutation[logical_i]
+        phys_id = p * context.k_log + s
+        patch, slot = context.current_pos_of(phys_id)
+        patch_ids.append(patch)
+        slots.append(slot)
+        global_indices.append(patch * context.k_log + slot)
+
+    if len(set(patch_ids)) != 1:
+        # Fallback: treat as two single X operations.
+        for q in op.qubits:
+            faux_op = type("TmpOp", (), {"qubits": [q], "gate": op.gate})
+            apply_logical_x(faux_op, context)
+        context.fault_log.append("XX merge applied across multiple patches; fell back to single X gates.")
+        return None
+
+    patch = patch_ids[0]
+    context.iceberg_set.X_at(patch, slots)
+    return None

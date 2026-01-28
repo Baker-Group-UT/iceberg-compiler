@@ -19,6 +19,8 @@ DEFAULT_WORK_TABLE: WorkTable = {
     "Z": (2, 0),
     "H": (7, 4),
     "HH": (4, 0), # Swap set to 0 weight
+    "XX": (2, 0),
+    "ZZ": (2, 0),
     "S": (2, 1),
     "RZ": (1, 2),
     "CX": (0, 4),

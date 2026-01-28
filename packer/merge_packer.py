@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import math
+import random
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Literal, Optional, Sequence, Tuple
 
 import qiskit
 
-from packer.phase_one_graph import DEFAULT_WORK_TABLE, DEFAULT_WORK_WEIGHTS, build_graph
+from packer.phase_one_graph import (
+    DEFAULT_WORK_TABLE,
+    DEFAULT_WORK_WEIGHTS,
+    build_graph,
+    gate_cost,
+)
 from packer.phase_three_map import PatchLayoutMetadata, compute_grid_aligned_mapping
 from translator.merging import PairMergeAnalyzer, PairMergeStats
 
@@ -15,9 +21,8 @@ SoloStrategy = Literal["most_gates", "pair_then_solo", "most_hadamards"]
 
 @dataclass(frozen=True)
 class MergeWeights:
-    hh: float = 1.0
-    cx: float = 1.0
-    cz: float = 1.0
+    w1: float = DEFAULT_WORK_WEIGHTS[0]
+    w2: float = DEFAULT_WORK_WEIGHTS[1]
 
 
 @dataclass
@@ -43,7 +48,7 @@ class MergeMaximizingPacker:
             - "most_gates": preselect the busiest qubits as solos.
             - "pair_then_solo": pair greedily until the remaining qubits must be solo.
             - "most_hadamards": preselect qubits with the most H gates as solos.
-        merge_weights: Optional weighting for HH/CX/CZ merge counts.
+        merge_weights: Optional weighting for 1q/2q gate costs.
     """
 
     def __init__(
@@ -52,10 +57,18 @@ class MergeMaximizingPacker:
         patch_capacity: int = 2,
         solo_strategy: SoloStrategy = "pair_then_solo",
         merge_weights: Optional[MergeWeights] = None,
+        top_k: int = 1,
+        num_paths: int = 1,
+        selection_decay: float = 0.9,
+        rng: Optional[random.Random] = None,
     ) -> None:
         self.patch_capacity = patch_capacity
         self.solo_strategy = solo_strategy
         self.merge_weights = merge_weights or MergeWeights()
+        self.top_k = top_k
+        self.num_paths = num_paths
+        self.selection_decay = selection_decay
+        self.rng = rng or random.Random()
 
     def pack(
         self,
@@ -108,19 +121,23 @@ class MergeMaximizingPacker:
         elif strategy != "pair_then_solo":
             raise ValueError(f"Unknown solo_strategy: {strategy}")
 
-        if strategy == "pair_then_solo":
-            while len(remaining) > solo_needed:
-                pair = _pick_best_pair(remaining, analyzer, self.merge_weights)
-                pair_patches.append(pair)
-                remaining.difference_update(pair)
-            solo_patches = [(q,) for q in sorted(remaining)]
-        else:
+        if strategy != "pair_then_solo":
             if len(remaining) % 2 != 0:
                 raise ValueError("Solo selection left an odd number of qubits to pair.")
-            while remaining:
-                pair = _pick_best_pair(remaining, analyzer, self.merge_weights)
-                pair_patches.append(pair)
-                remaining.difference_update(pair)
+        stop_at = solo_needed if strategy == "pair_then_solo" else 0
+        pair_patches = _pick_pairs_best_path(
+            remaining,
+            analyzer,
+            self.merge_weights,
+            stop_at=stop_at,
+            top_k=self.top_k,
+            num_paths=self.num_paths,
+            selection_decay=self.selection_decay,
+            rng=self.rng,
+        )
+        remaining.difference_update({q for pair in pair_patches for q in pair})
+        if strategy == "pair_then_solo":
+            solo_patches = [(q,) for q in sorted(remaining)]
 
         patches = solo_patches + pair_patches
         qubit_to_patch, permutation = _build_permutation(patches, num_qubits)
@@ -183,10 +200,29 @@ def _total_merge_score(
 
 
 def _score_pair(stats: PairMergeStats, weights: MergeWeights) -> float:
+    w1 = weights.w1
+    w2 = weights.w2
+    h_cost = gate_cost("H", DEFAULT_WORK_TABLE, w1=w1, w2=w2)
+    hh_cost = gate_cost("HH", DEFAULT_WORK_TABLE, w1=w1, w2=w2)
+    x_cost = gate_cost("X", DEFAULT_WORK_TABLE, w1=w1, w2=w2)
+    xx_cost = gate_cost("XX", DEFAULT_WORK_TABLE, w1=w1, w2=w2)
+    z_cost = gate_cost("Z", DEFAULT_WORK_TABLE, w1=w1, w2=w2)
+    zz_cost = gate_cost("ZZ", DEFAULT_WORK_TABLE, w1=w1, w2=w2)
+    cx_cost = gate_cost("CX", DEFAULT_WORK_TABLE, w1=w1, w2=w2)
+    cxt_cost = gate_cost("CXT", DEFAULT_WORK_TABLE, w1=w1, w2=w2)
+    cz_cost = gate_cost("CZ", DEFAULT_WORK_TABLE, w1=w1, w2=w2)
+    czt_cost = gate_cost("CZT", DEFAULT_WORK_TABLE, w1=w1, w2=w2)
+    hh_savings = 2.0 * h_cost - hh_cost
+    xx_savings = 2.0 * x_cost - xx_cost
+    zz_savings = 2.0 * z_cost - zz_cost
+    cx_savings = 2.0 * cx_cost - cxt_cost
+    cz_savings = 2.0 * cz_cost - czt_cost
     return (
-        weights.hh * stats.hh_merges
-        + weights.cx * stats.cx_merges
-        + weights.cz * stats.cz_merges
+        stats.hh_merges * hh_savings
+        + stats.xx_merges * xx_savings
+        + stats.zz_merges * zz_savings
+        + stats.cx_merges * cx_savings
+        + stats.cz_merges * cz_savings
     )
 
 
@@ -208,6 +244,68 @@ def _pick_best_pair(
     if best_pair is None:
         raise ValueError("Unable to select a qubit pair from the remaining set.")
     return best_pair
+
+
+def _pick_pairs_best_path(
+    remaining: Iterable[int],
+    analyzer: PairMergeAnalyzer,
+    weights: MergeWeights,
+    *,
+    stop_at: int,
+    top_k: int,
+    num_paths: int,
+    selection_decay: float,
+    rng: random.Random,
+) -> List[Tuple[int, int]]:
+    if top_k <= 0 or num_paths <= 0:
+        raise ValueError("top_k and num_paths must be positive.")
+    if not (0.0 < selection_decay < 1.0):
+        raise ValueError("selection_decay must be between 0 and 1.")
+    best_pairs: List[Tuple[int, int]] = []
+    best_score = float("-inf")
+    for _ in range(num_paths):
+        local_remaining = set(remaining)
+        pairs: List[Tuple[int, int]] = []
+        score = 0.0
+        while len(local_remaining) > stop_at:
+            candidates = _top_k_pairs(local_remaining, analyzer, weights, top_k)
+            pair, pair_score = _pick_weighted_pair(candidates, selection_decay, rng)
+            pairs.append(pair)
+            score += pair_score
+            local_remaining.difference_update(pair)
+        if score > best_score:
+            best_score = score
+            best_pairs = pairs
+    return best_pairs
+
+
+def _top_k_pairs(
+    remaining: Iterable[int],
+    analyzer: PairMergeAnalyzer,
+    weights: MergeWeights,
+    k: int,
+) -> List[Tuple[Tuple[int, int], float]]:
+    candidates = sorted(remaining)
+    scored: List[Tuple[Tuple[int, int], float]] = []
+    for idx, i in enumerate(candidates):
+        for j in candidates[idx + 1 :]:
+            stats = analyzer.analyze_pair(i, j)
+            score = _score_pair(stats, weights)
+            scored.append(((i, j), score))
+    if not scored:
+        raise ValueError("Unable to select a qubit pair from the remaining set.")
+    scored.sort(key=lambda item: (-item[1], item[0]))
+    return scored[:k]
+
+
+def _pick_weighted_pair(
+    candidates: Sequence[Tuple[Tuple[int, int], float]],
+    selection_decay: float,
+    rng: random.Random,
+) -> Tuple[Tuple[int, int], float]:
+    weights = [selection_decay * (1.0 - selection_decay) ** idx for idx in range(len(candidates))]
+    pair, score = rng.choices(candidates, weights=weights, k=1)[0]
+    return pair, score
 
 
 def _select_top_qubits(counts: Dict[int, int], k: int) -> List[int]:

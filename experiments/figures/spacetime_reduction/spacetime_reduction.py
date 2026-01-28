@@ -27,10 +27,10 @@ from typing import Dict, List, Sequence, Tuple
 import matplotlib.pyplot as plt
 import pandas as pd
 import qiskit
-from qiskit.circuit.random import random_clifford_circuit
 from tqdm import tqdm
 
 from evaluator.gate_count_stats import one_two_qubit_gate_totals
+from experiments.shared.random_circuits import random_gate_circuit
 from packer.merge_packer import MergeMaximizingPacker
 from permutations.generator import permutation_with_n_codes
 from pipeline.config import PipelineConfig
@@ -78,11 +78,11 @@ def build_random_circuit(
     n_gates: int,
     seed: int | None,
 ) -> qiskit.QuantumCircuit:
-    circuit = random_clifford_circuit(
-        n_qubits,
-        n_gates,
-        # seed=seed,
+    circuit = random_gate_circuit(
+        num_qubits=n_qubits,
+        num_gates=n_gates,
         gates=GATE_SET,
+        seed=seed,
     )
     circuit.measure_all()
     return circuit
@@ -103,7 +103,7 @@ def compute_metrics(
 def run_experiment(settings: ExperimentSettings) -> pd.DataFrame:
     config = PipelineConfig()
     rng = random.Random(settings.random_seed)
-    packer = MergeMaximizingPacker(solo_strategy="pair_then_solo")
+    packer = MergeMaximizingPacker(solo_strategy="most_hadamards")
 
     rows: List[Dict[str, int | float]] = []
     min_codes = math.ceil(settings.n_qubits / 2)
@@ -209,8 +209,8 @@ def parse_args() -> ExperimentSettings:
     parser = argparse.ArgumentParser(
         description="Gate/depth reduction analysis without simulation."
     )
-    parser.add_argument("--n-qubits", type=int, default=100, help="Number of logical qubits.")
-    parser.add_argument("--n-gates", type=int, default=1000, help="Depth passed to random_clifford_circuit.")
+    parser.add_argument("--n-qubits", type=int, default=20, help="Number of logical qubits.")
+    parser.add_argument("--n-gates", type=int, default=200, help="Depth passed to random_clifford_circuit.")
     parser.add_argument("--num-circuits", type=int, default=10, help="Number of random circuits.")
     parser.add_argument(
         "--random-perms",
