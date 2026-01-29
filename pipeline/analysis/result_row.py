@@ -11,7 +11,7 @@ from pipeline.config import PipelineConfig
 from evaluator.gate_count_stats import (
     extract_gate_count,
     total_gates,
-    one_two_qubit_gate_totals,
+    one_two_qubit_swap_totals,
     gate_counts_by_code,
     depth_by_code,
 )
@@ -38,7 +38,7 @@ def result_to_row(sim_result: PostselectedSimulationResult, pipeline_config: Pip
 
     gate_count = extract_gate_count(sim_result.circuit)
     total_gate_count = total_gates(gate_count)
-    one_q_gates, two_q_gates = one_two_qubit_gate_totals(sim_result.circuit)
+    one_q_gates, two_q_gates, swap_gates = one_two_qubit_swap_totals(sim_result.circuit)
     circuit_depth = sim_result.circuit.depth()
 
     w1, w2 = DEFAULT_WORK_WEIGHTS
@@ -94,6 +94,7 @@ def result_to_row(sim_result: PostselectedSimulationResult, pipeline_config: Pip
         "total_gates": total_gate_count,
         "one_qubit_gates": one_q_gates,
         "two_qubit_gates": two_q_gates,
+        "swap_gates": swap_gates,
         "circuit_depth": circuit_depth,
         "code_equality_entropy": code_equality_entropy,
         "depth_equality_entropy": depth_equality_entropy,

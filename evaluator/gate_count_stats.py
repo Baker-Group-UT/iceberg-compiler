@@ -50,6 +50,7 @@ def one_two_qubit_gate_totals(
     *,
     include_measure: bool = False,
     include_barrier: bool = False,
+    include_swap: bool = False,
 ) -> Tuple[int, int]:
     """
     Count 1q and 2q operations in a circuit.
@@ -70,6 +71,8 @@ def one_two_qubit_gate_totals(
             continue
         if not include_barrier and name == "barrier":
             continue
+        if not include_swap and name == "swap":
+            continue
 
         n_q = getattr(op, "num_qubits", None)
         if n_q is None:
@@ -86,12 +89,56 @@ def one_two_qubit_gate_totals(
     return one_q, two_q
 
 
+def one_two_qubit_swap_totals(
+    circuit: QuantumCircuit,
+    *,
+    include_measure: bool = False,
+    include_barrier: bool = False,
+) -> Tuple[int, int, int]:
+    """
+    Count 1q, 2q, and SWAP operations in a circuit.
+    SWAPs are not included in the 2q total.
+    """
+    one_q = 0
+    two_q = 0
+    swaps = 0
+
+    for inst in circuit.data:
+        op = getattr(inst, "operation", None)
+        if op is None:
+            op = inst[0]
+
+        name = getattr(op, "name", "").lower()
+        if not include_measure and name == "measure":
+            continue
+        if not include_barrier and name == "barrier":
+            continue
+        if name == "swap":
+            swaps += 1
+            continue
+
+        n_q = getattr(op, "num_qubits", None)
+        if n_q is None:
+            qargs = getattr(inst, "qubits", None)
+            if qargs is None:
+                qargs = inst[1]
+            n_q = len(qargs)
+
+        if n_q == 1:
+            one_q += 1
+        elif n_q == 2:
+            two_q += 1
+
+    return one_q, two_q, swaps
+
+
 def gate_counts_by_code(
     circuit: QuantumCircuit,
     *,
     qubits_per_code: int = 6,
     include_measure: bool = False,
     include_barrier: bool = False,
+    include_swap: bool = False,
 ) -> Dict[int, Tuple[float, float]]:
     """
     Count 1q and 2q operations per code, grouping qubits by contiguous blocks.
@@ -113,6 +160,8 @@ def gate_counts_by_code(
         if not include_measure and name == "measure":
             continue
         if not include_barrier and name == "barrier":
+            continue
+        if not include_swap and name == "swap":
             continue
 
         qubit_indices = [circuit.find_bit(q).index for q in qargs]
@@ -138,6 +187,7 @@ def depth_by_code(
     qubits_per_code: int = 6,
     include_measure: bool = False,
     include_barrier: bool = False,
+    include_swap: bool = False,
 ) -> Dict[int, int]:
     """
     Count per-code depth as the number of circuit layers that touch each code.
@@ -158,6 +208,8 @@ def depth_by_code(
             if not include_measure and name == "measure":
                 continue
             if not include_barrier and name == "barrier":
+                continue
+            if not include_swap and name == "swap":
                 continue
             for q in node.qargs:
                 qindex = circuit.find_bit(q).index

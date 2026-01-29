@@ -41,6 +41,7 @@ duet==0.2.9
 email_validator==2.2.0
 execnet==2.1.1
 executing==2.2.0
+-e git+https://github.com/Infleqtion/experiments-superstaq.git@b2ff93caf45c55a5a14498f2294df9fa599703e1#egg=experiments_superstaq
 fastjsonschema==2.21.1
 fonttools==4.57.0
 fqdn==1.5.1

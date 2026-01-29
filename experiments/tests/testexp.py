@@ -15,6 +15,7 @@ from repository.run_builder import RunRecord
 
 
 import qiskit
+from experiments.shared.benchmark_circuits import create_proxy_from_qasm, find_qasm_files
 from experiments.shared.random_circuits import random_gate_circuit
 
 from pipeline.config import PipelineConfig
@@ -63,17 +64,62 @@ def sparse_trivial_packing(num_qubits: int):
 if __name__ == "__main__":
     from translator.merging import preprocess_program_for_merging
 
-    qc = random_gate_circuit(num_qubits=2, num_gates=20, gates=["h", "x", "cx"], seed=10)
-    qc.measure_all()
+    # qc = random_gate_circuit(num_qubits=3, num_gates=2000, gates=["h", "x", "cx"], seed=10)\
 
-    config = PipelineConfig(
-        sim_config=ScaledSimulator(alpha=0.25,repetitions=10_000)
-        .with_stim()
-        .with_distance_noise(1e-10)
-        .with_idle_noise(1e-10),
-        # sim_config=ScaledSimulator(repetitions=10_000, alpha=1),
-        verbose=True,
-        seed=5,
-    )
-    print(qc)
-    t_merg: RunRecord = run_specific_scan(program_circuit=qc, permutations=[[(0, 0), (0, 1)]], config=config)
+    # paths = find_qasm_files("/Users/cordputer/Documents/Projects/School/Research/Infleqtion/infleqtion-qed-exploration-main/benchmarks/qasmbench/small", gate_limit=100)
+    # counter = 0
+    # for path in paths:
+    #     # print(counter)
+    #     qc = create_proxy_from_qasm(path)
+    #     # print(qc, "\n\n")
+    #     if counter == 8:
+    #         break
+    #     counter += 1
+    # qc.measure_all()
+
+    # qc = create_proxy_from_qasm("/Users/cordputer/Documents/Projects/School/Research/Infleqtion/infleqtion-qed-exploration-main/benchmarks/qasmbench/small/basis_trotter_n4/basis_test_n4.qasm")
+    # qc.measure_all()
+    # print(qc)
+
+    qc = qiskit.QuantumCircuit(8)
+    qc.cx(0,4)
+    qc.cx(1,5)
+    qc.cx(2,6)
+    qc.cx(3,7)
+    print("transversal")
+    print(qc.depth())
+    
+    qc = qiskit.QuantumCircuit(8)
+    qc.cx(1,0)
+    qc.cx(3,0)
+    qc.cx(3,2)
+    qc.cx(1,2)
+    print("intra-patch")
+    print(qc.depth())
+
+    qc = qiskit.QuantumCircuit(8)
+    qc.cx(1,5)
+    qc.cx(1,4)
+    qc.cx(3,5)
+    qc.cx(3,4)
+    print("intra-patch")
+    print(qc.depth())
+
+
+    # config = PipelineConfig(
+    #     sim_config=ScaledSimulator(alpha=1,repetitions=50_000)
+    #     .with_stim()
+    #     .with_distance_noise()
+    #     .with_idle_noise(),
+    #     verbose=True,
+    #     seed=5,
+    # )
+
+    # packer = MergeMaximizingPacker()
+    # # packings= [packer.pack(qc, num).permutation for num in range(10, 20, 2)]
+    # packings= [packer.pack(qc, num).permutation for num in range(2,4)]
+    # for packing in packings:
+    #     print(packing)
+
+    # t_merg: RunRecord = run_full_scan(program_circuit=qc, added_perms=packings, config=config)
+    # # t_merg: RunRecord = translate_permutation(program_circuit=qc, permutation=packings[0], config=config)
