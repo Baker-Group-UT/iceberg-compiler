@@ -10,7 +10,7 @@ from typing import Dict
 class MergeSettings:
     """Tunable parameters for single-qubit merging heuristics."""
 
-    budget: float = 10.0
+    budget: float = 3.0
     default_cost: float = 1.0
     delay_costs: Dict[str, float] = field(
         default_factory=lambda: {

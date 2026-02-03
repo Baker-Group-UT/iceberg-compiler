@@ -100,4 +100,7 @@ def result_to_row(sim_result: PostselectedSimulationResult, pipeline_config: Pip
         "depth_equality_entropy": depth_equality_entropy,
         "contains_faults": sim_result.contains_faults,
         "fault_tolerant": pipeline_config.fault_tolerant,
+        "merge_savings_1q": sim_result.merge_savings_1q,
+        "merge_savings_2q": sim_result.merge_savings_2q,
+        "merge_savings_weighted": sim_result.merge_savings_weighted,
     }

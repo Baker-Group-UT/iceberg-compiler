@@ -87,7 +87,7 @@ def run_experiment(
 ) -> pd.DataFrame:
     config = PipelineConfig()
     rng = random.Random(settings.random_seed)
-    packer = MergeMaximizingPacker(solo_strategy="most_gates")
+    packer = MergeMaximizingPacker(solo_strategy="all")
 
     rows: List[Dict[str, int | float]] = []
 
@@ -216,7 +216,7 @@ def parse_args() -> tuple[Path, BenchmarkSettings]:
         "--qasm-root",
         type=Path,
         default=Path(
-            "/Users/cordputer/Documents/Projects/School/Research/Infleqtion/infleqtion-qed-exploration-main/benchmarks/qasmbench/medium/cat_state_n22"
+            "/Users/cordputer/Documents/Projects/School/Research/Infleqtion/infleqtion-qed-exploration-main/benchmarks/qasmbench/small"
         ),
         help="Root directory containing benchmark QASM circuits.",
     )

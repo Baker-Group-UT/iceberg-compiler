@@ -33,6 +33,9 @@ class PostselectedSimulationResult:
     logical_total_variation_distance: float = 0.0
     # % shots kept after physical postselection * % shots kept after logical postselection
     selection_rate_overall: float = 0.0
+    merge_savings_1q: float = 0.0
+    merge_savings_2q: float = 0.0
+    merge_savings_weighted: float = 0.0
 
     def _circuit_serialize(self) -> Dict[str, Any]:
         """
@@ -57,4 +60,7 @@ class PostselectedSimulationResult:
             "logical_fidelity": self.logical_fidelity,
             "logical_selection_rate": self.logical_selection_rate,
             "logical_total_variation_distance": self.logical_total_variation_distance,
+            "merge_savings_1q": self.merge_savings_1q,
+            "merge_savings_2q": self.merge_savings_2q,
+            "merge_savings_weighted": self.merge_savings_weighted,
         }

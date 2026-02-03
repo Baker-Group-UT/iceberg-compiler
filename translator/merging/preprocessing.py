@@ -12,6 +12,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 from qiskit import QuantumCircuit
 from qiskit.converters import circuit_to_dag
 
+from .conflicts import DEFAULT_MERGE_WORK_TABLE, DEFAULT_MERGE_WORK_WEIGHTS
 from .single_qubit import find_hh_merges_for_patch, find_xx_merges_for_patch, find_zz_merges_for_patch
 from .layer import layer_by_node
 from .models import MacroReplacement
@@ -35,19 +36,45 @@ def preprocess_program_for_merging(
     ``allow_transversal_swap_merges`` is true the pass is also permitted to wrap
     the macro in explicit SWAP gates to temporarily align control/target lanes.
     """
+    updated_circuit, _, _, _ = preprocess_program_for_merging_with_stats(
+        program_circuit,
+        permutation,
+        settings=settings,
+        allow_transversal_swap_merges=allow_transversal_swap_merges,
+        num_merge_passes=num_merge_passes,
+    )
+    return updated_circuit
+
+
+def preprocess_program_for_merging_with_stats(
+    program_circuit: QuantumCircuit,
+    permutation: Sequence[Tuple[int, int]],
+    *,
+    settings: Optional[MergeSettings] = None,
+    allow_transversal_swap_merges: bool = False,
+    num_merge_passes: int = 2,
+) -> Tuple[QuantumCircuit, float, float, float]:
+    """
+    Like preprocess_program_for_merging, but also returns merge savings.
+
+    Returns:
+        (updated_circuit, merge_savings_1q, merge_savings_2q, merge_savings_weighted)
+    """
     if program_circuit.num_qubits == 0:
-        return program_circuit
+        return program_circuit, 0.0, 0.0, 0.0
 
     if settings is None:
         settings = DEFAULT_SETTINGS
 
     updated_circuit = program_circuit
+    total_savings_1q = 0.0
+    total_savings_2q = 0.0
     for _ in range(max(1, num_merge_passes)):
         dag = circuit_to_dag(updated_circuit)
         layer_index, order_index = layer_by_node(dag)
         patch_pairs = _build_patch_pairs(permutation, updated_circuit.qubits)
         if not patch_pairs:
-            return updated_circuit
+            break
 
         qubit_indices = {
             qubit: updated_circuit.find_bit(qubit).index for qubit in updated_circuit.qubits
@@ -85,6 +112,10 @@ def preprocess_program_for_merging(
         if not records:
             break
 
+        savings_1q, savings_2q = _merge_savings_for_records(records, DEFAULT_MERGE_WORK_TABLE)
+        total_savings_1q += savings_1q
+        total_savings_2q += savings_2q
+
         updated_circuit = build_rewritten_circuit(
             updated_circuit,
             dag,
@@ -93,7 +124,11 @@ def preprocess_program_for_merging(
             order_index,
         )
 
-    return updated_circuit
+    weighted = (
+        total_savings_1q * DEFAULT_MERGE_WORK_WEIGHTS[0]
+        + total_savings_2q * DEFAULT_MERGE_WORK_WEIGHTS[1]
+    )
+    return updated_circuit, total_savings_1q, total_savings_2q, weighted
 
 
 def _build_patch_pairs(
@@ -114,3 +149,30 @@ def _build_patch_pairs(
         ordered = [q for _, q in sorted(slots.items(), key=lambda item: item[0])]
         patch_pairs[patch] = (ordered[0], ordered[1])
     return patch_pairs
+
+
+def _merge_savings_for_records(
+    records: Sequence[MacroReplacement],
+    work_table: Dict[str, Tuple[int, int]],
+) -> Tuple[float, float]:
+    savings_1q = 0.0
+    savings_2q = 0.0
+    macro_to_orig = {
+        "HH": "H",
+        "XX": "X",
+        "ZZ": "Z",
+        "CXT": "CX",
+        "CZT": "CZ",
+    }
+    for record in records:
+        name = getattr(record.macro_gate, "name", "").upper()
+        orig = macro_to_orig.get(name)
+        if orig is None:
+            continue
+        base = work_table.get(orig)
+        macro = work_table.get(name)
+        if base is None or macro is None:
+            continue
+        savings_1q += 2 * base[0] - macro[0]
+        savings_2q += 2 * base[1] - macro[1]
+    return savings_1q, savings_2q
