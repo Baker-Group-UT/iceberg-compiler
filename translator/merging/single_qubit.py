@@ -14,6 +14,7 @@ from .settings import MergeSettings
 
 SKIP_NAMES = {"barrier"}
 MACRO_NAMES = {"hh", "xx", "zz", "cxt", "czt"}
+CNOT_NAMES = {"cx", "cnot"}
 
 
 def find_single_qubit_merges_for_patch(
@@ -67,6 +68,7 @@ def _scan_forward_for_merges(
 ) -> List[MacroReplacement]:
     merges: List[MacroReplacement] = []
     remaining = settings.budget
+    seen_cnot_lanes: set[Lane] = set()
 
     for idx in range(start_idx + 1, len(events)):
         _, _, lanes, node = events[idx]
@@ -79,8 +81,23 @@ def _scan_forward_for_merges(
         touches_both = len(set(lanes)) > 1
         is_measure = name == "measure"
         multi_qubit = len(node.qargs) > 1
-        if touches_both or is_measure or multi_qubit:
+        if touches_both or is_measure:
             break
+
+        if multi_qubit:
+            if name not in CNOT_NAMES:
+                break
+            if lanes:
+                seen_cnot_lanes.add(lanes[0])
+                if len(seen_cnot_lanes) > 1:
+                    break
+            cost = settings.cost_for(name)
+            if cost == float("inf"):
+                break
+            remaining -= cost
+            if remaining < 0:
+                break
+            continue
 
         if waiting_lane in lanes:
             # NOTE: Temporarily allow same-lane gates while generating potentials.

@@ -25,6 +25,8 @@ from pathlib import Path
 from typing import Dict, List, Sequence, Tuple
 
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
+import numpy as np
 import pandas as pd
 import qiskit
 from tqdm import tqdm
@@ -54,6 +56,7 @@ class ExperimentSettings:
         )
     )
     show_plot: bool = True
+    show_outliers: bool = True
 
     def __post_init__(self) -> None:
         if self.n_qubits < 2:
@@ -103,7 +106,7 @@ def compute_metrics(
 def run_experiment(settings: ExperimentSettings) -> pd.DataFrame:
     config = PipelineConfig()
     rng = random.Random(settings.random_seed)
-    packer = MergeMaximizingPacker(solo_strategy="most_hadamards")
+    packer = MergeMaximizingPacker(solo_strategy="most_gates")
 
     rows: List[Dict[str, int | float]] = []
     min_codes = math.ceil(settings.n_qubits / 2)
@@ -173,11 +176,38 @@ def plot_results(df: pd.DataFrame, settings: ExperimentSettings) -> None:
         ("pct_reduction_circuit_depth", "Percent reduction in depth"),
     ]
     codes = sorted(df["codes_used"].unique())
+    gate_metrics = metrics[:2]
+    gate_values = []
+    for metric, _ in gate_metrics:
+        gate_values.extend(df[metric].values.tolist())
+    if gate_values:
+        gate_min = min(gate_values)
+        gate_max = max(gate_values)
+        if gate_min == gate_max:
+            gate_min -= 1.0
+            gate_max += 1.0
+        padding = 0.05 * (gate_max - gate_min)
+        gate_min -= padding
+        gate_max += padding
+        gate_min_tick = 5.0 * math.floor(gate_min / 5.0)
+        gate_max_tick = 5.0 * math.ceil(gate_max / 5.0)
+        gate_y_ticks = np.arange(gate_min_tick, gate_max_tick + 0.1, 5.0)
+    else:
+        gate_min = None
+        gate_max = None
+        gate_y_ticks = None
+        gate_min_tick = None
+        gate_max_tick = None
 
     fig, axes = plt.subplots(nrows=1, ncols=3, figsize=(15, 4))
     for ax, (metric, title) in zip(axes, metrics):
         data = [df.loc[df["codes_used"] == code, metric].values for code in codes]
-        bp = ax.boxplot(data, labels=[str(code) for code in codes], patch_artist=True)
+        bp = ax.boxplot(
+            data,
+            labels=[str(code) for code in codes],
+            patch_artist=True,
+            showfliers=settings.show_outliers,
+        )
         for patch in bp["boxes"]:
             patch.set(facecolor="#a6bddb", edgecolor="#2b8cbe", alpha=0.8)
         for whisker in bp["whiskers"]:
@@ -190,6 +220,27 @@ def plot_results(df: pd.DataFrame, settings: ExperimentSettings) -> None:
         ax.set_ylabel("Percent reduction")
         ax.set_title(title)
         ax.axhline(0, color="#636363", linestyle="--", linewidth=1)
+        if metric != "pct_reduction_circuit_depth":
+            if gate_min_tick is not None and gate_max_tick is not None:
+                ax.set_ylim(gate_min_tick, gate_max_tick)
+            if gate_y_ticks is not None:
+                ax.set_yticks(gate_y_ticks)
+        else:
+            depth_values = df[metric].values
+            if depth_values.size > 0:
+                depth_min = depth_values.min()
+                depth_max = depth_values.max()
+                if depth_min == depth_max:
+                    depth_min -= 1.0
+                    depth_max += 1.0
+                padding = 0.05 * (depth_max - depth_min)
+                depth_min -= padding
+                depth_max += padding
+                depth_min_tick = 10.0 * math.floor(depth_min / 10.0)
+                depth_max_tick = 10.0 * math.ceil(depth_max / 10.0)
+                ax.set_ylim(depth_min_tick, depth_max_tick)
+                ax.set_yticks(np.arange(depth_min_tick, depth_max_tick + 0.1, 10.0))
+        ax.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.0f"))
 
     fig.suptitle("Gate/depth reductions: merge-maximizing vs random permutations")
     fig.tight_layout()
@@ -211,11 +262,11 @@ def parse_args() -> ExperimentSettings:
     )
     parser.add_argument("--n-qubits", type=int, default=20, help="Number of logical qubits.")
     parser.add_argument("--n-gates", type=int, default=200, help="Depth passed to random_clifford_circuit.")
-    parser.add_argument("--num-circuits", type=int, default=10, help="Number of random circuits.")
+    parser.add_argument("--num-circuits", type=int, default=50, help="Number of random circuits.")
     parser.add_argument(
         "--random-perms",
         type=int,
-        default=10,
+        default=50,
         help="Number of random permutations per codes value.",
     )
     parser.add_argument(
@@ -235,6 +286,12 @@ def parse_args() -> ExperimentSettings:
         action="store_true",
         help="Skip displaying the plot window (useful for headless runs).",
     )
+    parser.add_argument(
+        "--hide-outliers",
+        default=True,
+        action="store_true",
+        help="Hide boxplot outlier markers.",
+    )
     args = parser.parse_args()
 
     seed_value = args.seed if args.seed >= 0 else None
@@ -246,6 +303,7 @@ def parse_args() -> ExperimentSettings:
         random_seed=seed_value,
         output_path=args.output,
         show_plot=not args.no_show,
+        show_outliers=not args.hide_outliers,
     )
 
 

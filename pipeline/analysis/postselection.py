@@ -98,7 +98,10 @@ def apply_iceberg_postselection(
                 postselected_ideal_dist=postselected_ideal_dist,
                 logical_fidelity=logical_fid,
                 logical_selection_rate=sel_rate,
-                logical_total_variation_distance=logical_total_variation_distance
+                logical_total_variation_distance=logical_total_variation_distance,
+                merge_savings_1q=t.merge_savings_1q,
+                merge_savings_2q=t.merge_savings_2q,
+                merge_savings_weighted=t.merge_savings_weighted,
             )
         )
 
@@ -136,6 +139,9 @@ def postselect_against_reference(
                 logical_fidelity=logical_fid,
                 logical_selection_rate=sel_rate,
                 logical_total_variation_distance=logical_total_variation_distance,
+                merge_savings_1q=t.merge_savings_1q,
+                merge_savings_2q=t.merge_savings_2q,
+                merge_savings_weighted=t.merge_savings_weighted,
             )
         )
 
@@ -164,7 +170,10 @@ def calculate_metrics_for_bare_circuit(
         postselected_ideal_dist=None,
         logical_fidelity=logical_fid,
         logical_selection_rate=None,
-        logical_total_variation_distance=logical_total_variation_distance
+        logical_total_variation_distance=logical_total_variation_distance,
+        merge_savings_1q=0.0,
+        merge_savings_2q=0.0,
+        merge_savings_weighted=0.0,
     )
 
 # NOTE: REDUCE DISTRIBUTION FOR PARALLEL CIRCUIT EXECUTION, USE CAREFULLY
@@ -252,6 +261,9 @@ def postselect_against_reference_raw(
                 logical_fidelity=logical_fid,
                 logical_selection_rate=sel_rate,
                 logical_total_variation_distance=logical_total_variation_distance,
+                merge_savings_1q=t.merge_savings_1q,
+                merge_savings_2q=t.merge_savings_2q,
+                merge_savings_weighted=t.merge_savings_weighted,
             )
         )
 

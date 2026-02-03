@@ -12,7 +12,7 @@ from qiskit import QuantumCircuit
 from .context import TranslationContext
 from .gate_handlers import translate_and_apply
 from .config import TranslatorConfig
-from .merging import preprocess_program_for_merging
+from .merging import preprocess_program_for_merging_with_stats
 from .passes import cancel_inverse_gates
 
 
@@ -25,6 +25,9 @@ class TranslationResult:
     fault_log: List[str]
     verbose: bool
     fault_tolerant: bool
+    merge_savings_1q: float = 0.0
+    merge_savings_2q: float = 0.0
+    merge_savings_weighted: float = 0.0
 
 BARRIERS = False
 
@@ -105,11 +108,16 @@ class Translator:
         Translate a program circuit and a permutation into a physical circuit.
         """
         processed_circuit = cancel_inverse_gates(program_circuit)
+        merge_savings_1q = 0.0
+        merge_savings_2q = 0.0
+        merge_savings_weighted = 0.0
         if self.enable_merging:
-            processed_circuit = preprocess_program_for_merging(
-                processed_circuit,
-                permutation,
-                allow_transversal_swap_merges=self.allow_transversal_swap_merges,
+            processed_circuit, merge_savings_1q, merge_savings_2q, merge_savings_weighted = (
+                preprocess_program_for_merging_with_stats(
+                    processed_circuit,
+                    permutation,
+                    allow_transversal_swap_merges=self.allow_transversal_swap_merges,
+                )
             )
         else:
             processed_circuit = program_circuit
@@ -120,7 +128,19 @@ class Translator:
             verbose=self.verbose,
             encode_override=self.encode_override,
         )
-        return translation.translate_circuit()
+        translated = translation.translate_circuit()
+        return TranslationResult(
+            circuit=translated.circuit,
+            permutation=translated.permutation,
+            context=translated.context,
+            contains_faults=translated.contains_faults,
+            fault_log=translated.fault_log,
+            verbose=translated.verbose,
+            fault_tolerant=translated.fault_tolerant,
+            merge_savings_1q=merge_savings_1q,
+            merge_savings_2q=merge_savings_2q,
+            merge_savings_weighted=merge_savings_weighted,
+        )
 
     def translate_batch(
         self,

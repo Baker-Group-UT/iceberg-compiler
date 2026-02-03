@@ -40,6 +40,8 @@ class PairMergeStats:
     zz_merges: int = 0
     cx_merges: int = 0
     cz_merges: int = 0
+    twoq_between: int = 0
+    hh_layer_distance: int = 0
 
 
 @dataclass

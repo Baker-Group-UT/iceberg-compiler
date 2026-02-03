@@ -3,6 +3,7 @@ translator.config.py - Configuration object for Translator behavior.
 """
 
 from dataclasses import dataclass
+from typing import Self
 
 
 @dataclass
@@ -24,3 +25,7 @@ class TranslatorConfig:
             "allow_transversal_swap_merges": self.allow_transversal_swap_merges,
             "encode_override": self.encode_override,
         }
+
+    def disable_merging(self) -> Self:
+        self.enable_merging = False
+        return self

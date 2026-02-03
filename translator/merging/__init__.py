@@ -112,7 +112,7 @@ from .gates import CXTGate, CZTGate, HHGate, XXGate, ZZGate
 from .models import MacroReplacement, MergeConflictInfo, PairMergeStats, PlannedOp
 from .conflicts import compute_merge_conflicts
 from .selection import select_best_group
-from .preprocessing import preprocess_program_for_merging
+from .preprocessing import preprocess_program_for_merging, preprocess_program_for_merging_with_stats
 from .settings import DEFAULT_SETTINGS, MergeSettings
 
 __all__ = [
@@ -131,4 +131,5 @@ __all__ = [
     "compute_merge_conflicts",
     "select_best_group",
     "preprocess_program_for_merging",
+    "preprocess_program_for_merging_with_stats",
 ]
