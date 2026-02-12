@@ -18,8 +18,10 @@ DEFAULT_MERGE_WORK_TABLE: Dict[str, Tuple[int, int]] = {
     "ZZ": (2, 0),
     "CX": (0, 4),
     "CZ": (1, 3),
+    "XCX": (5, 3),
     "CXT": (0, 4),
     "CZT": (0, 4),
+    "XCXT": (8, 4),
 }
 
 DEFAULT_MERGE_WORK_WEIGHTS: Tuple[float, float] = (1.0, 13.0)
@@ -175,6 +177,7 @@ def _macro_to_original(name: str) -> Optional[str]:
         "ZZ": "Z",
         "CXT": "CX",
         "CZT": "CZ",
+        "XCXT": "XCX",
     }
     return mapping.get(name)
 

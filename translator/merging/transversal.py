@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Tuple
 from qiskit.circuit.library import SwapGate
 from qiskit.dagcircuit import DAGOpNode
 
-from .gates import CXTGate, CZTGate
+from .gates import CXTGate, CZTGate, XCXTGate
 from .layer import collect_events
 from .models import MacroReplacement, PlannedOp, _PendingTransversal
 from .single_qubit import MACRO_NAMES, SKIP_NAMES
@@ -184,8 +184,15 @@ def _evaluate_transversal_pair(
             control_count=len(control_order),
             logical_qubits=logical_indices,
         )
-    else:
+    elif first.gate_name == "cz":
         macro_gate = CZTGate(
+            control_patch=first.control_patch,
+            target_patch=first.target_patch,
+            control_count=len(control_order),
+            logical_qubits=logical_indices,
+        )
+    else:
+        macro_gate = XCXTGate(
             control_patch=first.control_patch,
             target_patch=first.target_patch,
             control_count=len(control_order),
@@ -251,7 +258,7 @@ def _gate_info_for_pair(
     patch_lookup: Dict[object, int],
     slot_lookup: Dict[object, int],
 ) -> Optional[_PendingTransversal]:
-    if name not in {"cx", "cz"}:
+    if name not in {"cx", "cz", "xcx"}:
         return None
     qargs = list(node.qargs)
     if len(qargs) != 2:
@@ -276,7 +283,7 @@ def _gate_info_for_pair(
     control_slot = slot0
     target_slot = slot1
 
-    if name == "cz" and patch1 < patch0:
+    if name in {"cz", "xcx"} and patch1 < patch0:
         control_patch, target_patch = target_patch, control_patch
         control_qubit, target_qubit = target_qubit, control_qubit
         control_slot, target_slot = target_slot, control_slot

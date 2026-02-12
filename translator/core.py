@@ -13,7 +13,7 @@ from .context import TranslationContext
 from .gate_handlers import translate_and_apply
 from .config import TranslatorConfig
 from .merging import preprocess_program_for_merging_with_stats
-from .passes import cancel_inverse_gates
+from .passes import cancel_inverse_gates, cancel_inverse_gates_through_swaps, commute_hadamards
 
 
 @dataclass
@@ -77,6 +77,8 @@ class Translation:
                 self.context.iceberg_set.BARRIER()
             self.context.iceberg_set.measure()
         processed_gates = cancel_inverse_gates(self.context.iceberg_set.circuit)
+        processed_gates = cancel_inverse_gates_through_swaps(processed_gates)
+        processed_gates = cancel_inverse_gates(processed_gates)
         return TranslationResult(
             circuit=processed_gates,
             permutation=self.permutation,
@@ -96,6 +98,7 @@ class Translator:
         self.verbose = config.verbose
         self.n_code = config.n_code
         self.enable_merging = config.enable_merging
+        self.enable_h_commutation = config.enable_h_commutation
         self.allow_transversal_swap_merges = config.allow_transversal_swap_merges
         self.encode_override = config.encode_override
 
@@ -108,6 +111,9 @@ class Translator:
         Translate a program circuit and a permutation into a physical circuit.
         """
         processed_circuit = cancel_inverse_gates(program_circuit)
+        if self.enable_h_commutation:
+            processed_circuit = commute_hadamards(processed_circuit)
+            processed_circuit = cancel_inverse_gates(processed_circuit)
         merge_savings_1q = 0.0
         merge_savings_2q = 0.0
         merge_savings_weighted = 0.0
@@ -119,8 +125,6 @@ class Translator:
                     allow_transversal_swap_merges=self.allow_transversal_swap_merges,
                 )
             )
-        else:
-            processed_circuit = program_circuit
         translation = Translation(
             permutation=permutation,
             program_circuit=processed_circuit,

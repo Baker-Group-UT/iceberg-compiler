@@ -260,11 +260,14 @@ def _score_pair(stats: PairMergeStats, weights: MergeWeights) -> float:
     cxt_cost = gate_cost("CXT", DEFAULT_WORK_TABLE, w1=w1, w2=w2)
     cz_cost = gate_cost("CZ", DEFAULT_WORK_TABLE, w1=w1, w2=w2)
     czt_cost = gate_cost("CZT", DEFAULT_WORK_TABLE, w1=w1, w2=w2)
+    xcx_cost = gate_cost("XCX", DEFAULT_WORK_TABLE, w1=w1, w2=w2)
+    xcxt_cost = gate_cost("XCXT", DEFAULT_WORK_TABLE, w1=w1, w2=w2)
     hh_savings = 2.0 * h_cost - hh_cost
     xx_savings = 2.0 * x_cost - xx_cost
     zz_savings = 2.0 * z_cost - zz_cost
     cx_savings = 2.0 * cx_cost - cxt_cost
     cz_savings = 2.0 * cz_cost - czt_cost
+    xcx_savings = 2.0 * xcx_cost - xcxt_cost
     pair_adjust = (weights.distance_error_weight - weights.idle_error_weight) * stats.twoq_between
     hh_distance_penalty = weights.idle_error_weight * stats.hh_layer_distance
     return (
@@ -273,6 +276,7 @@ def _score_pair(stats: PairMergeStats, weights: MergeWeights) -> float:
         + stats.zz_merges * zz_savings
         + stats.cx_merges * cx_savings
         + stats.cz_merges * cz_savings
+        + stats.xcx_merges * xcx_savings
         + pair_adjust
         - hh_distance_penalty
     )

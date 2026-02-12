@@ -31,6 +31,20 @@ import pandas as pd
 import qiskit
 from tqdm import tqdm
 
+plt.rcParams.update(
+    {
+        "font.family": "Helvetica",
+        "font.sans-serif": "Helvetica",
+        "font.size": 18,
+        "axes.titlesize": 18,
+        "axes.labelsize": 18,
+        "xtick.labelsize": 14,
+        "ytick.labelsize": 14,
+        "legend.fontsize": 16,
+        "figure.titlesize": 18,
+    }
+)
+
 from evaluator.gate_count_stats import one_two_qubit_gate_totals
 from experiments.shared.benchmark_circuits import load_proxy_circuits
 from packer.merge_packer import MergeMaximizingPacker
@@ -99,8 +113,10 @@ def run_experiment(
 
     merging_enabled = PipelineConfig()
     merging_enabled.translator_config.enable_merging = True
+    merging_enabled.translator_config.enable_h_commutation = True
     merging_disabled = PipelineConfig()
     merging_disabled.translator_config.enable_merging = False
+    merging_disabled.translator_config.enable_h_commutation = True
 
     rows: List[Dict[str, int | float | str]] = []
 
@@ -184,14 +200,14 @@ def run_experiment(
 
 def plot_results(df: pd.DataFrame, settings: BenchmarkSettings) -> None:
     methods = [
-        ("tight_merge", "Tight (merge)", "#c7e9c0", "#238b45"),
-        ("merge_maximizing", "Merge-maximizing", "#c6dbef", "#2171b5"),
+        ("tight_merge", "Tight (merge+H)", "#c7e9c0", "#238b45"),
+        ("merge_maximizing", "Merge-maximizing+H", "#c6dbef", "#2171b5"),
     ]
     size_groups = ["small", "medium", "large"]
 
     fig, axes = plt.subplots(nrows=3, ncols=1, figsize=(20, 14), sharex=True)
-    width = 0.35
-    gap = 3.0
+    bar_width = 0.22
+    gap = 4.0
 
     for ax, (_, (metric_column, metric_title)) in zip(axes, METRICS.items()):
         all_positions: List[float] = []
@@ -204,21 +220,26 @@ def plot_results(df: pd.DataFrame, settings: BenchmarkSettings) -> None:
                 continue
 
             pivot = (
-                group_df.pivot(index="circuit_name", columns="method", values=metric_column)
+                group_df.pivot_table(
+                    index="circuit_name",
+                    columns="method",
+                    values=metric_column,
+                    aggfunc="mean",
+                )
                 .reset_index()
             )
             sort_key = pivot["merge_maximizing"]
             pivot = pivot.assign(_sort=sort_key).sort_values("_sort")
             circuit_names = pivot["circuit_name"].tolist()
             positions = np.arange(len(circuit_names)) + current_x
-            offsets = np.linspace(-width / 2, width / 2, len(methods))
+            offsets = (np.arange(len(methods)) - (len(methods) - 1) / 2) * bar_width
 
             for (method, label, face, edge), offset in zip(methods, offsets):
                 values = pivot[method].astype(float).values
                 ax.bar(
                     positions + offset,
                     values,
-                    width=width * 0.9,
+                    width=bar_width,
                     color=face,
                     edgecolor=edge,
                     alpha=0.85,
@@ -231,6 +252,9 @@ def plot_results(df: pd.DataFrame, settings: BenchmarkSettings) -> None:
 
         ax.set_ylabel(metric_title)
         ax.axhline(0, color="#636363", linestyle="--", linewidth=1)
+        ax.grid(True, axis="y", linestyle="--", linewidth=0.4)
+        for spine in ["top", "right"]:
+            ax.spines[spine].set_visible(False)
         ax.set_xticks([])
         ax.set_xticks(all_positions, minor=True)
         ax.set_xticklabels(all_circuit_labels, rotation=45, ha="right", minor=True)
@@ -241,7 +265,7 @@ def plot_results(df: pd.DataFrame, settings: BenchmarkSettings) -> None:
 
     handles, labels = axes[0].get_legend_handles_labels()
     unique = dict(zip(labels, handles))
-    axes[0].legend(unique.values(), unique.keys(), loc="best")
+    axes[0].legend(unique.values(), unique.keys(), loc="best", frameon=False)
     fig.suptitle(
         "Percent reduction vs tight packing without merging (per circuit at ceil(n/2) codes)"
     )
@@ -340,6 +364,11 @@ def _load_group_circuits(
             for name, qc in circuits
             if qc.size() <= settings.max_proxy_gates
         ]
+    circuits = [
+        (name, qc)
+        for name, qc in circuits
+        if not name.lower().endswith("_n2")
+    ]
     return circuits
 
 

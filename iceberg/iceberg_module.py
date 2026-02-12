@@ -372,6 +372,42 @@ class IcebergModule(CircuitClass):
         _physical_two_qubit_gate(self.circuit, self._ids, control_qubit, bottom_ancilla, "CZ", fault_tolerant)
         _physical_two_qubit_gate(self.circuit, self._ids, target_qubit, bottom_ancilla, "CZ", fault_tolerant)
 
+    def XCX(self, i: int, j: int, fault_tolerant: bool = False):
+        """
+        Apply a logical XCX gate between qubit `i` and `j`.
+        For n=4, use an optimized intra-patch sequence:
+            H2 H3
+            CX(2,1) Z3
+            CX(3,1)
+            CZ(3,2)
+            H2 H3
+        Otherwise, fall back to HH -> CZ -> HH.
+        """
+        if i == j:
+            raise ValueError("i and j must differ")
+        if i < 0 or i >= self.k or j < 0 or j >= self.k:
+            raise ValueError("Index out of range")
+
+        if self.n == 4 and self.k == 2:
+            if set((i, j)) != {0, 1}:
+                raise ValueError("n=4 XCX expects logical indices {0,1}")
+            q1 = self.data_qubits[1]
+            q2 = self.data_qubits[2]
+            q3 = self.data_qubits[3]
+            self.circuit.h(q2)
+            self.circuit.h(q3)
+            _physical_two_qubit_gate(self.circuit, self._ids, q2, q1, "CNOT", fault_tolerant)
+            self.circuit.z(q3)
+            _physical_two_qubit_gate(self.circuit, self._ids, q3, q1, "CNOT", fault_tolerant)
+            _physical_two_qubit_gate(self.circuit, self._ids, q3, q2, "CZ", fault_tolerant)
+            self.circuit.h(q2)
+            self.circuit.h(q3)
+            return
+
+        self.HH(fault_tolerant=fault_tolerant)
+        self.CZ(i, j, fault_tolerant=fault_tolerant)
+        self.HH(fault_tolerant=fault_tolerant)
+
     # --- Parametric rotations ---
 
     def _RZZ(
@@ -406,6 +442,21 @@ class IcebergModule(CircuitClass):
         Apply a logical RZ(i) = exp(-i rads Z_i / 2)
         """
         self._RZZ(i, self.k, rads, fault_tolerant=fault_tolerant, two_qubit=False)
+
+    def RX(self, i: int, rads: float, fault_tolerant: bool = False):
+        """
+        # Apply a logical RX(i) = exp(-i rads X_i / 2) using H RZ H.
+        """
+        if i < 0 or i >= self.k:
+            raise ValueError("Index out of range")
+        # self.circuit.h(0)
+        # self.circuit.h(i)
+        # self._RZZ(0, i + 1, rads, fault_tolerant=fault_tolerant, two_qubit=False)
+        _physical_two_qubit_gate(self.circuit, self._ids, self.data_qubits[i + 1], self.data_qubits[0], "CNOT", fault_tolerant)
+        self.circuit.rx(rads, self.data_qubits[i + 1])
+        _physical_two_qubit_gate(self.circuit, self._ids, self.data_qubits[i + 1], self.data_qubits[0], "CNOT", fault_tolerant)
+        # self.circuit.h(0)
+        # self.circuit.h(i)
 
     # --- Misc helpers ---
 

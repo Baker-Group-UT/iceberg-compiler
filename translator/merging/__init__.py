@@ -108,7 +108,7 @@ look at ipad
 """
 
 from .analysis import PairMergeAnalyzer
-from .gates import CXTGate, CZTGate, HHGate, XXGate, ZZGate
+from .gates import CXTGate, CZTGate, XCXTGate, HHGate, XXGate, ZZGate
 from .models import MacroReplacement, MergeConflictInfo, PairMergeStats, PlannedOp
 from .conflicts import compute_merge_conflicts
 from .selection import select_best_group
@@ -118,6 +118,7 @@ from .settings import DEFAULT_SETTINGS, MergeSettings
 __all__ = [
     "CXTGate",
     "CZTGate",
+    "XCXTGate",
     "DEFAULT_SETTINGS",
     "HHGate",
     "XXGate",

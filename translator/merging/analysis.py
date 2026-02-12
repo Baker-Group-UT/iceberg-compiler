@@ -129,6 +129,11 @@ class PairMergeAnalyzer:
             for record in transversal_records
             if getattr(record.macro_gate, "name", "").lower() == "czt"
         )
+        xcx_merges = sum(
+            1
+            for record in transversal_records
+            if getattr(record.macro_gate, "name", "").lower() == "xcxt"
+        )
         hh_layer_distance = sum(
             abs(self._layer_index[record.first] - self._layer_index[record.second])
             for record in hh_records
@@ -138,7 +143,7 @@ class PairMergeAnalyzer:
             if len(node.qargs) != 2:
                 continue
             name = getattr(node.op, "name", "").lower()
-            if name not in ("cx", "cnot"):
+            if name not in ("cx", "cnot", "xcx"):
                 continue
             if (node.qargs[0] == qa and node.qargs[1] == qb) or (
                 node.qargs[0] == qb and node.qargs[1] == qa
@@ -151,6 +156,7 @@ class PairMergeAnalyzer:
             zz_merges=len(zz_records),
             cx_merges=cx_merges,
             cz_merges=cz_merges,
+            xcx_merges=xcx_merges,
             twoq_between=twoq_between,
             hh_layer_distance=hh_layer_distance,
         )

@@ -12,8 +12,10 @@ import math
 from .context import TranslationContext
 from .handlers.hadamard import apply_logical_hadamard, apply_logical_hh_merge
 from .handlers.controlled_not import apply_logical_cnot, apply_logical_cxt
+from .handlers.controlled_x import apply_logical_xcx, apply_logical_xcxt
 from .handlers.controlled_z import apply_logical_cz, apply_logical_czt
 from .handlers.rz import apply_logical_rz
+from .handlers.rx import apply_logical_rx
 from .handlers.s import apply_logical_s
 from .handlers.x import apply_logical_x, apply_logical_xx_merge
 from .handlers.z import apply_logical_z, apply_logical_zz_merge
@@ -32,6 +34,7 @@ class _OpLike:
 # --- Canonical gate translation table (simple one-to-one mappings) ---
 # Use lowercase instruction names for robustness.
 TABLE_SIMPLE: Dict[str, tuple[str, Callable]] = {
+    "rx":   ("RX",   apply_logical_rx),
     "rz":   ("RZ",   apply_logical_rz),
     "s":    ("S",    apply_logical_s),
     "x":    ("X",    apply_logical_x),
@@ -47,6 +50,8 @@ TABLE_COMPLEX: Dict[str, Callable] = {
     "zz": apply_logical_zz_merge,
     "cx": apply_logical_cnot,
     "cz": apply_logical_cz,
+    "xcx": apply_logical_xcx,
+    "xcxt": apply_logical_xcxt,
     "cxt": apply_logical_cxt,
     "czt": apply_logical_czt,
 }

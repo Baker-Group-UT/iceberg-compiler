@@ -163,6 +163,7 @@ def _merge_savings_for_records(
         "ZZ": "Z",
         "CXT": "CX",
         "CZT": "CZ",
+        "XCXT": "XCX",
     }
     for record in records:
         name = getattr(record.macro_gate, "name", "").upper()

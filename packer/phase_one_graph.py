@@ -23,10 +23,13 @@ DEFAULT_WORK_TABLE: WorkTable = {
     "ZZ": (2, 0),
     "S": (2, 1),
     "RZ": (1, 2),
+    "RX": (1, 2),
     "CX": (0, 4),
     "CZ": (1, 3),
+    "XCX": (1, 3),
     "CXT": (0, 4),
     "CZT": (0, 4),
+    "XCXT": (16, 4),
     "SWAP": (0, 0), # Set to 0 weight
     "MEASURE": (0, 0),
 }
@@ -62,6 +65,7 @@ class GraphHeuristics:
 SOLO_TWO_QUBIT_OPTIMIZATIONS: Dict[str, str] = {
     "CX": "CXT",
     "CZ": "CZT",
+    "XCX": "XCXT",
 }
 
 NEGATE_SOLO_COST = True
@@ -140,6 +144,7 @@ def build_graph(
     hh_merge_delta = merge_delta("HH", ("H", "H"))
     cx_merge_delta = merge_delta("CXT", ("CX", "CX"))
     cz_merge_delta = merge_delta("CZT", ("CZ", "CZ"))
+    xcx_merge_delta = merge_delta("XCXT", ("XCX", "XCX"))
 
     nodes: Dict[int, NodeHeuristics] = {}
     edges: List[EdgeItem] = []
@@ -175,6 +180,7 @@ def build_graph(
             delta_diff = (
                 merge_stats.cx_merges * cx_merge_delta
                 + merge_stats.cz_merges * cz_merge_delta
+                + merge_stats.xcx_merges * xcx_merge_delta
             )
             base_pair_cost = nodes[i].base_cost + nodes[j].base_cost + two_q_cost
             edges.append(
