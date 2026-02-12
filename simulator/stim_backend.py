@@ -101,18 +101,9 @@ def add_single_qubit_noise(stim_circuit: stim.Circuit, qubits: list[int], gate_n
 def qiskit_to_stim(circuit: qiskit.QuantumCircuit, layout=None, include_noise: bool = True) -> stim.Circuit:
     out = stim.Circuit()
     last_time = [0.0] * circuit.num_qubits
-    # basically convert each instruction to stim, inject noise for distance (potench idle later)
-    for inst in circuit.data:
-        op = inst.operation
-        name = op.name.lower()
-        qubits = [circuit.find_bit(q).index for q in inst.qubits]
-        if name == "barrier":
-            continue
-        gate_time = 0.0
-        if name in ONE_Q:
-            gate_time = NOISE_PARAMS["t_1q"]
-        elif name in TWO_Q:
-            gate_time = NOISE_PARAMS["t_2q"]
+
+    def _emit_one_q(gate_name: str, qubits: list[int]) -> None:
+        gate_time = NOISE_PARAMS["t_1q"]
         if include_noise and qubits:
             idle_times = compute_idle_times(qubits, last_time, gate_time)
             idle_time_scalar = NOISE_PARAMS["idle_time_scalar"]
@@ -125,6 +116,35 @@ def qiskit_to_stim(circuit: qiskit.QuantumCircuit, layout=None, include_noise: b
                         )
                         if p_x > 0 or p_y > 0 or p_z > 0:
                             out.append("PAULI_CHANNEL_1", [q], [p_x, p_y, p_z])
+        out.append(ONE_Q[gate_name], qubits)
+        if include_noise:
+            add_single_qubit_noise(out, qubits, gate_name)
+
+    def _emit_two_q(gate_name: str, qubits: list[int]) -> None:
+        gate_time = NOISE_PARAMS["t_2q"]
+        if include_noise and qubits:
+            idle_times = compute_idle_times(qubits, last_time, gate_time)
+            idle_time_scalar = NOISE_PARAMS["idle_time_scalar"]
+            if idle_time_scalar != 0:
+                for q, t_idle in idle_times:
+                    t_idle *= idle_time_scalar
+                    if t_idle > 0:
+                        p_i, p_x, p_y, p_z = _pauli_twirl_approx(
+                            t_idle, NOISE_PARAMS["T1"], NOISE_PARAMS["T2"]
+                        )
+                        if p_x > 0 or p_y > 0 or p_z > 0:
+                            out.append("PAULI_CHANNEL_1", [q], [p_x, p_y, p_z])
+        out.append(TWO_Q[gate_name], qubits)
+        if include_noise and gate_name != "swap":
+            add_distance_noise(out, qubits, layout)
+
+    # basically convert each instruction to stim, inject noise for distance (potench idle later)
+    for inst in circuit.data:
+        op = inst.operation
+        name = op.name.lower()
+        qubits = [circuit.find_bit(q).index for q in inst.qubits]
+        if name == "barrier":
+            continue
         if name == "measure":
             if include_noise:
                 p_meas = NOISE_PARAMS["p_meas"]
@@ -132,13 +152,9 @@ def qiskit_to_stim(circuit: qiskit.QuantumCircuit, layout=None, include_noise: b
                     out.append("X_ERROR", qubits, [p_meas])
             out.append("M", qubits)
         elif name in ONE_Q: # one qubit interactions
-            out.append(ONE_Q[name], qubits)
-            if include_noise:
-                add_single_qubit_noise(out, qubits, name)
+            _emit_one_q(name, qubits)
         elif name in TWO_Q: # two qubit interactions
-            out.append(TWO_Q[name], qubits)
-            if include_noise and name != "swap":
-                add_distance_noise(out, qubits, layout)
+            _emit_two_q(name, qubits)
         else:
             raise NotImplementedError(f"Unsupported gate for Stim: {name}")
     return out

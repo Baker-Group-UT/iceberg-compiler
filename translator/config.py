@@ -13,6 +13,7 @@ class TranslatorConfig:
     verbose: bool = False
     n_code: int = 4  # Default [[4,2,2]] code size
     enable_merging: bool = True
+    enable_h_commutation: bool = True
     allow_transversal_swap_merges: bool = True
     encode_override: bool = False
 
@@ -22,6 +23,7 @@ class TranslatorConfig:
             "verbose": self.verbose,
             "n_code": self.n_code,
             "enable_merging": self.enable_merging,
+            "enable_h_commutation": self.enable_h_commutation,
             "allow_transversal_swap_merges": self.allow_transversal_swap_merges,
             "encode_override": self.encode_override,
         }

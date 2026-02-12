@@ -3,6 +3,7 @@ run_scan.py - high level test file
 """
 
 from math import perm
+import math
 from numpy import logspace
 from packer.merge_packer import MergeMaximizingPacker
 from pipeline.analysis import print_df
@@ -64,91 +65,61 @@ def sparse_trivial_packing(num_qubits: int):
 
 if __name__ == "__main__":
 
-    # qc = random_gate_circuit(num_qubits=5, num_gates=50, gates=["h", "x", "z", "s", "cx", "cz"], seed=10)
-    # print(qc)
-
-    # # paths = find_qasm_files("/Users/cordputer/Documents/Projects/School/Research/Infleqtion/infleqtion-qed-exploration-main/benchmarks/qasmbench/small", gate_limit=100)
-    # # counter = 0
-    # # for path in paths:
-    # #     # print(counter)
-    # #     qc = create_proxy_from_qasm(path)
-    # #     # print(qc, "\n\n")
-    # #     if counter == 8:
-    # #         break
-    # #     counter += 1
-    # # qc.measure_all()
-
-
-    # qc = qiskit.QuantumCircuit(3)
-    # qc.h(0)
-    # qc.cx(0,1)
-    # qc.x(2)
-    # qc.h(2)
-    # qc.h(1)
-    # qc.cx(1,2)
-
-    # print(qc)
-
-    # qcs = load_proxy_circuits("/Users/cordputer/Documents/Projects/School/Research/Infleqtion/infleqtion-qed-exploration-main/benchmarks/qasmbench/large/ising_n34")
-    # for qc in qcs:
-    #     print(qc[1])
+    # seed = 0
+    # while True:
+    qcs = load_proxy_circuits("/Users/cordputer/Documents/Projects/School/Research/Infleqtion/infleqtion-qed-exploration-main/benchmarks/qasmbench/small/linearsolver_n3")
+    qc = qcs[0][1]
+    print(qc)
     # qc = qcs[0][1]
-    # print(qc)
-
-    # bb84_n8 = load_proxy_circuits("/Users/cordputer/Documents/Projects/School/Research/Infleqtion/infleqtion-qed-exploration-main/benchmarks/qasmbench/small/bb84_n8")
-    # bb84_n8 = bb84_n8[0][1]
-    # print(bb84_n8)
-    # print(qc)
+    # qc = qiskit.QuantumCircuit(2)
+    # qc.h(1)
+    # qc.rx(math.pi/4, 1)
+    # qc.rx(math.pi/3, 1)
+    # qc.rx(math.pi/4, 1)
+    # qc.rx(math.pi/3, 1)
+    # qc.rx(math.pi/4, 1)
+    # qc.rx(math.pi/3, 1)
+    # qc.rx(math.pi/4, 1)
+    # qc.rx(math.pi/3, 1)
+    # qc.rx(math.pi/4, 1)
+    # qc.rx(math.pi/3, 1)
+    # qc.rx(math.pi/4, 1)
+    # qc.rx(math.pi/3, 1)
     # qc.measure_all()
 
+
+    packer = MergeMaximizingPacker(solo_strategy="all")
+    packed_perm = packer.pack(qc, num_codes=2).permutation
+
+    # qc = random_gate_circuit(num_qubits=4, num_gates=12, gates=["h", "x", "z", "s", "cz", "cx"], seed=seed)
+    # qc.measure_all()
+    # print(qc)
+
     config = PipelineConfig(
-        sim_config=ScaledSimulator(alpha=1,repetitions=50_000)
-        .with_stim()
-        .with_distance_noise()
-        .with_idle_noise(),
+        sim_config=ScaledSimulator(alpha=1,repetitions=50_000),
+        # .with_noiseless(),
+        # .with_stim()
+        # .with_distance_noise()
+        # .with_idle_noise(),
         verbose=True,
-        seed=5,
         # translator_config=TranslatorConfig().disable_merging(),
     )
 
-    # packer = MergeMaximizingPacker(solo_strategy="all")
-    # # packings= [packer.pack(qc, num).permutation for num in range(10, 20, 2)]
-    # # packings= [packer.pack(qc, num).permutation for num in range(2,4)]
-    # # for packing in packings:
-    # #     print(packing)
+    t_merg: RunRecord = translate_permutation(program_circuit=qc, permutation=packed_perm, config=config)
+    # t_merg: RunRecord = run_random_scan(program_circuit=qc, m=1, config=config)
+    print(t_merg.circuit)
 
-    # packing = packer.pack(program_circuit=qc, num_codes=2).permutation
-    # # print(tight_trivial_packing(3, 2))
-    # # print(packing)
-
-    # # t_merg: RunRecord = run_specific_scan(program_circuit=qc, permutations=[[(0,0), (0,1), (1,0)], packing], config=config)
-    # t_merg: RunRecord = translate_permutation(program_circuit=qc, permutation=packing, config=config)
-    # t_merg: RunRecord = translate_permutation(program_circuit=qc, permutation=tight_trivial_packing(3), config=config)
-
-    qc = qiskit.QuantumCircuit(3)
-    qc.h(1)
-    qc.x(1)
-    qc.s(1)
-    qc.s(1)
-    qc.s(1)
-    qc.s(1)
-    qc.s(1)
-    qc.h(1)
-    qc.cx(1,2)
-
-    qc.h(0)
-    qc.z(0)
-    qc.h(0)
-    qc.cx(0,2)
-
-    qc.s(0)
-    qc.s(0)
-    qc.s(0)
-    qc.s(0)
-    qc.s(0)
-    qc.s(0)
+    t_merg: RunRecord = translate_permutation(program_circuit=qc, permutation=tight_trivial_packing(3), config=config)
+    print(t_merg.circuit)
 
 
-    # print(qc)
-    t_merg: RunRecord = translate_permutation(program_circuit=qc, permutation=[(0,0), (0,1), (1,0)], config=config)
-    # print(t_merg.circuit)
+        # # print(qc)
+        # t_merg: RunRecord = translate_permutation(program_circuit=qc, permutation=[(0,0), (0,1), (1,0), (1,1)], config=config)
+        # print(t_merg.circuit)
+        # t_merg: RunRecord = run_specific_scan(program_circuit=qc, permutations=[[(0,0), (0,1), (1,0), (1,1)]], config=config)
+        # if t_merg.dataframe.df["logical_total_variation_distance"][0] > 0.25:
+        #     print(seed)
+        # break
+        
+        # seed += 1
+

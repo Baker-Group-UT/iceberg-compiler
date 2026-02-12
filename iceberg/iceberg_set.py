@@ -338,12 +338,58 @@ class IcebergSet:
             self.circuit.cz(ctrl[q], targ[q])
         self.circuit.cz(ctrl[-1], targ[0])
 
+    def XCX(self, i: int, j: int, fault_tolerant: bool = False):
+        """
+        Apply logical XCX between two logical qubits.
+        - Intra-module: HH -> CZ -> HH in that module.
+        - Cross-module with same logical slot: HH on both modules, inter-patch CZ, then HH on both.
+        """
+        if i == j:
+            raise ValueError("i and j must be different")
+        pi, qi = divmod(i, self.k)
+        pj, qj = divmod(j, self.k)
+        if pi == pj:
+            self.modules[pi].XCX(qi, qj, fault_tolerant=fault_tolerant)
+        elif qi == qj:
+            self.modules[pi].HH(fault_tolerant=fault_tolerant)
+            self.modules[pj].HH(fault_tolerant=fault_tolerant)
+            self.CZ(i, j, fault_tolerant=fault_tolerant)
+            self.modules[pi].HH(fault_tolerant=fault_tolerant)
+            self.modules[pj].HH(fault_tolerant=fault_tolerant)
+        else:
+            raise NotImplementedError("Cross-patch XCX for non-identical indices not implemented")
+
+    def XCX_k_Transversal(self, i: int, j: int):
+        """
+        Apply transversal XCX across modules i and j (not fault-tolerant).
+        Pattern: H on all data qubits, CZ using CZ_k_Transversal pairing, then H again.
+        """
+        if i == j:
+            raise ValueError("i and j must be different")
+        ctrl = self.modules[i].data_qubits
+        targ = self.modules[j].data_qubits
+        for q in range(self.n):
+            self.circuit.h(ctrl[q])
+            # self.circuit.h(targ[q])
+        self.circuit.cx(ctrl[0], targ[-1])
+        for q in range(1, self.n - 1):
+            self.circuit.cx(ctrl[q], targ[q])
+        self.circuit.cx(ctrl[-1], targ[0])
+        for q in range(self.n):
+            self.circuit.h(ctrl[q])
+            # self.circuit.h(targ[q])
+
     # ---------------- Utilities ----------------
 
     def RZ(self, i: int, rads: float, fault_tolerant: bool = False):
         """Apply logical RZ to a logical qubit."""
         patch, idx = divmod(i, self.k)
         self.modules[patch].RZ(idx, rads, fault_tolerant=fault_tolerant)
+
+    def RX(self, i: int, rads: float, fault_tolerant: bool = False):
+        """Apply logical RX to a logical qubit."""
+        patch, idx = divmod(i, self.k)
+        self.modules[patch].RX(idx, rads, fault_tolerant=fault_tolerant)
 
     def RZZ(self, i: int, j: int, rads: float):
         """(Not yet implemented) Apply logical RZZ between logical qubits."""

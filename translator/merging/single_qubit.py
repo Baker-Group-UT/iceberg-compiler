@@ -13,8 +13,8 @@ from .settings import MergeSettings
 
 
 SKIP_NAMES = {"barrier"}
-MACRO_NAMES = {"hh", "xx", "zz", "cxt", "czt"}
-CNOT_NAMES = {"cx", "cnot"}
+MACRO_NAMES = {"hh", "xx", "zz", "cxt", "czt", "xcxt"}
+CNOT_NAMES = {"cx", "cnot", "xcx"}
 
 
 def find_single_qubit_merges_for_patch(

@@ -89,8 +89,16 @@ class CircuitClass(ABC, metaclass=AutoCheckEncodedMeta):
 
     @mark_check_encoded
     @abstractmethod
+    def XCX(self, i: int, j: int, fault_tolerant: bool = False): ...
+
+    @mark_check_encoded
+    @abstractmethod
     def RZZ(self, i: int, j: int, rads: float, fault_tolerant: bool = False): ...
 
     @mark_check_encoded
     @abstractmethod
     def RZ(self, i: int, rads: float, fault_tolerant: bool = False): ...
+
+    @mark_check_encoded
+    @abstractmethod
+    def RX(self, i: int, rads: float, fault_tolerant: bool = False): ...

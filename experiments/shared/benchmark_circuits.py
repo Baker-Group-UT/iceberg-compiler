@@ -73,7 +73,7 @@ def create_proxy_from_qasm(path: Path, timeout_seconds: float | None = 1.0) -> q
         if name == "measure":
             continue
         mapped_qargs = [proxy.qubits[qc.find_bit(q).index] for q in qargs]
-        if name == "rz":
+        if name in {"rz"}:
             proxy.s(mapped_qargs[0])
             continue
         if name in {"h", "x", "z", "s", "cx", "cz", "barrier"}:

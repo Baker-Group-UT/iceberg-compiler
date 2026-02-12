@@ -95,3 +95,22 @@ class CZTGate(_TransversalMacroGate):
             control_count=control_count,
             logical_qubits=logical_qubits,
         )
+
+
+class XCXTGate(_TransversalMacroGate):
+    def __init__(
+        self,
+        *,
+        control_patch: int,
+        target_patch: int,
+        control_count: int,
+        logical_qubits: Sequence[int],
+    ) -> None:
+        super().__init__(
+            "xcxt",
+            len(logical_qubits),
+            control_patch=control_patch,
+            target_patch=target_patch,
+            control_count=control_count,
+            logical_qubits=logical_qubits,
+        )
