@@ -112,8 +112,6 @@ def place_logical_cz(
         assert pos_c2 == pos_t2, "Post-SWAP misalignment before transversal (target branch)."
         iceberg_set.CZ(patch_c * context.k_log + pos_c2, patch_t * context.k_log + pos_t2)
 
-        iceberg_set.SWAP([[patch_t, swap_slots[0], swap_slots[1]]], fault_tolerant=context.fault_tolerant)
-        context.update_states_on_swap(patch_t, swap_slots[0], swap_slots[1])
         return True
 
     # Misaligned → try SWAP on control patch if control_ok
@@ -129,8 +127,6 @@ def place_logical_cz(
         
         iceberg_set.CZ(patch_c * context.k_log + pos_c2, patch_t * context.k_log + pos_t2)
 
-        iceberg_set.SWAP([[patch_c, swap_slots[0], swap_slots[1]]], fault_tolerant=context.fault_tolerant)
-        context.update_states_on_swap(patch_c, swap_slots[0], swap_slots[1])
         return True
 
     # Rejected

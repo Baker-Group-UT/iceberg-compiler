@@ -19,6 +19,7 @@ ONE_Q = {
     "y": "Y",
     "z": "Z",
     "s": "S",
+    "sx": "SQRT_X",
     "measure": "M",
 }
 

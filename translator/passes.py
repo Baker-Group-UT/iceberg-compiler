@@ -9,6 +9,8 @@ from qiskit.circuit.library import (
     CXGate,
     CZGate,
     HGate,
+    RZGate,
+    RXGate,
     SGate,
     SdgGate,
     SXGate,
@@ -188,6 +190,14 @@ def commute_hadamards(circuit: QuantumCircuit) -> QuantumCircuit:
                     inst = ZGate()
                 elif gname == "z":
                     inst = XGate()
+                elif gname == "s":
+                    inst = SXGate()
+                elif gname == "sdg":
+                    inst = SGate()
+                elif gname == "rx":
+                    inst = RZGate(inst.params[0])
+                elif gname == "rz":
+                    inst = RXGate(inst.params[0])
             ops.append((inst, qargs, cargs))
             continue
 

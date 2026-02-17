@@ -65,61 +65,63 @@ def sparse_trivial_packing(num_qubits: int):
 
 if __name__ == "__main__":
 
-    # seed = 0
-    # while True:
-    qcs = load_proxy_circuits("/Users/cordputer/Documents/Projects/School/Research/Infleqtion/infleqtion-qed-exploration-main/benchmarks/qasmbench/small/linearsolver_n3")
-    qc = qcs[0][1]
-    print(qc)
-    # qc = qcs[0][1]
-    # qc = qiskit.QuantumCircuit(2)
-    # qc.h(1)
-    # qc.rx(math.pi/4, 1)
-    # qc.rx(math.pi/3, 1)
-    # qc.rx(math.pi/4, 1)
-    # qc.rx(math.pi/3, 1)
-    # qc.rx(math.pi/4, 1)
-    # qc.rx(math.pi/3, 1)
-    # qc.rx(math.pi/4, 1)
-    # qc.rx(math.pi/3, 1)
-    # qc.rx(math.pi/4, 1)
-    # qc.rx(math.pi/3, 1)
-    # qc.rx(math.pi/4, 1)
-    # qc.rx(math.pi/3, 1)
-    # qc.measure_all()
+    seed = 843
+    while True:
+        # qcs = load_proxy_circuits("/Users/cordputer/Documents/Projects/School/Research/Infleqtion/infleqtion-qed-exploration-main/benchmarks/qasmbench/small/linearsolver_n3", replace_rz_rx_with_s=False)
+        # qc = qcs[0][1]
+        # print(qc)
+        # qc = qcs[0][1]
+        # qc = qiskit.QuantumCircuit(2)
+        # qc.h(0)
+        # qc.h(1)
+        # qc.cz(0,1)
+        # qc.h(0)
+        # qc.h(1)
+        # qc.x(0)
+        # qc.z(1)
+        # qc.h(0)
+        # qc.h(1)
+        # qc.cz(0,1)
+        # qc.h(0)
+        # qc.h(1)
+        # qc.measure_all()
+        # print(qc)
 
 
-    packer = MergeMaximizingPacker(solo_strategy="all")
-    packed_perm = packer.pack(qc, num_codes=2).permutation
+        # packer = MergeMaximizingPacker(solo_strategy="all")
+        # packed_perm: List[Tuple[int, int]] = packer.pack(qc, num_codes=2).permutation
 
-    # qc = random_gate_circuit(num_qubits=4, num_gates=12, gates=["h", "x", "z", "s", "cz", "cx"], seed=seed)
-    # qc.measure_all()
-    # print(qc)
+        qc = random_gate_circuit(num_qubits=3, num_gates=25, gates=["h", "x", "z", "s", "cz", "cx"], seed=seed)
 
-    config = PipelineConfig(
-        sim_config=ScaledSimulator(alpha=1,repetitions=50_000),
-        # .with_noiseless(),
-        # .with_stim()
-        # .with_distance_noise()
-        # .with_idle_noise(),
-        verbose=True,
-        # translator_config=TranslatorConfig().disable_merging(),
-    )
+        qc.measure_all()
+        print(qc)
 
-    t_merg: RunRecord = translate_permutation(program_circuit=qc, permutation=packed_perm, config=config)
-    # t_merg: RunRecord = run_random_scan(program_circuit=qc, m=1, config=config)
-    print(t_merg.circuit)
+        config = PipelineConfig(
+            sim_config=ScaledSimulator(alpha=1,repetitions=10_000)
+            .with_noiseless()
+            .with_stim()
+            .with_distance_noise()
+            .with_idle_noise(),
+            verbose=True,
+            # translator_config=TranslatorConfig().disable_merging(),
+        )
 
-    t_merg: RunRecord = translate_permutation(program_circuit=qc, permutation=tight_trivial_packing(3), config=config)
-    print(t_merg.circuit)
+        # t_merg: RunRecord = translate_permutation(program_circuit=qc, permutation=packed_perm, config=config)
+        # t_merg: RunRecord = run_random_scan(program_circuit=qc, m=1, config=config)
+        t_merg: RunRecord = run_specific_scan(program_circuit=qc, permutations=[tight_trivial_packing(3)], config=config)
+        # print(t_merg.circuit)
+
+        # t_merg: RunRecord = translate_permutation(program_circuit=qc, permutation=[(0,1), (1,0)], config=config)
+        # print(t_merg.circuit)
 
 
-        # # print(qc)
+        # print(qc)
         # t_merg: RunRecord = translate_permutation(program_circuit=qc, permutation=[(0,0), (0,1), (1,0), (1,1)], config=config)
         # print(t_merg.circuit)
         # t_merg: RunRecord = run_specific_scan(program_circuit=qc, permutations=[[(0,0), (0,1), (1,0), (1,1)]], config=config)
-        # if t_merg.dataframe.df["logical_total_variation_distance"][0] > 0.25:
-        #     print(seed)
-        # break
+        print(seed)
+        if t_merg.dataframe.df["logical_total_variation_distance"][0] > 0.25:
+            break
         
-        # seed += 1
+        seed += 1
 

@@ -46,7 +46,12 @@ def _read_circuit_name(readme_path: Path) -> str | None:
     return None
 
 
-def create_proxy_from_qasm(path: Path, timeout_seconds: float | None = 1.0) -> qiskit.QuantumCircuit | None:
+def create_proxy_from_qasm(
+    path: Path,
+    timeout_seconds: float | None = 1.0,
+    *,
+    replace_rz_rx_with_s: bool = True,
+) -> qiskit.QuantumCircuit | None:
     """
     Load an OpenQASM file and create a Clifford proxy circuit.
     Steps: transpile to a basis that includes RZ, drop measurements,
@@ -56,11 +61,8 @@ def create_proxy_from_qasm(path: Path, timeout_seconds: float | None = 1.0) -> q
     try:
         with _timeout(timeout_seconds):
             qc = qiskit.QuantumCircuit.from_qasm_file(str(path))
-            qc = qiskit.transpile(
-                qc,
-                basis_gates=["h", "x", "z", "cx", "cz", "s", "rz"],
-                optimization_level=1,
-            )
+            basis = ["h", "x", "z", "cx", "cz", "s", "rz", "rx"]
+            qc = qiskit.transpile(qc, basis_gates=basis, optimization_level=1)
     except Exception:
         return None
 
@@ -73,8 +75,11 @@ def create_proxy_from_qasm(path: Path, timeout_seconds: float | None = 1.0) -> q
         if name == "measure":
             continue
         mapped_qargs = [proxy.qubits[qc.find_bit(q).index] for q in qargs]
-        if name in {"rz"}:
-            proxy.s(mapped_qargs[0])
+        if name in {"rz", "rx"}:
+            if replace_rz_rx_with_s:
+                proxy.s(mapped_qargs[0])
+            else:
+                proxy.append(op, mapped_qargs)
             continue
         if name in {"h", "x", "z", "s", "cx", "cz", "barrier"}:
             proxy.append(op, mapped_qargs)
@@ -141,6 +146,8 @@ def load_proxy_circuits(
     gate_limit: int | None = None,
     qubit_limit: int | None = None,
     timeout_seconds: float | None = 1.0,
+    *,
+    replace_rz_rx_with_s: bool = True,
 ) -> List[Tuple[str, qiskit.QuantumCircuit]]:
     circuits: List[Tuple[str, qiskit.QuantumCircuit]] = []
     for path in tqdm(
@@ -148,7 +155,11 @@ def load_proxy_circuits(
         desc="proxy circuits",
         leave=False,
     ):
-        proxy = create_proxy_from_qasm(path, timeout_seconds=timeout_seconds)
+        proxy = create_proxy_from_qasm(
+            path,
+            timeout_seconds=timeout_seconds,
+            replace_rz_rx_with_s=replace_rz_rx_with_s,
+        )
         if proxy is not None:
             name = _read_circuit_name(path.parent / "README.md") or path.stem
             circuits.append((name, proxy))

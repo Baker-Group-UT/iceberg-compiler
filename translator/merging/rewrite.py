@@ -69,6 +69,9 @@ def build_rewritten_circuit(
             stack = blocked_qubits.get(q)
             if stack:
                 blocking_records.append(stack[-1])
+        # TODO: Conservative blocking may be required here to prevent reordering
+        # of non-overlapping ops when merges delay 2q gates. Revisit if X/SX
+        # reordering issues reappear.
         if blocking_records:
             record = max(
                 blocking_records,
