@@ -2,10 +2,14 @@
 merging_improvement.py
 ----------------------
 
-Compare percent reductions at n/2 codes for three pack-and-merge strategies,
-using tight packing with merging disabled as the baseline:
-1) tight naive packing with merging enabled
-2) merge-maximizing packing with merging enabled
+Random-circuit variant of the stylized merging improvement benchmark.
+
+For each size bucket, generate random circuits with qubit and gate counts sampled
+uniformly from the requested ranges. Each bucket is summarized by one stacked bar
+showing the average additive benefit from:
+1) H commutation
+2) additional merging
+3) additional merge-maximizing packing
 
 Run with:
 
@@ -16,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import math
+import random
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Tuple
@@ -26,47 +31,66 @@ import pandas as pd
 import qiskit
 from tqdm import tqdm
 
+plt.rcParams.update(
+    {
+        "font.family": "Helvetica",
+        "font.sans-serif": "Helvetica",
+        "font.size": 18,
+        "axes.titlesize": 18,
+        "axes.labelsize": 18,
+        "xtick.labelsize": 14,
+        "ytick.labelsize": 14,
+        "legend.fontsize": 16,
+        "figure.titlesize": 18,
+    }
+)
+
 from evaluator.gate_count_stats import one_two_qubit_gate_totals
 from experiments.shared.random_circuits import random_gate_circuit
 from packer.merge_packer import MergeMaximizingPacker
 from pipeline.config import PipelineConfig
 from pipeline.tasks.translate_permutation import translate_permutation
+from translator.passes import cancel_inverse_gates, commute_hadamards
 
 Perm = List[Tuple[int, int]]
 
-GATE_SET = ["x", "z", "h", "cx"]
+GATE_SET = ["h", "x", "z", "s", "rz", "rx", "cx", "cz"]
+METRICS = {
+    "one_qubit_gates": ("pct_reduction_one_qubit_gates", "#1q gates"),
+    "two_qubit_gates": ("pct_reduction_two_qubit_gates", "#2q gates"),
+    "circuit_depth": ("pct_reduction_circuit_depth", "depth"),
+}
+SIZE_GROUPS = [
+    ("small", (5, 10), (10, 50)),
+    ("medium", (15, 25), (30, 150)),
+    ("large", (30, 100), (60, 600)),
+]
 
 
 @dataclass
 class ExperimentSettings:
-    n_qubits: int = 20
-    n_gates: int = 200
-    num_circuits: int = 10
-    random_seed: int | None = 7
+    num_circuits: int = 20
+    random_seed: int | None = 10
     output_path: Path = field(
         default_factory=lambda: Path(
-            "experiments/figures/merging_improvement/merging_improvement_boxplot.png"
+            "experiments/figures/merging_improvement/merging_improvement.svg"
         )
     )
     show_plot: bool = True
 
     def __post_init__(self) -> None:
-        if self.n_qubits < 2:
-            raise ValueError("n_qubits must be >= 2.")
-        if self.n_gates < 1:
-            raise ValueError("n_gates must be >= 1.")
         if self.num_circuits <= 0:
             raise ValueError("num_circuits must be >= 1.")
 
 
 def build_random_circuit(
-    n_qubits: int,
-    n_gates: int,
+    num_qubits: int,
+    num_gates: int,
     seed: int | None,
 ) -> qiskit.QuantumCircuit:
     circuit = random_gate_circuit(
-        num_qubits=n_qubits,
-        num_gates=n_gates,
+        num_qubits=num_qubits,
+        num_gates=num_gates,
         gates=GATE_SET,
         seed=seed,
     )
@@ -97,129 +121,278 @@ def compute_metrics(
     return one_q, two_q, depth
 
 
+def preprocess_for_packing(
+    program_circuit: qiskit.QuantumCircuit,
+    config: PipelineConfig,
+) -> qiskit.QuantumCircuit:
+    processed = cancel_inverse_gates(program_circuit)
+    if config.translator_config.enable_h_commutation:
+        processed = commute_hadamards(processed)
+        processed = cancel_inverse_gates(processed)
+    return processed
+
+
 def pct_reduction(reference: float, challenger: float) -> float:
     if reference <= 0:
         return 0.0
     return 100.0 * (reference - challenger) / reference
 
 
-def run_experiment(settings: ExperimentSettings) -> pd.DataFrame:
-    packer = MergeMaximizingPacker(solo_strategy="most_gates")
+def sample_bucket_params(
+    qubit_range: Tuple[int, int],
+    gate_range: Tuple[int, int],
+    rng: random.Random,
+) -> Tuple[int, int]:
+    return (
+        rng.randint(*qubit_range),
+        rng.randint(*gate_range),
+    )
 
-    merging_enabled = PipelineConfig()
-    merging_enabled.translator_config.enable_merging = True
-    merging_disabled = PipelineConfig()
-    merging_disabled.translator_config.enable_merging = False
+
+def run_experiment(settings: ExperimentSettings) -> pd.DataFrame:
+    packer = MergeMaximizingPacker(solo_strategy="all")
+    seed_rng = random.Random(settings.random_seed)
+
+    baseline_cfg = PipelineConfig()
+    baseline_cfg.translator_config.enable_merging = False
+    baseline_cfg.translator_config.enable_h_commutation = False
+
+    h_only_cfg = PipelineConfig()
+    h_only_cfg.translator_config.enable_merging = False
+    h_only_cfg.translator_config.enable_h_commutation = True
+
+    h_merge_cfg = PipelineConfig()
+    h_merge_cfg.translator_config.enable_merging = True
+    h_merge_cfg.translator_config.enable_h_commutation = True
 
     rows: List[Dict[str, int | float | str]] = []
-    target_codes = math.ceil(settings.n_qubits / 2)
 
-    for circuit_idx in tqdm(range(settings.num_circuits), desc="circuits"):
-        circuit_seed = None
-        if settings.random_seed is not None:
-            circuit_seed = settings.random_seed * 10_000 + circuit_idx
-        program_circuit = build_random_circuit(
-            n_qubits=settings.n_qubits,
-            n_gates=settings.n_gates,
-            seed=circuit_seed,
-        )
-        tight_perm = tight_trivial_packing(settings.n_qubits, target_codes)
-        packed_perm = packer.pack(program_circuit, num_codes=target_codes).permutation
+    for size_group, qubit_range, gate_range in SIZE_GROUPS:
+        for circuit_idx in tqdm(
+            range(settings.num_circuits),
+            desc=f"circuits ({size_group})",
+        ):
+            n_qubits, n_gates = sample_bucket_params(qubit_range, gate_range, seed_rng)
+            circuit_seed = seed_rng.randint(0, 2**31 - 1)
+            program_circuit = build_random_circuit(
+                num_qubits=n_qubits,
+                num_gates=n_gates,
+                seed=circuit_seed,
+            )
 
-        baseline_one_q, baseline_two_q, baseline_depth = compute_metrics(
-            program_circuit, tight_perm, merging_disabled
-        )
-        tight_merge_one_q, tight_merge_two_q, tight_merge_depth = compute_metrics(
-            program_circuit, tight_perm, merging_enabled
-        )
-        packed_one_q, packed_two_q, packed_depth = compute_metrics(
-            program_circuit, packed_perm, merging_enabled
-        )
+            target_codes = math.ceil(n_qubits / 2)
+            tight_perm = tight_trivial_packing(n_qubits, target_codes)
+            processed_for_packing = preprocess_for_packing(program_circuit, h_merge_cfg)
+            packed_perm = packer.pack(
+                processed_for_packing,
+                num_codes=target_codes,
+            ).permutation
 
-        rows.append(
-            {
-                "circuit_idx": circuit_idx,
-                "target_codes": target_codes,
-                "codes_used": len({p for p, _ in tight_perm}),
-                "method": "tight_merge",
-                "pct_reduction_one_qubit_gates": pct_reduction(
-                    baseline_one_q, tight_merge_one_q
-                ),
-                "pct_reduction_two_qubit_gates": pct_reduction(
-                    baseline_two_q, tight_merge_two_q
-                ),
-                "pct_reduction_circuit_depth": pct_reduction(
-                    baseline_depth, tight_merge_depth
-                ),
-            }
-        )
-        rows.append(
-            {
-                "circuit_idx": circuit_idx,
-                "target_codes": target_codes,
-                "codes_used": len({p for p, _ in packed_perm}),
-                "method": "merge_maximizing",
-                "pct_reduction_one_qubit_gates": pct_reduction(
-                    baseline_one_q, packed_one_q
-                ),
-                "pct_reduction_two_qubit_gates": pct_reduction(
-                    baseline_two_q, packed_two_q
-                ),
-                "pct_reduction_circuit_depth": pct_reduction(
-                    baseline_depth, packed_depth
-                ),
-            }
-        )
+            base_one_q, base_two_q, base_depth = compute_metrics(
+                program_circuit,
+                tight_perm,
+                baseline_cfg,
+            )
+            h_only_one_q, h_only_two_q, h_only_depth = compute_metrics(
+                program_circuit,
+                tight_perm,
+                h_only_cfg,
+            )
+            h_merge_one_q, h_merge_two_q, h_merge_depth = compute_metrics(
+                program_circuit,
+                tight_perm,
+                h_merge_cfg,
+            )
+            packed_one_q, packed_two_q, packed_depth = compute_metrics(
+                program_circuit,
+                packed_perm,
+                h_merge_cfg,
+            )
+
+            h_cum_pct_one_q = pct_reduction(base_one_q, h_only_one_q)
+            h_cum_pct_two_q = pct_reduction(base_two_q, h_only_two_q)
+            h_cum_pct_depth = pct_reduction(base_depth, h_only_depth)
+
+            h_merge_cum_pct_one_q = pct_reduction(base_one_q, h_merge_one_q)
+            h_merge_cum_pct_two_q = pct_reduction(base_two_q, h_merge_two_q)
+            h_merge_cum_pct_depth = pct_reduction(base_depth, h_merge_depth)
+
+            packed_cum_pct_one_q = pct_reduction(base_one_q, packed_one_q)
+            packed_cum_pct_two_q = pct_reduction(base_two_q, packed_two_q)
+            packed_cum_pct_depth = pct_reduction(base_depth, packed_depth)
+
+            rows.append(
+                {
+                    "size_group": size_group,
+                    "circuit_idx": circuit_idx,
+                    "num_qubits": n_qubits,
+                    "num_gates": n_gates,
+                    "target_codes": target_codes,
+                    "component": "h_commutation",
+                    "pct_reduction_one_qubit_gates": h_cum_pct_one_q,
+                    "pct_reduction_two_qubit_gates": h_cum_pct_two_q,
+                    "pct_reduction_circuit_depth": h_cum_pct_depth,
+                }
+            )
+            rows.append(
+                {
+                    "size_group": size_group,
+                    "circuit_idx": circuit_idx,
+                    "num_qubits": n_qubits,
+                    "num_gates": n_gates,
+                    "target_codes": target_codes,
+                    "component": "merging",
+                    "pct_reduction_one_qubit_gates": (
+                        h_merge_cum_pct_one_q - h_cum_pct_one_q
+                    ),
+                    "pct_reduction_two_qubit_gates": (
+                        h_merge_cum_pct_two_q - h_cum_pct_two_q
+                    ),
+                    "pct_reduction_circuit_depth": (
+                        h_merge_cum_pct_depth - h_cum_pct_depth
+                    ),
+                }
+            )
+            rows.append(
+                {
+                    "size_group": size_group,
+                    "circuit_idx": circuit_idx,
+                    "num_qubits": n_qubits,
+                    "num_gates": n_gates,
+                    "target_codes": target_codes,
+                    "component": "packing",
+                    "pct_reduction_one_qubit_gates": (
+                        packed_cum_pct_one_q - h_merge_cum_pct_one_q
+                    ),
+                    "pct_reduction_two_qubit_gates": (
+                        packed_cum_pct_two_q - h_merge_cum_pct_two_q
+                    ),
+                    "pct_reduction_circuit_depth": (
+                        packed_cum_pct_depth - h_merge_cum_pct_depth
+                    ),
+                }
+            )
 
     return pd.DataFrame(rows)
 
 
+def print_group_averages(df: pd.DataFrame) -> None:
+    print("[merging_improvement] Plot averages (matching clipped bar values)")
+    for size_group, _, _ in SIZE_GROUPS:
+        group_df = df.loc[df["size_group"] == size_group]
+        if group_df.empty:
+            continue
+        print(f"  {size_group}:")
+        metric_parts = []
+        for _, (metric_column, metric_label) in METRICS.items():
+            pivot = (
+                group_df.pivot_table(
+                    index="size_group",
+                    columns="component",
+                    values=metric_column,
+                    aggfunc="mean",
+                )
+                .reindex([size_group])
+                .fillna(0.0)
+            )
+            total = 0.0
+            for component in ["h_commutation", "merging", "packing"]:
+                if component in pivot.columns:
+                    total += float(
+                        pivot[component].astype(float).clip(lower=0.0).iloc[0]
+                    )
+            metric_parts.append(f"{metric_label}={total:.2f}%")
+        print("    plotted total: " + ", ".join(metric_parts))
+
+    overall_parts = []
+    for _, (metric_column, metric_label) in METRICS.items():
+        pivot = (
+            df.pivot_table(
+                index="size_group",
+                columns="component",
+                values=metric_column,
+                aggfunc="mean",
+            )
+            .reindex([group for group, _, _ in SIZE_GROUPS])
+            .fillna(0.0)
+        )
+        total_values = np.zeros(len(SIZE_GROUPS), dtype=float)
+        for component in ["h_commutation", "merging", "packing"]:
+            if component in pivot.columns:
+                total_values += pivot[component].astype(float).clip(lower=0.0).values
+        overall_parts.append(f"{metric_label}={float(total_values.mean()):.2f}%")
+    print("  plotted overall average: " + ", ".join(overall_parts))
+
+
 def plot_results(df: pd.DataFrame, settings: ExperimentSettings) -> None:
-    metrics = [
-        ("pct_reduction_one_qubit_gates", "Percent reduction in #1q gates"),
-        ("pct_reduction_two_qubit_gates", "Percent reduction in #2q gates"),
-        ("pct_reduction_circuit_depth", "Percent reduction in depth"),
+    components = [
+        ("h_commutation", "H commutation benefit", "#44545e"),
+        ("merging", "+ Merging benefit", "#cfc5c3"),
+        ("packing", "+ Packing benefit", "#0c639b"),
     ]
-    methods = [
-        ("tight_merge", "Tight (merge)", "#c7e9c0", "#238b45"),
-        ("merge_maximizing", "Merge-maximizing", "#c6dbef", "#2171b5"),
-    ]
+    group_labels = {
+        "small": "Small\n5-10q, 10-50g",
+        "medium": "Medium\n15-25q, 30-150g",
+        "large": "Large\n30-100q, 60-300g",
+    }
 
-    fig, axes = plt.subplots(nrows=1, ncols=3, figsize=(15, 4))
+    fig, axes = plt.subplots(nrows=3, ncols=1, figsize=(14, 13), sharex=True)
+    positions = np.arange(len(SIZE_GROUPS), dtype=float)
+    bar_width = 0.72
 
-    for ax, (metric, title) in zip(axes, metrics):
-        means = []
-        errors = []
-        for method, _, _, _ in methods:
-            values = df.loc[df["method"] == method, metric].values
-            means.append(float(np.mean(values)) if len(values) else 0.0)
-            errors.append(float(np.std(values)) if len(values) else 0.0)
-
-        x = np.arange(len(methods))
-        bars = ax.bar(
-            x,
-            means,
-            yerr=errors,
-            capsize=4,
-            color=[face for _, _, face, _ in methods],
-            edgecolor=[edge for _, _, _, edge in methods],
-            alpha=0.85,
+    for ax, (_, (metric_column, metric_label)) in zip(axes, METRICS.items()):
+        pivot = (
+            df.pivot_table(
+                index="size_group",
+                columns="component",
+                values=metric_column,
+                aggfunc="mean",
+            )
+            .reindex([group for group, _, _ in SIZE_GROUPS])
+            .fillna(0.0)
         )
 
-        ax.set_xticks(x)
-        ax.set_xticklabels([label for _, label, _, _ in methods])
-        ax.set_xlabel(f"Codes used = {math.ceil(settings.n_qubits / 2)}")
-        ax.set_ylabel(title)
-        ax.set_title(title)
+        running_bottom = np.zeros(len(SIZE_GROUPS), dtype=float)
+        for component, label, color in components:
+            values = (
+                pivot[component].astype(float).clip(lower=0.0).values
+                if component in pivot.columns
+                else np.zeros(len(SIZE_GROUPS), dtype=float)
+            )
+            ax.bar(
+                positions,
+                values,
+                width=bar_width,
+                bottom=running_bottom,
+                color=color,
+                edgecolor="white",
+                alpha=0.85,
+                label=label,
+            )
+            running_bottom += values
 
+        ax.set_ylabel(metric_label)
         ax.axhline(0, color="#636363", linestyle="--", linewidth=1)
+        ax.grid(True, axis="y", linestyle="--", linewidth=0.4)
+        for spine in ["top", "right"]:
+            ax.spines[spine].set_visible(False)
 
-        for bar, edge in zip(bars, [edge for _, _, _, edge in methods]):
-            bar.set_linewidth(1.0)
-            bar.set_edgecolor(edge)
+    axes[-1].set_xticks(positions)
+    axes[-1].set_xticklabels(
+        [group_labels[group] for group, _, _ in SIZE_GROUPS],
+        rotation=0,
+        ha="center",
+    )
+    axes[-1].set_xlabel("Random circuit size bucket")
 
-    fig.suptitle("Percent reduction vs tight packing with merging disabled")
-    fig.tight_layout()
+    handles, labels = axes[0].get_legend_handles_labels()
+    unique = dict(zip(labels, handles))
+    axes[0].legend(unique.values(), unique.keys(), loc="best", frameon=False)
+    fig.suptitle(
+        "Benefits of H Commutation, Merging, and Packing vs. a Naive Tight Permutation"
+    )
+    fig.supylabel("Percent reduction")
+    fig.tight_layout(rect=(0.03, 0.0, 1.0, 1.0))
 
     if settings.output_path is not None:
         settings.output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -234,23 +407,26 @@ def plot_results(df: pd.DataFrame, settings: ExperimentSettings) -> None:
 
 def parse_args() -> ExperimentSettings:
     parser = argparse.ArgumentParser(
-        description="Compare tight vs merge-maximizing packings with/without merging."
+        description=(
+            "Random-circuit ablation of H commutation, merging, and merge-maximizing packing."
+        )
     )
-    parser.add_argument("--n-qubits", type=int, default=50, help="Number of logical qubits.")
-    parser.add_argument("--n-gates", type=int, default=500, help="Number of random gates.")
-    parser.add_argument("--num-circuits", type=int, default=20, help="Number of random circuits.")
+    parser.add_argument(
+        "--num-circuits",
+        type=int,
+        default=20,
+        help="Number of random circuits to average within each size bucket.",
+    )
     parser.add_argument(
         "--seed",
         type=int,
         default=10,
-        help="Base seed for circuit randomness (set negative for stochastic).",
+        help="Base seed for size sampling and circuit generation (set negative for stochastic).",
     )
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path(
-            "experiments/figures/merging_improvement/merging_improvement_boxplot.svg"
-        ),
+        default=Path("experiments/figures/merging_improvement/merging_improvement.svg"),
         help="Path to save the resulting plot.",
     )
     parser.add_argument(
@@ -260,12 +436,9 @@ def parse_args() -> ExperimentSettings:
     )
     args = parser.parse_args()
 
-    seed_value = args.seed if args.seed >= 0 else None
     return ExperimentSettings(
-        n_qubits=args.n_qubits,
-        n_gates=args.n_gates,
         num_circuits=args.num_circuits,
-        random_seed=seed_value,
+        random_seed=None if args.seed < 0 else args.seed,
         output_path=args.output,
         show_plot=not args.no_show,
     )
@@ -274,6 +447,7 @@ def parse_args() -> ExperimentSettings:
 def main() -> None:
     settings = parse_args()
     df = run_experiment(settings)
+    print_group_averages(df)
     plot_results(df, settings)
 
 

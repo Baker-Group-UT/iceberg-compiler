@@ -6,7 +6,9 @@ Sweep spacetime reduction over:
   1) multiple numbers of qubits with fixed gates-per-qubit, and
   2) multiple gates-per-qubit with fixed number of qubits.
 
-Plots percent reductions vs fraction of codes used.
+Plots percent reductions vs fraction of codes used for:
+  - random-permutation average with H commutation, versus
+  - merge-maximizing packing with H commutation and merging.
 
 Run with:
 
@@ -21,6 +23,8 @@ from pathlib import Path
 from typing import Dict, Iterable, List
 
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
+import matplotlib.cm as cm
 import pandas as pd
 
 from experiments.figures.spacetime_reduction.spacetime_reduction import (
@@ -28,12 +32,30 @@ from experiments.figures.spacetime_reduction.spacetime_reduction import (
     run_experiment,
 )
 
+plt.rcParams.update(
+    {
+        "font.family": "Helvetica",
+        "font.sans-serif": "Helvetica",
+        "font.size": 18,
+        "axes.titlesize": 18,
+        "axes.labelsize": 18,
+        "xtick.labelsize": 14,
+        "ytick.labelsize": 14,
+        "legend.fontsize": 16,
+        "figure.titlesize": 18,
+    }
+)
+
 
 METRICS = [
-    ("pct_reduction_one_qubit_gates", "Percent reduction in #1q gates"),
-    ("pct_reduction_two_qubit_gates", "Percent reduction in #2q gates"),
-    ("pct_reduction_circuit_depth", "Percent reduction in depth"),
+    ("pct_reduction_one_qubit_gates", "#1q gates"),
+    ("pct_reduction_two_qubit_gates", "#2q gates"),
+    ("pct_reduction_circuit_depth", "depth"),
 ]
+SWEEP_LABELS = {
+    "n": "Number of qubits",
+    "g/q": "Gates per qubit",
+}
 
 
 @dataclass
@@ -47,6 +69,7 @@ class SweepSettings:
     random_seed: int | None
     output_qubits: Path
     output_gates: Path
+    from_csv: bool
     show_plot: bool
 
 
@@ -99,6 +122,69 @@ def _run_single_experiment(
     return _summarize_by_fraction(df, n_qubits)
 
 
+def _csv_path_for_plot(output_path: Path) -> Path:
+    return output_path.with_suffix(".csv")
+
+
+def _save_summary_csv(
+    summaries: Dict[int, pd.DataFrame],
+    sweep_label: str,
+    output_path: Path,
+) -> None:
+    rows: List[pd.DataFrame] = []
+    for sweep_value, summary in sorted(summaries.items()):
+        rows.append(
+            summary.assign(
+                sweep_parameter=sweep_label,
+                sweep_value=sweep_value,
+            )
+        )
+    csv_df = pd.concat(rows, ignore_index=True) if rows else pd.DataFrame()
+    csv_path = _csv_path_for_plot(output_path)
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    csv_df.to_csv(csv_path, index=False)
+    print(f"[spacetime_reduction_sweep] Saved plot data to {csv_path}")
+
+
+def _load_summary_csv(csv_path: Path, expected_sweep_label: str) -> Dict[int, pd.DataFrame]:
+    df = pd.read_csv(csv_path)
+    required = {
+        "codes_used",
+        "fraction_codes_used",
+        "pct_reduction_one_qubit_gates",
+        "pct_reduction_two_qubit_gates",
+        "pct_reduction_circuit_depth",
+        "sweep_parameter",
+        "sweep_value",
+    }
+    missing = required - set(df.columns)
+    if missing:
+        raise KeyError(f"CSV missing required columns: {', '.join(sorted(missing))}")
+
+    df = df.loc[df["sweep_parameter"] == expected_sweep_label].copy()
+    if df.empty:
+        raise ValueError(
+            f"No rows found in {csv_path} for sweep_parameter='{expected_sweep_label}'."
+        )
+
+    summaries: Dict[int, pd.DataFrame] = {}
+    for sweep_value, group_df in df.groupby("sweep_value", sort=True):
+        summaries[int(sweep_value)] = (
+            group_df[
+                [
+                    "codes_used",
+                    "fraction_codes_used",
+                    "pct_reduction_one_qubit_gates",
+                    "pct_reduction_two_qubit_gates",
+                    "pct_reduction_circuit_depth",
+                ]
+            ]
+            .sort_values("fraction_codes_used")
+            .reset_index(drop=True)
+        )
+    return summaries
+
+
 def _plot_sweep(
     summaries: Dict[int, pd.DataFrame],
     sweep_label: str,
@@ -107,11 +193,19 @@ def _plot_sweep(
     cmap_name: str,
     show_plot: bool,
 ) -> None:
-    fig, axes = plt.subplots(nrows=1, ncols=3, figsize=(15, 4))
-    cmap = plt.get_cmap(cmap_name, max(len(summaries), 2))
+    fig, axes = plt.subplots(nrows=1, ncols=3, figsize=(20, 6), sharex=True)
+    sweep_values = sorted(summaries)
+    cmap = plt.get_cmap(cmap_name)
+    if not sweep_values:
+        raise ValueError("Expected at least one sweep summary to plot.")
+    vmin = float(min(sweep_values))
+    vmax = float(max(sweep_values))
+    if vmin == vmax:
+        vmax = vmin + 1.0
+    norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
 
-    for idx, (sweep_value, summary) in enumerate(summaries.items()):
-        color = cmap(idx)
+    for sweep_value, summary in sorted(summaries.items()):
+        color = cmap(norm(float(sweep_value)))
         x = summary["fraction_codes_used"].values
         for ax, (metric, metric_title) in zip(axes, METRICS):
             ax.plot(
@@ -119,17 +213,27 @@ def _plot_sweep(
                 summary[metric].values,
                 label=f"{sweep_label}={sweep_value}",
                 color=color,
-                linewidth=2,
+                linewidth=2.8,
+                marker="o",
+                markersize=5,
             )
-            ax.set_xlabel("Fraction of codes used")
-            ax.set_ylabel("Percent reduction")
-            ax.set_title(metric_title)
+            ax.set_ylabel(metric_title)
             ax.axhline(0, color="#636363", linestyle="--", linewidth=1)
+            ax.grid(True, axis="y", linestyle="--", linewidth=0.4)
+            for spine in ["top", "right"]:
+                ax.spines[spine].set_visible(False)
             ax.set_xlim(0.5, 1.0)
 
+    for ax in axes:
+        ax.set_xlabel("Fraction of codes used")
+
+    sm = cm.ScalarMappable(norm=norm, cmap=cmap)
+    sm.set_array([])
+    colorbar = fig.colorbar(sm, ax=axes, shrink=0.92, pad=0.4)
+    colorbar.set_label(SWEEP_LABELS.get(sweep_label, sweep_label))
     fig.suptitle(title)
-    axes[0].legend(loc="best", fontsize=8)
-    fig.tight_layout()
+    fig.supylabel("Percent reduction")
+    fig.tight_layout(rect=(0.03, 0.0, 0.96, 1.0))
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=200)
@@ -142,45 +246,69 @@ def _plot_sweep(
 
 
 def run_sweeps(settings: SweepSettings) -> None:
-    qubit_summaries: Dict[int, pd.DataFrame] = {}
-    for n_qubits in settings.qubits:
-        qubit_summaries[n_qubits] = _run_single_experiment(
-            n_qubits=n_qubits,
-            gates_per_qubit=settings.fixed_gates_per_qubit,
-            settings=settings,
+    if settings.from_csv:
+        qubit_summaries = _load_summary_csv(
+            _csv_path_for_plot(settings.output_qubits),
+            expected_sweep_label="n",
         )
+    else:
+        qubit_summaries = {}
+        for n_qubits in settings.qubits:
+            qubit_summaries[n_qubits] = _run_single_experiment(
+                n_qubits=n_qubits,
+                gates_per_qubit=settings.fixed_gates_per_qubit,
+                settings=settings,
+            )
 
     _plot_sweep(
         summaries=qubit_summaries,
         sweep_label="n",
         title=(
-            "Percent reductions vs fraction of codes used "
+            "Packed (merge+H) vs random baseline with H "
             f"(gates/qubit={settings.fixed_gates_per_qubit})"
         ),
         output_path=settings.output_qubits,
         cmap_name="viridis",
         show_plot=settings.show_plot,
     )
-
-    gate_summaries: Dict[int, pd.DataFrame] = {}
-    for gates_per_qubit in settings.gates_per_qubit:
-        gate_summaries[gates_per_qubit] = _run_single_experiment(
-            n_qubits=settings.fixed_qubits,
-            gates_per_qubit=gates_per_qubit,
-            settings=settings,
+    if not settings.from_csv:
+        _save_summary_csv(
+            summaries=qubit_summaries,
+            sweep_label="n",
+            output_path=settings.output_qubits,
         )
+
+    if settings.from_csv:
+        gate_summaries = _load_summary_csv(
+            _csv_path_for_plot(settings.output_gates),
+            expected_sweep_label="g/q",
+        )
+    else:
+        gate_summaries = {}
+        for gates_per_qubit in settings.gates_per_qubit:
+            gate_summaries[gates_per_qubit] = _run_single_experiment(
+                n_qubits=settings.fixed_qubits,
+                gates_per_qubit=gates_per_qubit,
+                settings=settings,
+            )
 
     _plot_sweep(
         summaries=gate_summaries,
         sweep_label="g/q",
         title=(
-            "Percent reductions vs fraction of codes used "
+            "Packed (merge+H) vs random baseline with H "
             f"(n_qubits={settings.fixed_qubits})"
         ),
         output_path=settings.output_gates,
         cmap_name="plasma",
         show_plot=settings.show_plot,
     )
+    if not settings.from_csv:
+        _save_summary_csv(
+            summaries=gate_summaries,
+            sweep_label="g/q",
+            output_path=settings.output_gates,
+        )
 
 
 def parse_args() -> SweepSettings:
@@ -188,9 +316,17 @@ def parse_args() -> SweepSettings:
         description="Sweep spacetime reduction over qubits and gates-per-qubit."
     )
     parser.add_argument(
+        "--from-csv",
+        action="store_true",
+        help=(
+            "Reload previously saved sweep CSVs next to the output paths and re-render "
+            "the SVGs without rerunning the experiments."
+        ),
+    )
+    parser.add_argument(
         "--qubits",
         type=str,
-        default="20:101:20",
+        default="20:101:10",
         help="Comma list or range start:stop:step for qubit sweep.",
     )
     parser.add_argument(
@@ -208,32 +344,32 @@ def parse_args() -> SweepSettings:
     parser.add_argument(
         "--gates-per-qubit",
         type=str,
-        default="3:21:1",
+        default="2:22:2",
         help="Comma list or range start:stop:step for gates-per-qubit sweep.",
     )
     parser.add_argument(
         "--num-circuits",
         type=int,
-        default=10,
+        default=20,
         help="Number of random circuits per sweep point.",
     )
     parser.add_argument(
         "--random-perms",
         type=int,
-        default=10,
+        default=40,
         help="Number of random permutations per codes value.",
     )
     parser.add_argument(
         "--seed",
         type=int,
-        default=10,
+        default=104,
         help="Base seed for circuit and permutation randomness (set negative for stochastic).",
     )
     parser.add_argument(
         "--output-qubits",
         type=Path,
         default=Path(
-            "experiments/figures/spacetime_reduction/spacetime_reduction_sweep_qubits.png"
+            "experiments/figures/spacetime_reduction/spacetime_reduction_sweep_qubits.svg"
         ),
         help="Path to save the qubit sweep plot.",
     )
@@ -241,7 +377,7 @@ def parse_args() -> SweepSettings:
         "--output-gates",
         type=Path,
         default=Path(
-            "experiments/figures/spacetime_reduction/spacetime_reduction_sweep_gates.png"
+            "experiments/figures/spacetime_reduction/spacetime_reduction_sweep_gates.svg"
         ),
         help="Path to save the gates-per-qubit sweep plot.",
     )
@@ -263,6 +399,7 @@ def parse_args() -> SweepSettings:
         random_seed=seed_value,
         output_qubits=args.output_qubits,
         output_gates=args.output_gates,
+        from_csv=args.from_csv,
         show_plot=not args.no_show,
     )
 

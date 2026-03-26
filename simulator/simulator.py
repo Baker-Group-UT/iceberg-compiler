@@ -23,6 +23,7 @@ from tqdm.auto import trange
 from simulator.grid_constructor import build_physical_qubit_positions
 
 from .config import SimulatorConfig
+from .noise_markers import strip_noise_markers
 from .result_types import SimulationResult
 from .utils import bhattacharyya
 
@@ -284,7 +285,7 @@ class Simulator:
 
         # Transpile for the chosen simulator (ensures basis/optimization compatible)
         # tcirc = transpile(circuit, sim, optimization_level=0, seed_transpiler=self._seed)
-        tcirc = circuit
+        tcirc = strip_noise_markers(circuit)
 
         # If there are no classical bits, nothing to count
         if len(tcirc.clbits) == 0:

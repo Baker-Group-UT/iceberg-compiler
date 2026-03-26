@@ -22,6 +22,7 @@ DEFAULT_WORK_TABLE: WorkTable = {
     "XX": (2, 0),
     "ZZ": (2, 0),
     "S": (2, 1),
+    "SX": (4, 1),
     "RZ": (1, 2),
     "RX": (1, 2),
     "CX": (0, 4),

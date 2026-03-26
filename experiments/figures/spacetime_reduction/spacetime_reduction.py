@@ -37,6 +37,7 @@ from packer.merge_packer import MergeMaximizingPacker
 from permutations.generator import permutation_with_n_codes
 from pipeline.config import PipelineConfig
 from pipeline.tasks.translate_permutation import translate_permutation
+from translator.passes import cancel_inverse_gates, commute_hadamards
 
 Perm = List[Tuple[int, int]]
 
@@ -103,10 +104,24 @@ def compute_metrics(
     return one_q, two_q, depth
 
 
+def preprocess_for_packing(program_circuit: qiskit.QuantumCircuit) -> qiskit.QuantumCircuit:
+    processed_circuit = cancel_inverse_gates(program_circuit)
+    processed_circuit = commute_hadamards(processed_circuit)
+    processed_circuit = cancel_inverse_gates(processed_circuit)
+    return processed_circuit
+
+
 def run_experiment(settings: ExperimentSettings) -> pd.DataFrame:
-    config = PipelineConfig()
     rng = random.Random(settings.random_seed)
-    packer = MergeMaximizingPacker(solo_strategy="most_gates")
+    packer = MergeMaximizingPacker(solo_strategy="all")
+
+    random_baseline_cfg = PipelineConfig()
+    random_baseline_cfg.translator_config.enable_merging = False
+    random_baseline_cfg.translator_config.enable_h_commutation = True
+
+    packed_cfg = PipelineConfig()
+    packed_cfg.translator_config.enable_merging = True
+    packed_cfg.translator_config.enable_h_commutation = True
 
     rows: List[Dict[str, int | float]] = []
     min_codes = math.ceil(settings.n_qubits / 2)
@@ -121,15 +136,19 @@ def run_experiment(settings: ExperimentSettings) -> pd.DataFrame:
             n_gates=settings.n_gates,
             seed=circuit_seed,
         )
+        processed_for_packing = preprocess_for_packing(program_circuit)
 
         for n_codes in tqdm(
             range(min_codes, max_codes + 1),
             desc="codes",
             leave=False,
         ):
-            packed_perm = packer.pack(program_circuit, num_codes=n_codes).permutation
+            packed_perm = packer.pack(
+                processed_for_packing,
+                num_codes=n_codes,
+            ).permutation
             packed_one_q, packed_two_q, packed_depth = compute_metrics(
-                program_circuit, packed_perm, config
+                program_circuit, packed_perm, packed_cfg
             )
 
             for _ in range(settings.random_perms_per_code):
@@ -140,7 +159,7 @@ def run_experiment(settings: ExperimentSettings) -> pd.DataFrame:
                     seed=random_perm_seed,
                 )
                 random_one_q, random_two_q, random_depth = compute_metrics(
-                    program_circuit, random_perm, config
+                    program_circuit, random_perm, random_baseline_cfg
                 )
 
                 rows.append(

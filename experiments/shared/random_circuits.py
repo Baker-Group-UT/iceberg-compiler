@@ -5,13 +5,27 @@ helpers.random_circuits.py - lightweight random circuit builders.
 from __future__ import annotations
 
 import random
+from math import pi
 from typing import Iterable, List, Optional
 
 from qiskit import QuantumCircuit
 
 from translator.passes import cancel_inverse_gates
 
-_ONE_QUBIT_GATES = {"h", "x", "z", "s", "sdg", "t", "tdg", "sx", "sxdg", "y"}
+_ONE_QUBIT_GATES = {
+    "h",
+    "x",
+    "z",
+    "s",
+    "sdg",
+    "t",
+    "tdg",
+    "sx",
+    "sxdg",
+    "y",
+    "rx",
+    "rz",
+}
 _TWO_QUBIT_GATES = {"cx", "cz", "swap", "cy"}
 
 
@@ -57,7 +71,10 @@ def random_gate_circuit(
                 break
         if q is None:
             return False
-        getattr(qc, name)(q)
+        if name in {"rx", "rz"}:
+            getattr(qc, name)(pi / 4, q)
+        else:
+            getattr(qc, name)(q)
         last_1q[q] = name
         last_per_qubit[q] = (name, None, None)
         return True
