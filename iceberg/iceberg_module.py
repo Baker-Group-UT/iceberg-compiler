@@ -273,6 +273,36 @@ class IcebergModule(CircuitClass):
             _physical_two_qubit_gate(self.circuit, self._ids, data_qubit, bottom_ancilla, "CZ", fault_tolerant)
             self.circuit.s(data_qubit)
 
+    def SX(self, i: int | Collection[int], fault_tolerant: bool = False):
+        """
+        Apply the logical SX gate to logical qubit(s) `i`.
+
+        Sequence:
+            H on i
+            SX on bottom ancilla
+            CX from i to bottom ancilla
+            S on i
+            H on i
+        """
+        if isinstance(i, int):
+            i = [i]
+        for j in i:
+            if j < 0 or j >= self.k:
+                raise ValueError("Index out of range")
+        for j in i:
+            bottom_ancilla = self.data_qubits[-1]
+            data_qubit = self.data_qubits[j]
+            if self.k == 2:
+                data_qubit = self.data_qubits[2 - j]
+            # Physical single-qubit operations on the data qubit.
+            self.circuit.h(data_qubit)
+            self.circuit.sx(bottom_ancilla)
+            _physical_two_qubit_gate(
+                self.circuit, self._ids, data_qubit, bottom_ancilla, "CNOT", fault_tolerant
+            )
+            self.circuit.s(data_qubit)
+            self.circuit.h(data_qubit)
+
     def H(self, i: int | Collection[int], fault_tolerant: bool = False):
         if isinstance(i, int):
             i = [i]

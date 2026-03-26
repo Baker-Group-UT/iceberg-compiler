@@ -78,7 +78,7 @@ def print_df_table(
         "codes_used",
         # "fidelity",
         # "logical_error_rate",
-        # "logical_fidelity",
+        "logical_fidelity",
         "logical_selection_rate",
         "logical_total_variation_distance",
         "code_equality_entropy",

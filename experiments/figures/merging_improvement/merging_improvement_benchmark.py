@@ -50,6 +50,7 @@ from experiments.shared.benchmark_circuits import load_proxy_circuits
 from packer.merge_packer import MergeMaximizingPacker
 from pipeline.config import PipelineConfig
 from pipeline.tasks.translate_permutation import translate_permutation
+from translator.passes import cancel_inverse_gates, commute_hadamards
 
 Perm = List[Tuple[int, int]]
 
@@ -104,6 +105,16 @@ def compute_metrics(
     return one_q, two_q, depth
 
 
+def preprocess_for_packing(
+    program_circuit: qiskit.QuantumCircuit, config: PipelineConfig
+) -> qiskit.QuantumCircuit:
+    processed = cancel_inverse_gates(program_circuit)
+    if config.translator_config.enable_h_commutation:
+        processed = commute_hadamards(processed)
+        processed = cancel_inverse_gates(processed)
+    return processed
+
+
 def run_experiment(
     circuits: Sequence[Tuple[str, qiskit.QuantumCircuit]],
     size_group: str,
@@ -127,7 +138,8 @@ def run_experiment(
         n_qubits = program_circuit.num_qubits
         target_codes = math.ceil(n_qubits / 2)
         tight_perm = tight_trivial_packing(n_qubits, target_codes)
-        packed_perm = packer.pack(program_circuit, num_codes=target_codes).permutation
+        processed_for_packing = preprocess_for_packing(program_circuit, merging_enabled)
+        packed_perm = packer.pack(processed_for_packing, num_codes=target_codes).permutation
         
         base_one_q, base_two_q, base_depth = compute_metrics(
             program_circuit, tight_perm, merging_disabled
@@ -196,6 +208,26 @@ def run_experiment(
         )
 
     return pd.DataFrame(rows)
+
+
+def print_metric_averages(df: pd.DataFrame) -> None:
+    print("[merging_improvement_benchmark] Average percent reductions across loaded benchmark circuits")
+    for method in ["tight_merge", "merge_maximizing"]:
+        method_df = df.loc[df["method"] == method]
+        if method_df.empty:
+            continue
+        metric_parts = []
+        for _, (metric_column, metric_label) in METRICS.items():
+            avg = method_df[metric_column].astype(float).mean()
+            metric_parts.append(f"{metric_label}={avg:.2f}%")
+        print(f"  {method}: " + ", ".join(metric_parts))
+    aggregate_df = df.loc[df["method"] == "merge_maximizing"]
+    if not aggregate_df.empty:
+        aggregate_parts = []
+        for _, (metric_column, metric_label) in METRICS.items():
+            avg = aggregate_df[metric_column].astype(float).mean()
+            aggregate_parts.append(f"{metric_label}={avg:.2f}%")
+        print("  aggregate total: " + ", ".join(aggregate_parts))
 
 
 def plot_results(df: pd.DataFrame, settings: BenchmarkSettings) -> None:
@@ -357,6 +389,7 @@ def _load_group_circuits(
         gate_limit=2000,
         qubit_limit=settings.max_proxy_qubits,
         timeout_seconds=timeout_seconds,
+        replace_rz_rx_with_s=False,
     )
     if settings.max_proxy_gates is not None:
         circuits = [
@@ -375,7 +408,7 @@ def _load_group_circuits(
 def main() -> None:
     settings = parse_args()
     all_rows: List[pd.DataFrame] = []
-    for group in ["small", "medium", "large"]:
+    for group in ["small", "medium"]:
         circuits = _load_group_circuits(settings.qasm_root, group, settings)
         if not circuits:
             print(f"[merging_improvement_benchmark] No circuits loaded for {group}.")
@@ -386,6 +419,7 @@ def main() -> None:
     if not all_rows:
         raise ValueError(f"No proxy circuits loaded from {settings.qasm_root}")
     df = pd.concat(all_rows, ignore_index=True)
+    print_metric_averages(df)
     plot_results(df, settings)
 
 

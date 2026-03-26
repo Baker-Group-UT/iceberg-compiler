@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 from qiskit import QuantumCircuit
 from qiskit.converters import circuit_to_dag
 
-from .conflicts import DEFAULT_MERGE_WORK_TABLE, DEFAULT_MERGE_WORK_WEIGHTS
+from .conflicts import DEFAULT_MERGE_WORK_TABLE, DEFAULT_MERGE_WORK_WEIGHTS, filter_single_qubit_conflicting_with_transversal
 from .single_qubit import find_hh_merges_for_patch, find_xx_merges_for_patch, find_zz_merges_for_patch
 from .layer import layer_by_node
 from .models import MacroReplacement
@@ -30,12 +30,6 @@ def preprocess_program_for_merging(
     allow_transversal_swap_merges: bool = False,
     num_merge_passes: int = 2,
 ) -> QuantumCircuit:
-    """
-    Return a possibly rewritten circuit where compatible H, CX, and CZ pairs are
-    replaced with HH / CXT / CZT macro instructions. When
-    ``allow_transversal_swap_merges`` is true the pass is also permitted to wrap
-    the macro in explicit SWAP gates to temporarily align control/target lanes.
-    """
     updated_circuit, _, _, _ = preprocess_program_for_merging_with_stats(
         program_circuit,
         permutation,
@@ -54,12 +48,6 @@ def preprocess_program_for_merging_with_stats(
     allow_transversal_swap_merges: bool = False,
     num_merge_passes: int = 2,
 ) -> Tuple[QuantumCircuit, float, float, float]:
-    """
-    Like preprocess_program_for_merging, but also returns merge savings.
-
-    Returns:
-        (updated_circuit, merge_savings_1q, merge_savings_2q, merge_savings_weighted)
-    """
     if program_circuit.num_qubits == 0:
         return program_circuit, 0.0, 0.0, 0.0
 
@@ -69,6 +57,7 @@ def preprocess_program_for_merging_with_stats(
     updated_circuit = program_circuit
     total_savings_1q = 0.0
     total_savings_2q = 0.0
+
     for _ in range(max(1, num_merge_passes)):
         dag = circuit_to_dag(updated_circuit)
         layer_index, order_index = layer_by_node(dag)
@@ -94,20 +83,38 @@ def preprocess_program_for_merging_with_stats(
             )
 
         records: List[MacroReplacement] = []
-        records.extend(select_best_group(potential_records, layer_index, order_index, qubit_indices))
+        # Pass dag and order_index so select_best_group can detect cross-gate
+        # conflicts — cases where merge B's blocking window would reorder a
+        # 2-qubit gate relative to merge A's macro.
+        records.extend(
+            select_best_group(
+                potential_records,
+                layer_index,
+                order_index,
+                qubit_indices,
+                dag=dag,
+            )
+        )
         consumed_nodes.update({rec.first for rec in records})
         consumed_nodes.update({rec.second for rec in records})
 
-        records.extend(
-            find_transversal_merges(
-                layer_index,
-                order_index,
-                patch_pairs,
-                qubit_indices,
-                consumed_nodes,
-                allow_transversal_swap_merges,
-            )
+        transversal_records = find_transversal_merges(
+            layer_index,
+            order_index,
+            patch_pairs,
+            qubit_indices,
+            consumed_nodes,
+            allow_transversal_swap_merges,
         )
+        # Drop any single-qubit records whose first node falls inside a
+        # transversal record's window and would be reordered past its macro.
+        # This can't be caught during select_best_group because transversal
+        # detection runs after single-qubit selection.
+        records = filter_single_qubit_conflicting_with_transversal(
+            records, transversal_records, layer_index, order_index
+        )
+        consumed_nodes = {rec.first for rec in records} | {rec.second for rec in records}
+        records.extend(transversal_records)
 
         if not records:
             break
@@ -135,7 +142,6 @@ def _build_patch_pairs(
     permutation: Sequence[Tuple[int, int]],
     qubits: Sequence,
 ) -> Dict[int, Tuple]:
-    """Map patch id -> tuple of two logical qubits (ordered by slot)."""
     patch_slots: Dict[int, Dict[int, object]] = {}
     for logical_i, (patch, slot) in enumerate(permutation):
         if logical_i >= len(qubits):

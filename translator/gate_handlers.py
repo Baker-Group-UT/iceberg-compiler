@@ -17,6 +17,7 @@ from .handlers.controlled_z import apply_logical_cz, apply_logical_czt
 from .handlers.rz import apply_logical_rz
 from .handlers.rx import apply_logical_rx
 from .handlers.s import apply_logical_s
+from .handlers.sx import apply_logical_sx
 from .handlers.x import apply_logical_x, apply_logical_xx_merge
 from .handlers.z import apply_logical_z, apply_logical_zz_merge
 from .handlers.swap import apply_logical_swap
@@ -37,6 +38,7 @@ TABLE_SIMPLE: Dict[str, tuple[str, Callable]] = {
     "rx":   ("RX",   apply_logical_rx),
     "rz":   ("RZ",   apply_logical_rz),
     "s":    ("S",    apply_logical_s),
+    "sx":   ("SX",   apply_logical_sx),
     "x":    ("X",    apply_logical_x),
     "z":    ("Z",    apply_logical_z),
     "swap": ("SWAP", apply_logical_swap),

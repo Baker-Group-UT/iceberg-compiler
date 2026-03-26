@@ -196,6 +196,40 @@ class IcebergSet:
             if qset:
                 self.modules[patch].S(qset)
 
+    def SX(self, i: int | Collection[int], fault_tolerant: bool = False):
+        """Apply logical SX to specified logical qubit(s)."""
+        if isinstance(i, int):
+            i = [i]
+        s = [set() for _ in range(self.num_modules)]
+        for j in i:
+            if j < 0 or j >= self.n_program:
+                raise ValueError("Index out of range")
+            patch = j // self.k
+            index = j % self.k
+            if index in s[patch]:
+                raise ValueError("Duplicate index")
+            s[patch].add(index)
+        for patch, qset in enumerate(s):
+            if qset:
+                self.modules[patch].SX(qset, fault_tolerant=fault_tolerant)
+
+    def SX_at(self, patch: int, slot: int | list[int] | set[int], *, fault_tolerant: bool = False):
+        """Apply logical SX to one or more slots in a specific module."""
+        if isinstance(slot, int):
+            slot = {slot}
+        else:
+            slot = set(slot)
+
+        if patch < 0 or patch >= self.num_modules:
+            raise ValueError("Patch out of range")
+
+        for s in slot:
+            if s < 0 or s >= self.k:
+                raise ValueError("Slot out of range")
+
+        if slot:
+            self.modules[patch].SX(slot, fault_tolerant=fault_tolerant)
+
     def S_at(self, patch: int, slot: int | list[int] | set[int]):
         """Apply logical S to one or more slots in a specific module."""
         if isinstance(slot, int):
@@ -264,7 +298,7 @@ class IcebergSet:
 
     # ---------------- Two-qubit logical ops ----------------
 
-    def CNOT(self, i: int, j: int, fault_tolerant: bool = False):
+    def CNOT(self, i: int, j: int, fault_tolerant: bool = False, xcx_override: bool = False):
         """
         Apply logical CNOT between two logical qubits.
         - Intra-module: delegate to that module.
@@ -276,7 +310,7 @@ class IcebergSet:
         pj, qj = divmod(j, self.k)
         if pi == pj:
             self.modules[pi].CNOT(qi, qj, fault_tolerant=fault_tolerant)
-        elif qi == qj:
+        elif qi == qj or xcx_override:
             control_data = self.modules[pi].data_qubits[qi + 1]
             control_ancilla = self.modules[pi].data_qubits[-1]
             target_data = self.modules[pj].data_qubits[qj + 1]
@@ -342,7 +376,9 @@ class IcebergSet:
         """
         Apply logical XCX between two logical qubits.
         - Intra-module: HH -> CZ -> HH in that module.
-        - Cross-module with same logical slot: HH on both modules, inter-patch CZ, then HH on both.
+        - Cross-module with same logical slot: H on control module data qubits,
+          inter-patch CX (with control/target indices adjusted for the removed swap),
+          then H on control module data qubits again.
         """
         if i == j:
             raise ValueError("i and j must be different")
@@ -351,11 +387,21 @@ class IcebergSet:
         if pi == pj:
             self.modules[pi].XCX(qi, qj, fault_tolerant=fault_tolerant)
         elif qi == qj:
-            self.modules[pi].HH(fault_tolerant=fault_tolerant)
-            self.modules[pj].HH(fault_tolerant=fault_tolerant)
-            self.CZ(i, j, fault_tolerant=fault_tolerant)
-            self.modules[pi].HH(fault_tolerant=fault_tolerant)
-            self.modules[pj].HH(fault_tolerant=fault_tolerant)
+            for q in self.modules[pi].data_qubits:
+                self.circuit.h(q)
+            i_swapped = i
+            if self.k == 2:
+                i_swapped = pi * self.k + (1 - qi)
+            self.CNOT(i_swapped, j, fault_tolerant=fault_tolerant, xcx_override=True)
+            for q in self.modules[pi].data_qubits:
+                self.circuit.h(q)
+
+            # self.modules[pi].HH(fault_tolerant=fault_tolerant)
+            # self.modules[pj].HH(fault_tolerant=fault_tolerant)
+            # self.CZ(i, j, fault_tolerant=fault_tolerant)
+            # self.modules[pi].HH(fault_tolerant=fault_tolerant)
+            # self.modules[pj].HH(fault_tolerant=fault_tolerant)
+
         else:
             raise NotImplementedError("Cross-patch XCX for non-identical indices not implemented")
 

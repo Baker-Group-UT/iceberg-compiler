@@ -11,6 +11,7 @@ import stim
 import math
 
 from .noise_models import (manhattan_distance)
+from .noise_markers import NOISE_BEGIN, NOISE_END
 from .scheduler import compute_idle_times
 
 ONE_Q = {
@@ -19,6 +20,7 @@ ONE_Q = {
     "y": "Y",
     "z": "Z",
     "s": "S",
+    "sx": "SQRT_X",
     "measure": "M",
 }
 
@@ -36,7 +38,7 @@ NOISE_PARAMS = {
     "p_meas": 0.02,
     "T1": 100e-6,
     "T2": 80e-6,
-    "idle_time_scalar": 0.0,
+    "idle_time_scalar": 1.0,
     "t_1q": 50e-9,
     "t_2q": 300e-9,
 }
@@ -101,10 +103,14 @@ def add_single_qubit_noise(stim_circuit: stim.Circuit, qubits: list[int], gate_n
 def qiskit_to_stim(circuit: qiskit.QuantumCircuit, layout=None, include_noise: bool = True) -> stim.Circuit:
     out = stim.Circuit()
     last_time = [0.0] * circuit.num_qubits
+    has_noise_markers = any(
+        inst.operation.name.lower() in {NOISE_BEGIN, NOISE_END} for inst in circuit.data
+    )
+    noise_enabled = not has_noise_markers
 
     def _emit_one_q(gate_name: str, qubits: list[int]) -> None:
         gate_time = NOISE_PARAMS["t_1q"]
-        if include_noise and qubits:
+        if include_noise and noise_enabled and qubits:
             idle_times = compute_idle_times(qubits, last_time, gate_time)
             idle_time_scalar = NOISE_PARAMS["idle_time_scalar"]
             if idle_time_scalar != 0:
@@ -117,12 +123,12 @@ def qiskit_to_stim(circuit: qiskit.QuantumCircuit, layout=None, include_noise: b
                         if p_x > 0 or p_y > 0 or p_z > 0:
                             out.append("PAULI_CHANNEL_1", [q], [p_x, p_y, p_z])
         out.append(ONE_Q[gate_name], qubits)
-        if include_noise:
+        if include_noise and noise_enabled:
             add_single_qubit_noise(out, qubits, gate_name)
 
     def _emit_two_q(gate_name: str, qubits: list[int]) -> None:
         gate_time = NOISE_PARAMS["t_2q"]
-        if include_noise and qubits:
+        if include_noise and noise_enabled and qubits:
             idle_times = compute_idle_times(qubits, last_time, gate_time)
             idle_time_scalar = NOISE_PARAMS["idle_time_scalar"]
             if idle_time_scalar != 0:
@@ -135,7 +141,7 @@ def qiskit_to_stim(circuit: qiskit.QuantumCircuit, layout=None, include_noise: b
                         if p_x > 0 or p_y > 0 or p_z > 0:
                             out.append("PAULI_CHANNEL_1", [q], [p_x, p_y, p_z])
         out.append(TWO_Q[gate_name], qubits)
-        if include_noise and gate_name != "swap":
+        if include_noise and noise_enabled and gate_name != "swap":
             add_distance_noise(out, qubits, layout)
 
     # basically convert each instruction to stim, inject noise for distance (potench idle later)
@@ -145,8 +151,16 @@ def qiskit_to_stim(circuit: qiskit.QuantumCircuit, layout=None, include_noise: b
         qubits = [circuit.find_bit(q).index for q in inst.qubits]
         if name == "barrier":
             continue
+        if name == NOISE_BEGIN:
+            noise_enabled = True
+            last_time = [0.0] * circuit.num_qubits
+            continue
+        if name == NOISE_END:
+            noise_enabled = False
+            last_time = [0.0] * circuit.num_qubits
+            continue
         if name == "measure":
-            if include_noise:
+            if include_noise and noise_enabled:
                 p_meas = NOISE_PARAMS["p_meas"]
                 if p_meas > 0:
                     out.append("X_ERROR", qubits, [p_meas])

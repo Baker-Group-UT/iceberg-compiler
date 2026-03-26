@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Sequence, Set, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
+
+from qiskit.dagcircuit import DAGCircuit, DAGOpNode
 
 from .conflicts import compute_merge_conflicts
 from .models import MacroReplacement, MergeConflictInfo
@@ -21,11 +23,17 @@ def select_best_group(
     layer_index: Dict,
     order_index: Dict,
     qubit_indices: Dict[object, int],
+    *,
+    dag: Optional[DAGCircuit] = None,
 ) -> List[MacroReplacement]:
     """
     Assign groups to single-qubit merge candidates and return group 0 merges.
 
     Two-qubit merges are excluded from grouping.
+
+    ``dag`` and ``order_index`` are forwarded to ``compute_merge_conflicts`` so
+    that indirect cross-gate conflicts (merge B's blocking window reorders a
+    gate relative to merge A's macro) are detected and respected.
     """
     single_indices = [
         idx for idx, merge in enumerate(candidates) if _is_single_qubit_merge(merge)
@@ -33,7 +41,13 @@ def select_best_group(
     if not single_indices:
         return []
 
-    conflict_info_all = compute_merge_conflicts(candidates, layer_index, qubit_indices)
+    conflict_info_all = compute_merge_conflicts(
+        candidates,
+        layer_index,
+        qubit_indices,
+        dag=dag,
+        order_index=order_index,
+    )
     priorities = _build_priorities(candidates, single_indices, layer_index, order_index)
     conflict_info = _filter_conflicts(conflict_info_all, single_indices, priorities)
 

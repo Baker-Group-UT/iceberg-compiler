@@ -21,3 +21,6 @@ packing_violins/
 *.zip
 *.gml
 *.pdf
+*.csv
+*.svg
+*.json

@@ -49,7 +49,7 @@ PERMUTATIONS: Dict[str, List[Tuple[int, int]]] = {
 
 
 def _build_program_circuit() -> QuantumCircuit:
-    qc = QuantumCircuit(4, name="logical_reference")
+    qc = QuantumCircuit(10, name="logical_reference")
     qc.h(0)
     qc.h(3)
     qc.x(1)

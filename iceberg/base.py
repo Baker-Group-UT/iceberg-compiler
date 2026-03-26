@@ -77,6 +77,10 @@ class CircuitClass(ABC, metaclass=AutoCheckEncodedMeta):
 
     @mark_check_encoded
     @abstractmethod
+    def SX(self, i: int | Collection[int], fault_tolerant: bool = False): ...
+
+    @mark_check_encoded
+    @abstractmethod
     def H(self, i: int | Collection[int], fault_tolerant: bool = False): ...
 
     @mark_check_encoded
