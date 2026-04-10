@@ -15,7 +15,7 @@ from evaluator.gate_count_stats import (
     gate_counts_by_code,
     depth_by_code,
 )
-from packer.phase_one_graph import DEFAULT_WORK_WEIGHTS
+from packer.work_table import DEFAULT_WORK_WEIGHTS
 
 
 def result_to_row(sim_result: PostselectedSimulationResult, pipeline_config: PipelineConfig) -> Dict[str, Any]:

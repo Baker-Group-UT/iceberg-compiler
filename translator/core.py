@@ -117,6 +117,7 @@ class Translator:
         merge_savings_1q = 0.0
         merge_savings_2q = 0.0
         merge_savings_weighted = 0.0
+        # print(processed_circuit)
         if self.enable_merging:
             processed_circuit, merge_savings_1q, merge_savings_2q, merge_savings_weighted = (
                 preprocess_program_for_merging_with_stats(
@@ -125,6 +126,7 @@ class Translator:
                     allow_transversal_swap_merges=self.allow_transversal_swap_merges,
                 )
             )
+        # print(processed_circuit)
         translation = Translation(
             permutation=permutation,
             program_circuit=processed_circuit,

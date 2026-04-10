@@ -195,7 +195,7 @@ def _plot_sweep(
 ) -> None:
     fig, axes = plt.subplots(nrows=1, ncols=3, figsize=(20, 6), sharex=True)
     sweep_values = sorted(summaries)
-    cmap = plt.get_cmap(cmap_name)
+    base_cmap = plt.get_cmap(cmap_name)
     if not sweep_values:
         raise ValueError("Expected at least one sweep summary to plot.")
     vmin = float(min(sweep_values))
@@ -203,6 +203,10 @@ def _plot_sweep(
     if vmin == vmax:
         vmax = vmin + 1.0
     norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
+    cmap = mcolors.LinearSegmentedColormap.from_list(
+        f"{cmap_name}_truncated",
+        base_cmap([i / 255 * 0.875 for i in range(256)]),
+    )
 
     for sweep_value, summary in sorted(summaries.items()):
         color = cmap(norm(float(sweep_value)))

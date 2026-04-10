@@ -113,7 +113,7 @@ def preprocess_for_packing(program_circuit: qiskit.QuantumCircuit) -> qiskit.Qua
 
 def run_experiment(settings: ExperimentSettings) -> pd.DataFrame:
     rng = random.Random(settings.random_seed)
-    packer = MergeMaximizingPacker(solo_strategy="all")
+    packer = MergeMaximizingPacker()
 
     random_baseline_cfg = PipelineConfig()
     random_baseline_cfg.translator_config.enable_merging = False

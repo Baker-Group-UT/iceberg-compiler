@@ -255,7 +255,7 @@ def run_experiment(
     size_group: str,
     settings: BenchmarkSettings,
 ) -> pd.DataFrame:
-    packer = MergeMaximizingPacker(solo_strategy="all")
+    packer = MergeMaximizingPacker()
 
     baseline_translate_cfg = PipelineConfig()
     baseline_translate_cfg.translator_config.enable_merging = False
@@ -478,20 +478,40 @@ def run_experiment(
 def print_metric_averages(df: pd.DataFrame) -> None:
     print("[merging_improvement_benchmark_stylized_simulated] Plot averages (matching clipped bar values)")
     size_groups = ["small", "medium", "large"]
+    group_totals: Dict[str, Dict[str, float]] = {}
+    group_counts: Dict[str, int] = {}
     for size_group in size_groups:
         group_df = df.loc[df["size_group"] == size_group]
         if group_df.empty:
             continue
+        group_counts[size_group] = int(group_df["circuit_name"].nunique())
         print(f"  {size_group}:")
         metric_parts = []
+        metric_totals: Dict[str, float] = {}
         for _, (metric_column, metric_label) in METRICS.items():
             total = 0.0
             for component in ["h_commutation", "merging", "packing"]:
                 component_df = group_df.loc[group_df["component"] == component, metric_column]
                 if not component_df.empty:
                     total += float(component_df.astype(float).clip(lower=0.0).mean())
+            metric_totals[metric_label] = total
             metric_parts.append(f"{metric_label}={total:.2f}%")
         print("    plotted total: " + ", ".join(metric_parts))
+        group_totals[size_group] = metric_totals
+
+    total_count = sum(group_counts.values())
+    if total_count > 0:
+        weighted_metric_parts = []
+        for _, (_, metric_label) in METRICS.items():
+            weighted_total = sum(
+                group_totals[size_group][metric_label] * group_counts[size_group]
+                for size_group in size_groups
+                if size_group in group_totals
+            ) / float(total_count)
+            weighted_metric_parts.append(f"{metric_label}={weighted_total:.2f}%")
+        count_parts = [f"{size_group}={group_counts[size_group]}" for size_group in size_groups if size_group in group_counts]
+        print("  weighted overall: " + ", ".join(weighted_metric_parts))
+        print("    weights: " + ", ".join(count_parts) + f", total={total_count}")
 
     if not df.empty:
         print(

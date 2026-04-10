@@ -33,7 +33,7 @@ import pandas as pd
 import qiskit
 from qiskit.circuit.random import random_clifford_circuit
 
-from packer.merge_packer import MergeMaximizingPacker, SoloStrategy
+from packer.merge_packer import MergeMaximizingPacker
 from permutations.generator import permutation_with_n_codes
 from pipeline.analysis.print_df import print_df_table
 from pipeline.config import PipelineConfig
@@ -58,11 +58,7 @@ class ExperimentSettings:
     simulator_repetitions: int = 100_000
     metric_column: PipelineMetric = "logical_total_variation_distance"
     random_seed: int | None = 7
-    solo_strategies: Tuple[SoloStrategy, ...] = (
-        "most_gates",
-        "pair_then_solo",
-        "most_hadamards",
-    )
+    solo_strategies: Tuple[str, ...] = ("packer",)
     output_path: Path = field(
         default_factory=lambda: Path(
             "experiments/figures/n_heuristic/n_heuristic_single_circuit_boxplot.png"
@@ -164,7 +160,7 @@ def run_single_circuit_trial(
     program_circuit: qiskit.QuantumCircuit,
     target_codes: int,
     rng: random.Random,
-    solo_strategies: Sequence[SoloStrategy],
+    solo_strategies: Sequence[str],
 ) -> List[Dict[str, float | int | Perm]]:
     """
     Execute packed-vs-random comparisons for a specific n_codes value.
@@ -180,14 +176,10 @@ def run_single_circuit_trial(
             )
         )
 
-    strategy_perms: Dict[SoloStrategy, Perm] = {}
-    for solo_strategy in solo_strategies:
-        packer = MergeMaximizingPacker(solo_strategy=solo_strategy)
-        strategy_perms[solo_strategy] = packer.pack(
-            program_circuit,
-            num_codes=target_codes,
-            solo_strategy=solo_strategy,
-        ).permutation
+    packer = MergeMaximizingPacker()
+    strategy_perms: Dict[str, Perm] = {
+        "packer": packer.pack(program_circuit, num_codes=target_codes).permutation
+    }
 
     tight_perm = tight_trivial_packing(program_circuit.num_qubits)
     sparse_perm = sparse_trivial_packing(program_circuit.num_qubits)
@@ -497,11 +489,8 @@ def parse_args() -> ExperimentSettings:
     parser.add_argument(
         "--solo-strategies",
         type=str,
-        default="most_gates,pair_then_solo,most_hadamards",
-        help=(
-            "Comma-separated strategies for selecting solo qubits "
-            "(choices: most_gates, pair_then_solo, most_hadamards)."
-        ),
+        default="packer",
+        help="Ignored — retained for CLI compatibility. The packer always uses net-gain selection.",
     )
     parser.add_argument(
         "--output",
@@ -517,15 +506,6 @@ def parse_args() -> ExperimentSettings:
     args = parser.parse_args()
 
     seed_value = args.seed if args.seed >= 0 else None
-    strategies = tuple(
-        s.strip()
-        for s in args.solo_strategies.split(",")
-        if s.strip()
-    )
-    allowed = {"most_gates", "pair_then_solo", "most_hadamards"}
-    unknown = [s for s in strategies if s not in allowed]
-    if unknown:
-        raise ValueError(f"Unknown solo strategies: {unknown}")
     return ExperimentSettings(
         n_qubits=args.n_qubits,
         n_gates=args.n_gates,
@@ -533,7 +513,6 @@ def parse_args() -> ExperimentSettings:
         simulator_repetitions=args.repetitions,
         metric_column=args.metric_column,
         random_seed=seed_value,
-        solo_strategies=strategies,
         output_path=args.output,
         show_plot=not args.no_show,
     )

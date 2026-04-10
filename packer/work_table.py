@@ -27,10 +27,10 @@ DEFAULT_WORK_TABLE: WorkTable = {
     "RX": (1, 2),
     "CX": (0, 4),
     "CZ": (1, 3),
-    "XCX": (1, 3),
+    "XCX": (5, 3),
     "CXT": (0, 4),
     "CZT": (0, 4),
-    "XCXT": (16, 4),
+    "XCXT": (8, 4),
     "SWAP": (0, 0), # Set to 0 weight
     "MEASURE": (0, 0),
 }

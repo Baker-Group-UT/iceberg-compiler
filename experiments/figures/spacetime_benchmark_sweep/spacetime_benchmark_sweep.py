@@ -9,7 +9,7 @@ Sweeps fraction-of-codes-used for three fixed benchmark circuits:
 
 For each (circuit, code_count) pair, measures how much the optimized variant
 (H commutation + merging + MergeMaximizingPacker) improves over the baseline
-(tight trivial packing, no H commutation) across five metrics:
+(tight trivial packing with H commutation only) across gate/depth metrics:
 
   1. #1q gates reduction
   2. #2q gates reduction
@@ -50,6 +50,7 @@ from pipeline.config import PipelineConfig
 from pipeline.tasks.scan_specific import run_specific_scan
 from pipeline.tasks.translate_permutation import translate_permutation
 from simulator.config_presets import ScaledSimulator
+from translator.merging import PairMergeAnalyzer
 from translator.passes import cancel_inverse_gates, commute_hadamards
 
 Perm = List[Tuple[int, int]]
@@ -134,6 +135,28 @@ DEFAULT_SETTINGS = BenchmarkSweepSettings()
 # Pure helpers
 # ---------------------------------------------------------------------------
 
+def _perm_pair_cx_merges(
+    preprocessed: qiskit.QuantumCircuit,
+    permutation: Perm,
+) -> Tuple[int, int, int]:
+    """Return total (cx_merges, cz_merges, xcx_merges) across all paired patches."""
+    analyzer = PairMergeAnalyzer(preprocessed)
+    n = preprocessed.num_qubits
+    patch_to_qubits: Dict[int, List[int]] = {}
+    for qubit_idx, (patch, _slot) in enumerate(permutation):
+        patch_to_qubits.setdefault(patch, []).append(qubit_idx)
+    cx = cz = xcx = 0
+    for qubits in patch_to_qubits.values():
+        if len(qubits) < 2:
+            continue
+        qa, qb = qubits[0], qubits[1]
+        stats = analyzer.analyze_pair(qa, qb)
+        cx += stats.cx_merges
+        cz += stats.cz_merges
+        xcx += stats.xcx_merges
+    return cx, cz, xcx
+
+
 def pct_reduction(reference: float, challenger: float) -> float:
     if reference <= 0:
         return 0.0
@@ -147,13 +170,33 @@ def pct_improvement(reference: float, challenger: float) -> float:
 
 
 def tight_trivial_packing(num_qubits: int, n_codes: int) -> Perm:
+    """Produce a permutation with exactly n_codes patches.
+
+    Pairs the first (num_qubits - n_codes) consecutive qubit pairs together,
+    then assigns remaining qubits to solo patches.  This matches the merge
+    packer's patch count exactly, making the comparison fair.
+    """
     if n_codes < 1:
         raise ValueError("n_codes must be >= 1")
-    patch_capacity = max(1, math.ceil(num_qubits / n_codes))
-    perm: Perm = []
-    for i in range(num_qubits):
-        code = min(i // patch_capacity, n_codes - 1)
-        perm.append((code, i % patch_capacity))
+    min_codes = math.ceil(num_qubits / 2)
+    if n_codes < min_codes or n_codes > num_qubits:
+        raise ValueError(
+            f"n_codes={n_codes} out of range [{min_codes}, {num_qubits}] "
+            f"for {num_qubits} qubits."
+        )
+    pairs_needed = num_qubits - n_codes   # number of paired patches
+    perm: Perm = [None] * num_qubits  # type: ignore[list-item]
+    patch = 0
+    qubit = 0
+    for _ in range(pairs_needed):
+        perm[qubit]     = (patch, 0)
+        perm[qubit + 1] = (patch, 1)
+        qubit += 2
+        patch += 1
+    while qubit < num_qubits:
+        perm[qubit] = (patch, 0)
+        qubit += 1
+        patch += 1
     return perm
 
 
@@ -215,12 +258,13 @@ def compute_translation_metrics(
     program_circuit: qiskit.QuantumCircuit,
     permutation: Perm,
     config: PipelineConfig,
-) -> Tuple[int, int, int]:
+) -> Tuple[int, int, int, float, float]:
+    """Returns (1q, 2q, depth, merge_savings_1q, merge_savings_2q)."""
     translated = translate_permutation(program_circuit, permutation, config=config)
     circuit = translated.circuit
     one_q, two_q = one_two_qubit_gate_totals(circuit)
     depth = circuit.depth()
-    return one_q, two_q, depth
+    return one_q, two_q, depth, translated.merge_savings_1q, translated.merge_savings_2q
 
 
 # ---------------------------------------------------------------------------
@@ -270,7 +314,7 @@ def repetitions_from_selection_rate(selection_rate: float, settings: BenchmarkSw
 
 def _baseline_translate_cfg() -> PipelineConfig:
     cfg = PipelineConfig()
-    cfg.translator_config.enable_h_commutation = False
+    cfg.translator_config.enable_h_commutation = True
     cfg.translator_config.enable_merging = False
     return cfg
 
@@ -287,7 +331,7 @@ def _h_merge_translate_cfg() -> PipelineConfig:
 # ---------------------------------------------------------------------------
 
 def run_experiment(settings: BenchmarkSweepSettings) -> pd.DataFrame:
-    packer = MergeMaximizingPacker(solo_strategy="all")
+    packer = MergeMaximizingPacker()
     h_only_cfg = _baseline_translate_cfg()
     h_merge_cfg = _h_merge_translate_cfg()
 
@@ -315,7 +359,7 @@ def run_experiment(settings: BenchmarkSweepSettings) -> pd.DataFrame:
 
         # One-time alpha calibration from baseline at min_codes
         baseline_perm_calib = tight_trivial_packing(n_qubits, min_codes)
-        calib_one_q, calib_two_q, _ = compute_translation_metrics(
+        calib_one_q, calib_two_q, _, _, _ = compute_translation_metrics(
             program_circuit, baseline_perm_calib, h_only_cfg
         )
         baseline_gate_count = max(1, calib_one_q + calib_two_q)
@@ -326,7 +370,7 @@ def run_experiment(settings: BenchmarkSweepSettings) -> pd.DataFrame:
             alpha=alpha_initial,
             repetitions=settings.pilot_repetitions,
             seed=settings.seed * 1_000_003 + circuit_idx * 17 + 1,
-            enable_h_commutation=False,
+            enable_h_commutation=True,
             enable_merging=False,
         )
         pilot_metrics = evaluate_variant(program_circuit, baseline_perm_calib, pilot_baseline_cfg)
@@ -342,7 +386,7 @@ def run_experiment(settings: BenchmarkSweepSettings) -> pd.DataFrame:
             alpha=alpha_final,
             repetitions=settings.pilot_repetitions,
             seed=settings.seed * 1_000_003 + circuit_idx * 17 + 2,
-            enable_h_commutation=False,
+            enable_h_commutation=True,
             enable_merging=False,
         )
         pilot_verify = evaluate_variant(program_circuit, baseline_perm_calib, pilot_verify_cfg)
@@ -359,12 +403,24 @@ def run_experiment(settings: BenchmarkSweepSettings) -> pd.DataFrame:
             packed_perm = packer.pack(preprocessed, num_codes=n_codes).permutation
 
             # Gate metrics (translation only)
-            base_1q, base_2q, base_depth = compute_translation_metrics(
+            base_1q, base_2q, base_depth, _, _ = compute_translation_metrics(
                 program_circuit, baseline_perm, h_only_cfg
             )
-            packed_1q, packed_2q, packed_depth = compute_translation_metrics(
+            packed_1q, packed_2q, packed_depth, packed_ms1q, packed_ms2q = compute_translation_metrics(
                 program_circuit, packed_perm, h_merge_cfg
             )
+
+            # Diagnostic: compare merge counts between tight-trivial and merge-packer pairs.
+            base_cx, base_cz, base_xcx = _perm_pair_cx_merges(preprocessed, baseline_perm)
+            pack_cx, pack_cz, pack_xcx = _perm_pair_cx_merges(preprocessed, packed_perm)
+            if packed_2q > base_2q:
+                print(
+                    f"[DIAG 2q-regression] {circuit_name} n_codes={n_codes}:"
+                    f"  base_2q={base_2q}  packed_2q={packed_2q}"
+                    f"  actual_ms2q={packed_ms2q:.1f}"
+                    f"  | trivial cx/cz/xcx={base_cx}/{base_cz}/{base_xcx}"
+                    f"  packed cx/cz/xcx={pack_cx}/{pack_cz}/{pack_xcx}"
+                )
 
             # Simulation metrics
             seed_offset = circuit_idx * 10_000 + code_idx * 10
@@ -373,7 +429,7 @@ def run_experiment(settings: BenchmarkSweepSettings) -> pd.DataFrame:
                 alpha=alpha_final,
                 repetitions=final_repetitions,
                 seed=settings.seed * 1_000_003 + seed_offset + 3,
-                enable_h_commutation=False,
+                enable_h_commutation=True,
                 enable_merging=False,
             )
             packed_sim_cfg = build_pipeline_config(
