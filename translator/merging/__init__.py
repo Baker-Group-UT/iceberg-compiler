@@ -109,7 +109,7 @@ look at ipad
 
 from .analysis import PairMergeAnalyzer
 from .gates import CXTGate, CZTGate, XCXTGate, HHGate, XXGate, ZZGate
-from .models import MacroReplacement, MergeConflictInfo, PairMergeStats, PlannedOp
+from .models import MacroReplacement, MergeConflictInfo, PairMergeStats, PlannedOp, SoloMergeStats
 from .conflicts import compute_merge_conflicts
 from .selection import select_best_group
 from .preprocessing import preprocess_program_for_merging, preprocess_program_for_merging_with_stats
@@ -129,6 +129,7 @@ __all__ = [
     "PairMergeAnalyzer",
     "PairMergeStats",
     "PlannedOp",
+    "SoloMergeStats",
     "compute_merge_conflicts",
     "select_best_group",
     "preprocess_program_for_merging",

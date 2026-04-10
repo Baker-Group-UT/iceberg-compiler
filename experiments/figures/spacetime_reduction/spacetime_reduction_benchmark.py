@@ -87,7 +87,7 @@ def run_experiment(
 ) -> pd.DataFrame:
     config = PipelineConfig()
     rng = random.Random(settings.random_seed)
-    packer = MergeMaximizingPacker(solo_strategy="all")
+    packer = MergeMaximizingPacker()
 
     rows: List[Dict[str, int | float]] = []
 

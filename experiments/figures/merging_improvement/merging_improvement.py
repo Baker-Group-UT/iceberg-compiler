@@ -150,7 +150,7 @@ def sample_bucket_params(
 
 
 def run_experiment(settings: ExperimentSettings) -> pd.DataFrame:
-    packer = MergeMaximizingPacker(solo_strategy="all")
+    packer = MergeMaximizingPacker()
     seed_rng = random.Random(settings.random_seed)
 
     baseline_cfg = PipelineConfig()

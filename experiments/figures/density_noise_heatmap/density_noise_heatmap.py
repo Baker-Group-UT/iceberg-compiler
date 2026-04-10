@@ -97,7 +97,7 @@ class ExperimentConfig:
     idle_max: float = 10.0
     idle_points: int = 5
     distance_min: float = 0.1
-    distance_max: float = 10.0
+    distance_max: float = 500.0
     distance_points: int = 5
     output_dir: Path = THIS_DIR
 
@@ -408,6 +408,8 @@ def main(argv: list[str] | None = None) -> int:
         if not circuits:
             print("No circuits loaded — check benchmarks path.", file=sys.stderr)
             return 1
+        for _, qc in circuits:
+            qc.measure_all(inplace=True)
         print(f"Loaded {len(circuits)} circuits.")
         rows = _sweep(cfg, circuits)
         _write_csv(rows, csv_path)

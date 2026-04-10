@@ -42,7 +42,23 @@ class PairMergeStats:
     cz_merges: int = 0
     xcx_merges: int = 0
     twoq_between: int = 0
+    cx_between: int = 0
+    cz_between: int = 0
+    xcx_between: int = 0
     hh_layer_distance: int = 0
+    cx_layer_distance: int = 0
+    cz_layer_distance: int = 0
+    xcx_layer_distance: int = 0
+
+
+@dataclass(frozen=True)
+class SoloMergeStats:
+    """Summary of savings available when a qubit is placed alone in its patch."""
+
+    h_count: int = 0       # H gates → HH macro (solo H is always whole-patch Hadamard)
+    xx_merges: int = 0     # sequential X-X pairs on solo lane (usually 0 after cancellation)
+    zz_merges: int = 0     # sequential Z-Z pairs on solo lane (usually 0 after cancellation)
+    twoq_count: int = 0    # total CX/CZ/XCX gates on this qubit (for error-rate bias)
 
 
 @dataclass

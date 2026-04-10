@@ -100,7 +100,7 @@ def run_experiment(
     settings: BenchmarkSettings,
 ) -> pd.DataFrame:
     config = PipelineConfig()
-    packer = MergeMaximizingPacker(solo_strategy="most_hadamards")
+    packer = MergeMaximizingPacker()
 
     rows: List[Dict[str, int | float | str]] = []
 

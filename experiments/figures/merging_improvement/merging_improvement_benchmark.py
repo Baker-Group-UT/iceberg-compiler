@@ -120,7 +120,7 @@ def run_experiment(
     size_group: str,
     settings: BenchmarkSettings,
 ) -> pd.DataFrame:
-    packer = MergeMaximizingPacker(solo_strategy="all")
+    packer = MergeMaximizingPacker()
 
     merging_enabled = PipelineConfig()
     merging_enabled.translator_config.enable_merging = True

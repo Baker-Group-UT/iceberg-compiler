@@ -38,7 +38,7 @@ from pipeline import run_specific_scan
 from simulator.config_presets import ScaledSimulator  # or StandardSimulator
 from repository.run_builder import RunRecord
 from repository import RunRepository
-from packer.packer import HeuristicPacker
+from packer.merge_packer import MergeMaximizingPacker
 
 # -----------------------
 # Permutations (0..60)
@@ -440,31 +440,9 @@ def run_one_combo(
     print(codes_values)
     for max_codes in codes_values:
         try:
-            packer = HeuristicPacker(max_patches=int(max_codes))
-            packing = packer.pack(tcirc, approach="balanced")
-            qubit_mapping = dict(packing.qubit_to_patch)
-            missing_qubits = tcirc.num_qubits - len(qubit_mapping)
-            if missing_qubits > 0:
-                try:
-                    qubit_mapping = _complete_qubit_mapping(
-                        qubit_mapping,
-                        num_qubits=tcirc.num_qubits,
-                        patch_capacity=packer.patch_capacity,
-                        max_patches=packer.max_patches or tcirc.num_qubits,
-                    )
-                    print(
-                        f"[packer] Filled {missing_qubits} unmapped qubit(s) "
-                        f"for codes={max_codes}."
-                    )
-                except Exception as completion_exc:
-                    print(
-                        f"[packer] Failed to complete mapping for codes={max_codes}: "
-                        f"{completion_exc}"
-                    )
-                    continue
-            permutation = packer.packing_to_permutation(
-                qubit_mapping, num_qubits=tcirc.num_qubits
-            )
+            packer = MergeMaximizingPacker()
+            packing = packer.pack(tcirc, num_codes=int(max_codes))
+            permutation = packing.permutation
             perm_key = _perm_key(permutation)
         except Exception as exc:
             print(f"[packer] Failed to produce permutation for codes={max_codes}: {exc}")

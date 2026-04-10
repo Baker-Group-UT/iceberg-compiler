@@ -215,7 +215,7 @@ def evaluate_ablation(
     n_qubits = program_circuit.num_qubits
     target_codes = math.ceil(n_qubits / 2)
     tight_perm = tight_trivial_packing(n_qubits, target_codes)
-    packer = MergeMaximizingPacker(solo_strategy="all")
+    packer = MergeMaximizingPacker()
     processed_for_packing = preprocess_for_packing(program_circuit, enable_h_commutation=True)
     packed_perm = packer.pack(processed_for_packing, num_codes=target_codes).permutation
 

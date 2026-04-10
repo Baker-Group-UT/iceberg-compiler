@@ -1,10 +1,12 @@
+"""Grid layout helpers for mapping logical patches to a 2-D physical grid."""
+
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
-from .phase_one_graph import GraphHeuristics
+from .work_table import GraphHeuristics
 
 
 @dataclass
@@ -25,39 +27,119 @@ class PatchLayoutMetadata:
     ordering: List[int]
 
     def coordinate_for_patch(self, patch_id: int) -> Tuple[int, int]:
+        """Return the (row, col) grid coordinate for the given new patch id."""
         return self.coordinates[patch_id]
+
+
+def _bfs_coords(grid_size: int) -> List[Tuple[int, int]]:
+    """Return (row, col) positions in BFS order from the grid center.
+
+    Cells are sorted by (Manhattan distance, clockwise angle from center).
+    Every cell at distance d is adjacent to at least one cell at distance d-1,
+    so each new position in the ordering is guaranteed to have a grid-adjacent
+    predecessor. This aligns with the cluster-based greedy ordering: the most
+    interactive patch sits at the center (4 neighbours), and the next 4 most
+    interactive patches fill the cardinal slots — all at distance 1 from the hub.
+
+    For a 3x3 grid:
+        7 4 8
+        3 0 1
+        6 2 5
+    """
+    center = grid_size // 2
+
+    def _key(cell: Tuple[int, int]) -> Tuple[int, float]:
+        dr, dc = cell[0] - center, cell[1] - center
+        ring = abs(dr) + abs(dc)
+        angle = math.atan2(dr, dc) % (2 * math.pi)
+        return (ring, angle)
+
+    return sorted(((r, c) for r in range(grid_size) for c in range(grid_size)), key=_key)
+
+
+def _spiral_coords(grid_size: int) -> List[Tuple[int, int]]:
+    """Return (row, col) positions in Chebyshev-shell spiral order from the center.
+
+    Cells are sorted by (Chebyshev shell, clockwise angle from center).
+    Within each complete shell consecutive cells are grid-adjacent; the jump
+    at shell boundaries is at most Manhattan distance 2.
+
+    For a 3x3 grid:
+        6 7 8
+        5 0 1
+        4 3 2
+    """
+    center = grid_size // 2
+
+    def _key(cell: Tuple[int, int]) -> Tuple[int, float]:
+        dr, dc = cell[0] - center, cell[1] - center
+        shell = max(abs(dr), abs(dc))
+        angle = math.atan2(dr, dc) % (2 * math.pi)
+        return (shell, angle)
+
+    return sorted(((r, c) for r in range(grid_size) for c in range(grid_size)), key=_key)
+
+
+def _row_major_coords(grid_size: int) -> List[Tuple[int, int]]:
+    """Return (row, col) positions in row-major order (left-to-right, top-to-bottom).
+
+    For a 3x3 grid:
+        0 1 2
+        3 4 5
+        6 7 8
+    """
+    return [(r, c) for r in range(grid_size) for c in range(grid_size)]
+
+
+_LAYOUT_FUNCS = {"bfs": _bfs_coords, "spiral": _spiral_coords, "row_major": _row_major_coords}
 
 
 def compute_grid_aligned_mapping(
     graph: GraphHeuristics,
     qubit_to_patch: Dict[int, int],
+    *,
+    layout: str = "row_major",
 ) -> Tuple[Dict[int, int], PatchLayoutMetadata]:
+    """Produce a new qubit->patch mapping whose patch ids encode a 2-D grid layout.
+
+    The most interactive patch is placed at the grid center and subsequent patches
+    are assigned in outward order using the chosen ``layout`` strategy:
+
+    ``"bfs"`` (default)
+        Sorts cells by Manhattan distance from center (BFS rings).  Each new ring
+        is guaranteed to be grid-adjacent to the previous ring, which aligns with
+        the cluster-based greedy ordering: patches 1-4 all neighbour the hub at
+        distance 1, patches 5-8 each neighbour two of patches 1-4, etc.
+
+    ``"spiral"``
+        Sorts cells by Chebyshev shell.  Every consecutive pair within a shell is
+        grid-adjacent; the cross-shell jump is at most Manhattan distance 2.
+
+    ``"row_major"``
+        Fills cells left-to-right, top-to-bottom.  The most interactive patch
+        lands at (0, 0) and subsequent patches fill the grid in reading order.
     """
-    Produce a new qubit->patch mapping whose patch ids encode a row-major grid layout.
-    """
+    if layout not in _LAYOUT_FUNCS:
+        raise ValueError(f"Unknown layout '{layout}'. Choose from: {sorted(_LAYOUT_FUNCS)}.")
     if not qubit_to_patch:
         raise ValueError("Expected a non-empty qubit_to_patch mapping for phase three.")
 
     patch_ids = sorted(set(qubit_to_patch.values()))
-    pair_weights = _extract_pair_weights(graph)
-    interactions = _build_patch_interactions(patch_ids, qubit_to_patch, pair_weights)
+    interactions = _build_patch_interactions(
+        patch_ids, qubit_to_patch, _extract_pair_weights(graph)
+    )
     ordered_patches = _order_patches(interactions)
 
     num_qubits = len(graph.nodes) or len(qubit_to_patch)
     grid_size = max(1, math.ceil(math.sqrt(num_qubits)))
-    max_cells = grid_size * grid_size
-    if len(ordered_patches) > max_cells:
+    if len(ordered_patches) > grid_size * grid_size:
         raise ValueError(
-            f"Grid of size {grid_size}x{grid_size} cannot host "
-            f"{len(ordered_patches)} patches."
+            f"Grid of size {grid_size}x{grid_size} cannot host {len(ordered_patches)} patches."
         )
 
-    old_to_new: Dict[int, int] = {}
-    coordinates: Dict[int, Tuple[int, int]] = {}
-    for idx, patch_id in enumerate(ordered_patches):
-        row, col = divmod(idx, grid_size)
-        old_to_new[patch_id] = idx
-        coordinates[idx] = (row, col)
+    cell_order = _LAYOUT_FUNCS[layout](grid_size)
+    old_to_new = {pid: i for i, pid in enumerate(ordered_patches)}
+    coordinates = {i: cell_order[i] for i in range(len(ordered_patches))}
 
     remapped = {qubit: old_to_new[patch] for qubit, patch in qubit_to_patch.items()}
     metadata = PatchLayoutMetadata(

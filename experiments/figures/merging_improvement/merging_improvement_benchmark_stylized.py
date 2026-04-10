@@ -121,7 +121,7 @@ def run_experiment(
     size_group: str,
     settings: BenchmarkSettings,
 ) -> pd.DataFrame:
-    packer = MergeMaximizingPacker(solo_strategy="all")
+    packer = MergeMaximizingPacker()
 
     baseline_cfg = PipelineConfig()
     baseline_cfg.translator_config.enable_merging = False
