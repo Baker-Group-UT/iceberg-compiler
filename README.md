@@ -274,11 +274,13 @@ LSR and TVD are strongly anticorrelated under the [[4, 2, 2]] code: permutations
 If you use this code in your research, please cite:
 
 ```bibtex
-@inproceedings{mazzetti2026logical,
-  title     = {Logical Compilation for Multi-Qubit Iceberg Patches},
-  author    = {Cordell Mazzetti, Sayam Sethi, Rich Rines, Pranav Gokhale, and Jonathan Mark Baker},
-  booktitle = {},
-  year      = {2026},
-  url       = {https://arxiv.org/abs/2604.09956},
+@misc{mazzetti2026iceberg,
+  title         = {Logical Compilation for Multi-Qubit Iceberg Patches},
+  author        = {Cordell Mazzetti and Sayam Sethi and Rich Rines and Pranav Gokhale and Jonathan Mark Baker},
+  year          = {2026},
+  eprint        = {2604.09956},
+  archivePrefix = {arXiv},
+  primaryClass  = {quant-ph},
+  url           = {https://arxiv.org/abs/2604.09956},
 }
 ```
