@@ -1,0 +1,27 @@
+  [check_space] 75 items across 12 workers
+  [check_space] 3/75  0.1 min elapsed, ~2.5 min left
+  [check_space] 6/75  0.3 min elapsed, ~3.0 min left
+  [check_space] 9/75  0.4 min elapsed, ~2.6 min left
+  [check_space] 12/75  0.4 min elapsed, ~2.3 min left
+  [check_space] 15/75  0.5 min elapsed, ~2.0 min left
+  [check_space] 18/75  0.6 min elapsed, ~1.9 min left
+  [check_space] 21/75  0.7 min elapsed, ~1.7 min left
+  [check_space] 24/75  0.8 min elapsed, ~1.6 min left
+  [check_space] 27/75  0.9 min elapsed, ~1.5 min left
+  [check_space] 30/75  0.9 min elapsed, ~1.3 min left
+  [check_space] 33/75  1.8 min elapsed, ~2.3 min left
+  [check_space] 36/75  2.0 min elapsed, ~2.2 min left
+  [check_space] 39/75  2.5 min elapsed, ~2.3 min left
+  [check_space] 42/75  2.8 min elapsed, ~2.2 min left
+  [check_space] 45/75  3.1 min elapsed, ~2.0 min left
+  [check_space] 48/75  3.3 min elapsed, ~1.8 min left
+  [check_space] 51/75  3.7 min elapsed, ~1.7 min left
+  [check_space] 54/75  4.3 min elapsed, ~1.7 min left
+  [check_space] 57/75  4.9 min elapsed, ~1.5 min left
+  [check_space] 60/75  5.1 min elapsed, ~1.3 min left
+  [check_space] 63/75  5.3 min elapsed, ~1.0 min left
+  [check_space] 66/75  6.1 min elapsed, ~0.8 min left
+  [check_space] 69/75  6.3 min elapsed, ~0.5 min left
+  [check_space] 72/75  6.7 min elapsed, ~0.3 min left
+  [check_space] 75/75  7.6 min elapsed, ~0.0 min left
+[check_space] 3183 placements of 75 programs checked; miscompiled 0; failed jobs 0

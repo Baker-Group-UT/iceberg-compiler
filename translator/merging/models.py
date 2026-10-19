@@ -20,20 +20,67 @@ class PlannedOp:
 
 @dataclass(frozen=True, eq=False)
 class MacroReplacement:
-    """Instruction replacement plan covering HH, CXT, and CZT merges."""
+    """
+    Instruction replacement plan covering HH, XX, ZZ, CXT, CZT and XCXT merges.
 
-    first: DAGOpNode
-    second: DAGOpNode
+    `nodes` holds every original instruction the macro subsumes, in the order the
+    rewriter will encounter them. All but the last are dropped; the macro is
+    emitted in place of the last, which is why the gates it replaces must be
+    safe to delay until that point.
+
+    A macro spans up to k instructions, not two: HH and the transversal macros are
+    whole-patch operations, so at k slots per patch it takes k separate program
+    gates to make one. `first`/`second` remain available as the window endpoints
+    the conflict analysis reasons about -- the earliest gate that moves and the
+    point everything lands -- and are exactly `nodes[0]` and `nodes[-1]`.
+    """
+
+    nodes: Tuple[DAGOpNode, ...]
     macro_gate: Gate
     macro_qargs: Tuple[object, ...]
     blocked_qubits: Tuple[object, ...]
     pre_ops: Tuple[PlannedOp, ...] = ()
     post_ops: Tuple[PlannedOp, ...] = ()
+    #: Branch v2-tvd-explore (`explore_switches.*_MAJORITY_UNDO`): program-level gates
+    #: emitted right after the macro to take it back off the lanes no program gate asked
+    #: for. Empty for every macro the shipped pass builds. Each one costs a single of the
+    #: kind the macro replaces, so savings subtract them.
+    undo_ops: Tuple[PlannedOp, ...] = ()
+
+    @property
+    def first(self) -> DAGOpNode:
+        """The earliest instruction the macro absorbs; dropped by the rewriter."""
+        return self.nodes[0]
+
+    @property
+    def second(self) -> DAGOpNode:
+        """The instruction the macro is emitted in place of."""
+        return self.nodes[-1]
+
+    @property
+    def dropped(self) -> Tuple[DAGOpNode, ...]:
+        """Every instruction removed outright, i.e. all but the emission point."""
+        return self.nodes[:-1]
+
+    def __post_init__(self) -> None:
+        if len(self.nodes) < 2:
+            raise ValueError(
+                f"a macro must subsume at least two instructions, got {len(self.nodes)}"
+            )
 
 
 @dataclass(frozen=True)
 class PairMergeStats:
-    """Summary of potential HH/CX/CZ merges for a pair of qubits."""
+    """
+    Summary of potential HH/CX/CZ merges for a pair of qubits.
+
+    Note on `cx_merges`/`cz_merges`/`xcx_merges`: these are always 0. The analyzer
+    asks the transversal detector about the two qubits sitting in *separate solo*
+    patches, and a transversal macro over one lane per patch fuses nothing. That has
+    been true since the pairwise implementation, which arrived at the same answer by
+    rejecting the slot map rather than by declining to look; `packer.merge_packer`
+    weights these terms and so has never seen them contribute.
+    """
 
     hh_merges: int = 0
     xx_merges: int = 0

@@ -1,0 +1,27 @@
+  [floors] 71 items across 12 workers
+  [floors] 3/71  0.0 min elapsed, ~0.3 min left
+  [floors] 6/71  0.0 min elapsed, ~0.2 min left
+  [floors] 9/71  0.0 min elapsed, ~0.1 min left
+  [floors] 12/71  0.0 min elapsed, ~0.1 min left
+  [floors] 15/71  0.0 min elapsed, ~0.1 min left
+  [floors] 18/71  0.0 min elapsed, ~0.1 min left
+  [floors] 21/71  0.0 min elapsed, ~0.0 min left
+  [floors] 24/71  0.0 min elapsed, ~0.0 min left
+  [floors] 27/71  0.0 min elapsed, ~0.0 min left
+  [floors] 30/71  0.0 min elapsed, ~0.0 min left
+  [floors] 33/71  0.0 min elapsed, ~0.0 min left
+  [floors] 36/71  0.0 min elapsed, ~0.0 min left
+  [floors] 39/71  0.0 min elapsed, ~0.0 min left
+  [floors] 42/71  0.0 min elapsed, ~0.0 min left
+  [floors] 45/71  0.0 min elapsed, ~0.0 min left
+  [floors] 48/71  0.0 min elapsed, ~0.0 min left
+  [floors] 51/71  0.0 min elapsed, ~0.0 min left
+  [floors] 54/71  0.0 min elapsed, ~0.0 min left
+  [floors] 57/71  0.0 min elapsed, ~0.0 min left
+  [floors] 60/71  0.0 min elapsed, ~0.0 min left
+  [floors] 63/71  0.0 min elapsed, ~0.0 min left
+  [floors] 66/71  0.0 min elapsed, ~0.0 min left
+  [floors] 69/71  0.0 min elapsed, ~0.0 min left
+  [floors] 71/71  0.8 min elapsed, ~0.0 min left
+[density_references] floors for 71 circuits (failed: none); support of at most 1 bit on 52; TVD at least 2x its floor at every point on 61/71
+[density_references] wrote experiments/figures/density_ablation_sweep/density_ablation_sweep_split_std_floors.csv

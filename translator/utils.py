@@ -9,6 +9,10 @@ from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister
 
 from iceberg.utils import logical_capacity
 
+# Code size assumed when a caller does not specify one. Every entry point takes
+# an `n_code` argument; this only fixes the historical default.
+DEFAULT_CODE_SIZE = 4
+
 
 def remap_for_perm(perm: List[Tuple[int, int]], k_log: int) -> Dict[int, int]:
     """
@@ -35,7 +39,7 @@ def mapping_for_perm(
     permutation: List[Tuple[int, int]],
     program_circuit: QuantumCircuit,
     *,
-    n_code: int = 4,
+    n_code: int = DEFAULT_CODE_SIZE,
 ) -> dict:
     """
     Compute deterministic metadata to support logical→physical circuit translation.

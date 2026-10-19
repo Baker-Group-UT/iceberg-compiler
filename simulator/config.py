@@ -10,8 +10,7 @@ from typing import Optional, Self
 from qiskit_aer.noise import NoiseModel
 from .noise_models import (
     noise_model_to_dict,
-    DefaultNoiseModel,
-    StimParameterScaling,
+    ScaledNoiseModel,
 )
 
 
@@ -21,20 +20,37 @@ class SimulatorConfig:
     Dataclass for storing and quickly instantiating the Simulator class.
     """
     repetitions: int = 1000
-    distance_noise = False
-    distance_scalar = 1.0
-    idle_noise = False
-    idle_time_scalar = 1.0
+    # Annotated so these are real dataclass fields. Without annotations they were class
+    # attributes: the constructor rejected them as keywords, and `dataclasses.replace`
+    # or `asdict` silently dropped them.
+    distance_noise: bool = False
+    distance_scalar: float = 1.0
+    idle_noise: bool = False
+    idle_time_scalar: float = 1.0
     noise_model: Optional[NoiseModel] = None
     noiseless: bool = False
     seed: Optional[int] = None
-    stim: bool = False
-    stim_scaling: Optional[StimParameterScaling] = None
+    stim: bool = True
+    #: Per-shot tqdm bar. Set False for any run fanned across processes: workers inherit
+    #: one stdout, so their bar updates serialise on a single pipe and the workers block
+    #: on writes instead of computing. Measured at 12 workers, 148 KB of log per work item
+    #: against 15 KB throttled, and 2.6x the throughput. `Simulator.with_shot_progress`
+    #: sets the same flag fluently; this exists so it survives a `SimulatorConfig` round
+    #: trip, which is the path `pipeline.tasks.simulate_circuit` actually takes.
+    show_shot_progress: bool = True
+    #: Aer backend only, and opt-in: the `method` handed to `AerSimulator` (for example
+    #: "density_matrix"). None -- the default -- builds `AerSimulator()` exactly as before
+    #: and keeps the chunked shot loop. When set, all shots run in one `run` call, because
+    #: a density-matrix evolution is paid once per call and sampling from it is free; the
+    #: chunked loop would re-evolve it ~100 times. Added for the v2 revision's exact
+    #: small-circuit validation (experiments/revision/exp3_proxy). Ignored by Stim.
+    aer_method: Optional[str] = None
 
     def __post_init__(self):
         # Default to a realistic noise model if none specified and not noiseless
         if self.noise_model is None and not self.noiseless:
-            self.noise_model = DefaultNoiseModel()
+            # alpha=1 is the NEUTRAL_ATOM baseline -- see noise_models.ScaledNoiseModel.
+            self.noise_model = ScaledNoiseModel(alpha=1.0)
 
     def to_dict(self) -> dict:
         """
@@ -51,7 +67,6 @@ class SimulatorConfig:
             else None,
             "noiseless": self.noiseless,
             "seed": self.seed,
-            "stim_scaling": self.stim_scaling.__dict__ if self.stim_scaling else None,
         }
 
     def with_distance_noise(self, distance_scalar: float = 1, distance_noise: bool = True) -> Self:
@@ -80,8 +95,3 @@ class SimulatorConfig:
         self.stim = stim
         return self
 
-    def with_stim_scaling(self, scaling: StimParameterScaling = None) -> Self:
-        if scaling is None:
-            scaling = StimParameterScaling()
-        self.stim_scaling = scaling
-        return self

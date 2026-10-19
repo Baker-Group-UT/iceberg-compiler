@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 
 from pipeline.config import PipelineConfig
 from pipeline import run_specific_scan
-from repository.run_builder import RunRecord
+from archive.repository.run_builder import RunRecord
 from simulator.config_presets import StandardSimulator
 
 # --- Program circuit (same as your run_scan example) ---

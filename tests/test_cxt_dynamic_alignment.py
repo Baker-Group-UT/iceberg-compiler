@@ -10,9 +10,9 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from translator.context import TranslationContext
-from translator.handlers.controlled_not import apply_logical_cxt, place_logical_cnot
-from translator.handlers.controlled_x import apply_logical_xcxt, place_logical_xcx
-from translator.handlers.controlled_z import apply_logical_czt, place_logical_cz
+from translator.handlers.controlled_not import apply_logical_cxt
+from translator.handlers.controlled_x import apply_logical_xcxt
+from translator.handlers.controlled_z import apply_logical_czt
 from translator.merging.gates import CXTGate
 from translator.merging.gates import CZTGate, XCXTGate
 
@@ -21,6 +21,21 @@ class _MacroOp:
     def __init__(self, gate, qubits):
         self.gate = gate
         self.qubits = list(qubits)
+
+
+def permute_patch_lanes(context, patch: int, slot_a: int, slot_b: int) -> None:
+    """
+    Exchange two lanes of `patch` in the position bookkeeping.
+
+    These tests need a patch whose lanes have been permuted since the permutation was
+    fixed, so that reading static positions gives a different answer from reading live
+    ones. They used to set that up by calling `place_logical_cnot` on a misaligned
+    cross-patch pair, which emitted an alignment SWAP as a side effect. That SWAP is gone
+    -- the targeted cross-patch construction works at any slot pair, so the bare path no
+    longer aligns anything -- and relying on another handler's incidental side effect was
+    the wrong way to arrange this regardless. Move the lanes directly.
+    """
+    context.update_states_on_swap(patch, slot_a, slot_b)
 
 
 def test_cxt_uses_current_logical_positions_after_prior_cx_swap():
@@ -45,7 +60,9 @@ def test_cxt_uses_current_logical_positions_after_prior_cx_swap():
     context.iceberg_set.CNOT = lambda *args, **kwargs: None
 
     # CX(0,3) is misaligned under the tight packing, so the control patch swaps.
-    assert place_logical_cnot(0, 3, context) is True
+    # Patch 0's lanes are permuted relative to the permutation, so a macro that reads
+    # static positions will address the wrong slots.
+    permute_patch_lanes(context, 0, 0, 1)
     assert context.current_pos_of(0) == (0, 1)
     assert context.current_pos_of(1) == (0, 0)
     recorded_ops.clear()
@@ -90,7 +107,9 @@ def test_czt_uses_current_logical_positions_after_prior_cz_swap():
     context.iceberg_set.CZ_k_Transversal = record_czt
     context.iceberg_set.CZ = lambda *args, **kwargs: None
 
-    assert place_logical_cz(0, 3, context) is True
+    # Patch 0's lanes are permuted relative to the permutation, so a macro that reads
+    # static positions will address the wrong slots.
+    permute_patch_lanes(context, 0, 0, 1)
     assert context.current_pos_of(0) == (0, 1)
     assert context.current_pos_of(1) == (0, 0)
     recorded_ops.clear()
@@ -135,7 +154,9 @@ def test_xcxt_uses_current_logical_positions_after_prior_xcx_swap():
     context.iceberg_set.XCX_k_Transversal = record_xcxt
     context.iceberg_set.XCX = lambda *args, **kwargs: None
 
-    assert place_logical_xcx(0, 3, context) is True
+    # Patch 0's lanes are permuted relative to the permutation, so a macro that reads
+    # static positions will address the wrong slots.
+    permute_patch_lanes(context, 0, 0, 1)
     assert context.current_pos_of(0) == (0, 1)
     assert context.current_pos_of(1) == (0, 0)
     recorded_ops.clear()

@@ -1,0 +1,28 @@
+[exhaustive_front] logical optimisation: verified-routes-2; out results/optimality_front
+[exhaustive_front] 75 programs: 4q 29, 5q 24, 6q 22
+[exhaustive_front] plans: 75; AQORN fell back to naive on 3
+[exhaustive_front] 150 parts, 0 to do
+  [measure] 150 items across 4 workers
+  [measure] 7/150  0.0 min elapsed, ~0.3 min left
+  [measure] 14/150  0.0 min elapsed, ~0.1 min left
+  [measure] 21/150  0.0 min elapsed, ~0.1 min left
+  [measure] 28/150  0.0 min elapsed, ~0.1 min left
+  [measure] 35/150  0.0 min elapsed, ~0.0 min left
+  [measure] 42/150  0.0 min elapsed, ~0.0 min left
+  [measure] 49/150  0.0 min elapsed, ~0.0 min left
+  [measure] 56/150  0.0 min elapsed, ~0.0 min left
+  [measure] 63/150  0.0 min elapsed, ~0.0 min left
+  [measure] 70/150  0.0 min elapsed, ~0.0 min left
+  [measure] 77/150  0.0 min elapsed, ~0.0 min left
+  [measure] 84/150  0.0 min elapsed, ~0.0 min left
+  [measure] 91/150  0.0 min elapsed, ~0.0 min left
+  [measure] 98/150  0.0 min elapsed, ~0.0 min left
+  [measure] 105/150  0.0 min elapsed, ~0.0 min left
+  [measure] 112/150  0.0 min elapsed, ~0.0 min left
+  [measure] 119/150  0.0 min elapsed, ~0.0 min left
+  [measure] 126/150  0.0 min elapsed, ~0.0 min left
+  [measure] 133/150  0.0 min elapsed, ~0.0 min left
+  [measure] 140/150  0.0 min elapsed, ~0.0 min left
+  [measure] 147/150  0.0 min elapsed, ~0.0 min left
+  [measure] 150/150  0.0 min elapsed, ~0.0 min left
+[exhaustive_front] space.csv: 67632 placements of 75 programs, 66048 distinct circuits; AQORN's cost equals the planner's recorded value on 75/75

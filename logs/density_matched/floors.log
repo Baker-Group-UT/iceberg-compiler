@@ -1,0 +1,39 @@
+  [floors] 36 items across 12 workers
+  [floors] 1/36  0.0 min elapsed, ~0.5 min left
+  [floors] 2/36  0.0 min elapsed, ~0.2 min left
+  [floors] 3/36  0.0 min elapsed, ~0.1 min left
+  [floors] 4/36  0.0 min elapsed, ~0.1 min left
+  [floors] 5/36  0.0 min elapsed, ~0.1 min left
+  [floors] 6/36  0.0 min elapsed, ~0.1 min left
+  [floors] 7/36  0.0 min elapsed, ~0.1 min left
+  [floors] 8/36  0.0 min elapsed, ~0.0 min left
+  [floors] 9/36  0.0 min elapsed, ~0.0 min left
+  [floors] 10/36  0.0 min elapsed, ~0.0 min left
+  [floors] 11/36  0.0 min elapsed, ~0.0 min left
+  [floors] 12/36  0.0 min elapsed, ~0.0 min left
+  [floors] 13/36  0.0 min elapsed, ~0.0 min left
+  [floors] 14/36  0.0 min elapsed, ~0.0 min left
+  [floors] 15/36  0.0 min elapsed, ~0.0 min left
+  [floors] 16/36  0.0 min elapsed, ~0.0 min left
+  [floors] 17/36  0.0 min elapsed, ~0.0 min left
+  [floors] 18/36  0.0 min elapsed, ~0.0 min left
+  [floors] 19/36  0.0 min elapsed, ~0.0 min left
+  [floors] 20/36  0.0 min elapsed, ~0.0 min left
+  [floors] 21/36  0.0 min elapsed, ~0.0 min left
+  [floors] 22/36  0.0 min elapsed, ~0.0 min left
+  [floors] 23/36  0.0 min elapsed, ~0.0 min left
+  [floors] 24/36  0.0 min elapsed, ~0.0 min left
+  [floors] 25/36  0.0 min elapsed, ~0.0 min left
+  [floors] 26/36  0.0 min elapsed, ~0.0 min left
+  [floors] 27/36  0.0 min elapsed, ~0.0 min left
+  [floors] 28/36  0.0 min elapsed, ~0.0 min left
+  [floors] 29/36  0.0 min elapsed, ~0.0 min left
+  [floors] 30/36  0.0 min elapsed, ~0.0 min left
+  [floors] 31/36  0.0 min elapsed, ~0.0 min left
+  [floors] 32/36  0.0 min elapsed, ~0.0 min left
+  [floors] 33/36  0.0 min elapsed, ~0.0 min left
+  [floors] 34/36  0.0 min elapsed, ~0.0 min left
+  [floors] 35/36  0.0 min elapsed, ~0.0 min left
+  [floors] 36/36  0.6 min elapsed, ~0.0 min left
+[density_references] floors for 36 circuits (n <= 18), 0 arm-points without one; median floor / TVD 0.02
+[density_references] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/.claude/worktrees/exact-patches/experiments/figures/density_ablation_sweep/density_ablation_sweep_matched_floors.csv

@@ -24,3 +24,6 @@ packing_violins/
 *.csv
 *.svg
 *.json
+# Package data the library reads at run time (silent-error rate tables for packing.silent),
+# not results: tracked despite the *.csv rule above.
+!packing/data/*.csv

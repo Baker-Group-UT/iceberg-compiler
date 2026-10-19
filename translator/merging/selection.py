@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
-from qiskit.dagcircuit import DAGCircuit, DAGOpNode
+from qiskit.dagcircuit import DAGCircuit
 
 from .conflicts import compute_merge_conflicts
 from .models import MacroReplacement, MergeConflictInfo
@@ -25,6 +25,7 @@ def select_best_group(
     qubit_indices: Dict[object, int],
     *,
     dag: Optional[DAGCircuit] = None,
+    work_table: Optional[Dict[str, Tuple[int, int]]] = None,
 ) -> List[MacroReplacement]:
     """
     Assign groups to single-qubit merge candidates and return group 0 merges.
@@ -48,7 +49,9 @@ def select_best_group(
         dag=dag,
         order_index=order_index,
     )
-    priorities = _build_priorities(candidates, single_indices, layer_index, order_index)
+    priorities = _build_priorities(
+        candidates, single_indices, layer_index, order_index, work_table
+    )
     conflict_info = _filter_conflicts(conflict_info_all, single_indices, priorities)
 
     group_of = {idx: None for idx in single_indices}
@@ -156,13 +159,14 @@ def _build_priorities(
     single_indices: Iterable[int],
     layer_index: Dict,
     order_index: Dict,
+    work_table: Optional[Dict[str, Tuple[int, int]]] = None,
 ) -> Dict[int, MergePriority]:
     priorities: Dict[int, MergePriority] = {}
     for idx in single_indices:
         merge = candidates[idx]
-        savings = _merge_savings_weight(merge)
+        savings = _merge_savings_weight(merge, work_table)
         order_key = (
-            min(layer_index.get(merge.first, 0), layer_index.get(merge.second, 0)),
+            min(layer_index.get(node, 0) for node in merge.nodes),
             order_index.get(merge.first, 0),
             order_index.get(merge.second, 0),
         )
@@ -174,24 +178,39 @@ def _build_priorities(
     return priorities
 
 
-def _merge_savings_weight(merge: MacroReplacement) -> float:
-    from .conflicts import DEFAULT_MERGE_WORK_TABLE, DEFAULT_MERGE_WORK_WEIGHTS
+def _merge_savings_weight(
+    merge: MacroReplacement, work_table: Optional[Dict[str, Tuple[int, int]]] = None
+) -> float:
+    """
+    Weighted gate saving from committing this macro, used to rank rival candidates.
 
+    Scales with `len(merge.nodes)`, so a macro fusing all k lanes outranks one
+    fusing two -- which is what makes the selector prefer whole-patch coverage when
+    both are available. The macro's own cost comes from `macro_cost`, which prices
+    a partial XX/ZZ fusion by its group size rather than the whole-patch table
+    entry.
+    """
+    from .conflicts import (
+        DEFAULT_MERGE_WORK_TABLE,
+        DEFAULT_MERGE_WORK_WEIGHTS,
+        MACRO_TO_ORIGINAL,
+        macro_cost,
+    )
+
+    table = work_table if work_table is not None else DEFAULT_MERGE_WORK_TABLE
     name = getattr(merge.macro_gate, "name", "").upper()
-    mapping = {
-        "HH": "H",
-        "XX": "X",
-        "ZZ": "Z",
-    }
-    orig = mapping.get(name)
-    if orig is None:
+    if name not in {"HH", "XX", "ZZ"}:
         return 0.0
-    base = DEFAULT_MERGE_WORK_TABLE.get(orig)
-    macro = DEFAULT_MERGE_WORK_TABLE.get(name)
+    orig = MACRO_TO_ORIGINAL.get(name)
+    base = table.get(orig) if orig else None
+    fused = len(merge.nodes)
+    macro = macro_cost(name, fused, table)
     if base is None or macro is None:
         return 0.0
-    s1 = 2 * base[0] - macro[0]
-    s2 = 2 * base[1] - macro[1]
+    # Undo gates (branch v2-tvd-explore) are singles of the same kind, emitted.
+    net = fused - len(merge.undo_ops)
+    s1 = net * base[0] - macro[0]
+    s2 = net * base[1] - macro[1]
     return s1 * DEFAULT_MERGE_WORK_WEIGHTS[0] + s2 * DEFAULT_MERGE_WORK_WEIGHTS[1]
 
 

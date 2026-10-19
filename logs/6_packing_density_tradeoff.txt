@@ -1,0 +1,32 @@
+[6_packing_density_tradeoff] 8 circuits x 5 code sizes, 50 density points per circuit, n = 12
+  [circuit x k] 40 items across 8 workers
+[6_packing_density_tradeoff] wrote 400 rows to /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/experiments/figures/6_packing_density_tradeoff/6_packing_density_tradeoff.csv
+[6_packing_density_tradeoff] persisted to /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/results/data/6_packing_density_tradeoff.csv
+[6_packing_density_tradeoff] percent change from the densest packing, k = 6
+  density  patches        2q gates           depth          volumeselection rate (inverted)                   TVD
+     6.00        2             0.0             0.0             0.0                   0.0                   0.0
+     4.00        3            12.9           -14.2            28.7                 -32.3                  -9.4
+     3.00        4            22.0           -25.1            49.8                 -46.9                  -7.7
+     2.40        5            31.6           -29.9            75.1                 -61.0                  -2.7
+     2.00        6            39.2           -39.7            81.0                 -65.5                  -2.4
+     1.71        7            47.9           -39.6           111.4                 -73.6                   5.9
+     1.50        8            58.5           -42.7           129.0                 -79.0                  15.6
+     1.33        9            66.7           -44.8           148.2                 -82.2                  21.5
+     1.20       10            75.5           -47.9           160.6                 -85.6                  33.3
+     1.09       11            84.3           -47.1           190.7                 -88.9                  47.1
+     1.00       12            93.0           -51.9           188.4                 -89.9                  50.9
+[6_packing_density_tradeoff] going from density 6.00 (2 patches) to 1.00 (12 patches):
+    2q gates     +93.0%
+    depth        -51.9%
+    volume       +188.4%
+    selection rate (inverted) -89.9%
+    TVD          +50.9%
+[6_packing_density_tradeoff] absolute values at each code size, full density
+  k=2   patches=6   LSR 0.2870  TVD 0.0499  2q 253  depth 78  volume 2808
+  k=4   patches=3   LSR 0.2905  TVD 0.0692  2q 247  depth 122  volume 2931
+  k=6   patches=2   LSR 0.2758  TVD 0.1087  2q 235  depth 150  volume 2990
+  k=8   patches=2   LSR 0.2978  TVD 0.0974  2q 247  depth 156  volume 3732
+  k=10  patches=2   LSR 0.3052  TVD 0.0933  2q 259  depth 162  volume 4522
+[6_packing_density_tradeoff] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/results/figures/6_packing_density_tradeoff.svg
+[6_packing_density_tradeoff] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/results/figures/6_packing_density_tradeoff.pdf
+[6_packing_density_tradeoff] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/experiments/figures/6_packing_density_tradeoff/6_packing_density_tradeoff.svg

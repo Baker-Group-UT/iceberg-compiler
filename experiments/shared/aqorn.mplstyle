@@ -1,0 +1,107 @@
+# AQORN figure style — shared by every generated figure.
+#
+# A matplotlib style file is a plain list of rcParam defaults. Instead of each
+# script repeating its own plt.rcParams.update({...}), every script loads this
+# one file, so changing a size here changes it everywhere at once. Edit this
+# file when the house style changes; don't override values in scripts unless
+# that specific figure genuinely differs, and say why in a comment when you do.
+#
+# Usage:
+#   from pathlib import Path
+#   import matplotlib.pyplot as plt
+#   plt.style.use(Path(__file__).resolve().parents[2] / "shared" / "aqorn.mplstyle")
+
+# --- Type ------------------------------------------------------------------
+# Body text in the paper is Times (IEEEtran sets rmdefault=ptm, rendering as
+# Nimbus Roman No9 L), so figure text is Times to match. Fallbacks are listed
+# so a machine without Times New Roman degrades to a metric-compatible clone
+# rather than substituting something arbitrary.
+font.family:        serif
+font.serif:         Times New Roman, Nimbus Roman No9 L, Nimbus Roman, Times, DejaVu Serif
+
+# Math keeps standard mathematical typesetting rather than matching the body
+# font. Computer Modern is what the paper's math already renders in, so figure
+# math and paper math agree.
+mathtext.fontset:   cm
+
+# Size ladder borrowed from the document class so figure type lives in the same
+# system as the prose: normalsize 10 / small 9 / footnotesize 8.
+#   10pt — axis labels, titles          (major)
+#    9pt — tick labels, legend          (secondary)
+#    8pt — in-plot annotations          (minor; set explicitly at call sites)
+font.size:          10
+axes.labelsize:     10
+axes.titlesize:     10
+figure.titlesize:   10
+# supxlabel/supylabel. Left out originally, so they fell through to matplotlib's default
+# of "large" -- 12pt against a 10pt figure, and the one piece of type in the multi-row
+# figures that did not match the document.
+figure.labelsize:   10
+xtick.labelsize:    9
+ytick.labelsize:    9
+legend.fontsize:    9
+
+# --- Canvas ----------------------------------------------------------------
+# Default to exactly one IEEEtran column: 252pt = 3.487in. Drawing at final
+# size means \includegraphics[width=\linewidth] scales 1:1, so 10pt text in the
+# figure renders as 10pt on the page. For a full-width figure*, override to
+# 7.14in wide.
+figure.figsize:     3.487, 2.4
+
+# Constrained layout fits content inside that exact canvas. Paired with
+# savefig.bbox=standard this preserves the figure's true dimensions — a tight
+# bbox would crop the margins, making the saved file narrower than a column and
+# causing LaTeX to scale it back up, enlarging all the type.
+figure.constrained_layout.use: True
+savefig.bbox:       standard
+
+# --- Frame -----------------------------------------------------------------
+axes.spines.top:    False
+axes.spines.right:  False
+axes.linewidth:     0.6
+
+# --- Grid ------------------------------------------------------------------
+# Minimal, horizontal by default; vertical gridlines compete with bar edges.
+# Turn on the x grid per figure when the reading genuinely needs it.
+axes.grid:          True
+axes.grid.axis:     y
+grid.linestyle:     --
+grid.linewidth:     0.4
+grid.color:         b0b0b0
+grid.alpha:         0.8
+
+# --- Legend ----------------------------------------------------------------
+legend.frameon:     False
+legend.loc:         best
+
+# --- Series encoding -------------------------------------------------------
+# Redundant encoding: colour, marker, and line style advance together, so every
+# series stays distinguishable in greyscale and for colourblind readers without
+# relying on hue. Composing cyclers with + zips them, so series 1 is always
+# blue/circle/solid, series 2 always dark/square/dashed, and so on across every
+# figure in the paper.
+axes.prop_cycle: (cycler('color', ['0097fd', '3b4c56', 'cdc2c0', '636363', 'bdbdbd']) + cycler('marker', ['o', 's', '^', 'D', 'v']) + cycler('linestyle', ['-', '--', '-.', ':', '-']))
+
+lines.linewidth:    1.2
+lines.markersize:   4
+lines.markeredgewidth: 0.0
+
+# --- Ticks -----------------------------------------------------------------
+xtick.direction:    out
+ytick.direction:    out
+xtick.major.width:  0.6
+ytick.major.width:  0.6
+xtick.major.size:   3
+ytick.major.size:   3
+
+# --- Output ----------------------------------------------------------------
+figure.dpi:         200
+savefig.dpi:        200
+
+# svg.fonttype=none keeps SVG text as real text rather than outlined paths, so
+# labels stay editable when a figure is promoted to figures-wip/ for Inkscape.
+svg.fonttype:       none
+
+# pdf.fonttype=42 embeds TrueType, keeping text selectable in the paper instead
+# of converting it to Type 3 bitmapped glyphs.
+pdf.fonttype:       42

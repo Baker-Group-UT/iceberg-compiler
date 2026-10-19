@@ -1,0 +1,12 @@
+[density_ablation_sweep] Loaded 29 small circuits (standard configuration, matched patch counts, merging split into single- and two-qubit steps, solo-aware planner, arms reused from density_ablation_sweep_split.csv).
+[density_ablation_sweep] Wrote 384 rows to new experiments/figures/density_ablation_sweep/density_ablation_sweep_split_solo.csv
+[density_ablation_sweep] split-merging CSV written; plot it with density_references (recount, floors, plot --matched density_ablation_sweep_split_solo.csv)
+[density_references] 361 conversions for 405 arm-points; 75 need none
+[density_references] 480 arm-points, 405 recounted; the all-lane count equals the sweep's on 405/405; failed: none
+[density_references] wrote experiments/figures/density_ablation_sweep/density_ablation_sweep_split_solo_recount.csv
+[density_references] floors for 29 circuits (failed: none); support of at most 1 bit on 18; TVD at least 2x its floor at every point on 25/29
+[density_references] wrote experiments/figures/density_ablation_sweep/density_ablation_sweep_split_solo_floors.csv
+[density_references] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/results/figures/density_ablation_split_v2.svg
+[density_references] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/results/figures/density_ablation_split_v2.pdf
+[density_references] wrote experiments/figures/density_ablation_sweep/density_ablation_sweep_split_solo_summary.csv
+exit 0

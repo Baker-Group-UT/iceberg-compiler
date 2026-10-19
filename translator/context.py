@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 __all__ = ["TranslationContext"]
 
 from iceberg.iceberg_set import IcebergSet
-from .utils import mapping_for_perm
+from .utils import DEFAULT_CODE_SIZE, mapping_for_perm
 
 
 @dataclass
@@ -37,8 +37,12 @@ class TranslationContext:
     # Keep a handle to the *program* circuit being translated (for find_bit, etc.)
     qc: QuantumCircuit
 
+    # --- code size and derived slot count ---
+    # k_log is always set from n_code by `from_config`; the defaults only matter
+    # for hand-built contexts in tests.
+    n_code: int = DEFAULT_CODE_SIZE
     # --- dynamic, permutation-shaped tracker (MUTABLE) ---
-    k_log: int = 2
+    k_log: int = DEFAULT_CODE_SIZE - 2
     # states we care about, in *permutation order*; each is (patch, slot)
     state_positions: List[Tuple[int, int]] = field(default_factory=list)
     # reverse index: current (patch,slot) -> state index in state_positions
@@ -66,28 +70,30 @@ class TranslationContext:
         p, s = self.permutation[logical_i]
         return p * self.k_log + s
 
-    def update_states_on_swap(self, patch: int, prog_state_i: int, prog_state_j: int) -> None:
+    def update_states_on_swap(self, patch: int, slot_i: int, slot_j: int) -> None:
         """
-        Reflect a SWAP within 'patch' for k_log == 2 by flipping slot 0 <-> 1
-        for all tracked states in that patch. The prog_state_i/j args are accepted
-        for future generalization but are not required here.
+        Reflect a logical SWAP of `slot_i` and `slot_j` within `patch`.
+
+        A physical SWAP of two lane qubits exchanges exactly those two slots and
+        leaves the rest of the patch alone, so this is a transposition. The k=2
+        code used to flip 0 <-> 1 for *every* tracked state in the patch, which
+        coincides with the transposition when k == 2 and is wrong beyond it.
         """
         patch = int(patch)
-        k = int(self.k_log)  # assumed 2 for this logic
+        slot_i, slot_j = int(slot_i), int(slot_j)
+        if slot_i == slot_j:
+            return
 
-        # Debug
         if self.verbose:
             print("state positions BEFORE:", self.state_positions)
 
-        # 1) Update state_positions and state_index_by_pos for any state in this patch
         for si, (p, slot) in enumerate(self.state_positions):
-            if p == patch:
-                old_pos = (p, slot)
-                new_pos = (p, 1 - slot)  # flip 0 <-> 1
-                # reverse map: remove old, set new
-                self.state_index_by_pos.pop(old_pos, None)
-                self.state_positions[si] = new_pos
-                self.state_index_by_pos[new_pos] = si
+            if p != patch or slot not in (slot_i, slot_j):
+                continue
+            new_slot = slot_j if slot == slot_i else slot_i
+            self.state_index_by_pos.pop((p, slot), None)
+            self.state_positions[si] = (p, new_slot)
+            self.state_index_by_pos[(p, new_slot)] = si
 
         if self.verbose:
             print("state positions AFTER:", self.state_positions)
@@ -101,14 +107,15 @@ class TranslationContext:
         fault_tolerant: bool = False,
         verbose: bool = False,
         encode_override: bool = False,
+        n_code: int = DEFAULT_CODE_SIZE,
     ) -> "TranslationContext":
         """Construct a TranslationContext for a given program and permutation."""
-        mapping = mapping_for_perm(permutation, program_circuit)
+        mapping = mapping_for_perm(permutation, program_circuit, n_code=n_code)
         # Build a fresh physical IcebergSet circuit
         iceberg_qc = QuantumCircuit()
         iceberg_set = IcebergSet(
             n_program=mapping["n_prog"],
-            n=4,
+            n=n_code,
             circuit=iceberg_qc,
             encode_override=encode_override
         )
@@ -137,6 +144,7 @@ class TranslationContext:
             verbose=verbose,
             encode_override=encode_override,
             qc=program_circuit,               # <- store program circuit for handlers
+            n_code=n_code,
             k_log=k_log,
             state_positions=state_positions,
             state_index_by_pos=state_index_by_pos,
@@ -152,4 +160,5 @@ class TranslationContext:
             fault_tolerant=translation.fault_tolerant,
             verbose=translation.verbose,
             encode_override=translation.encode_override,
+            n_code=translation.n_code,
         )

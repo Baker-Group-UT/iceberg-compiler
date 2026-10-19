@@ -1,0 +1,24 @@
+10-10 14:04 start at 2d99bb1, 0 dirty tracked files
+14:04 packers_corpus
+14:51 packers_corpus exit 0
+[packers_corpus] logical optimisation: verified-routes-2
+[packers_corpus] 71 circuits, 781 rows -> results/optimality_front/packers_corpus.csv; failed []; miscompiled placements 33 [('adder_n64', 'aqorn'), ('adder_n64', 'aqorn_descent_from_naive'), ('adder_n64', 'aqorn_raw'), ('adder_n64', 'aqorn_seed_only'), ('adder_n64', 'greedy_pairs'), ('adder_n64', 'hypergraph_24'), ('adder_n64', 'interaction_matching'), ('adder_n64', 'interaction_partition'), ('adder_n64', 'interaction_partition_descent'), ('adder_n64', 'naive')]
+14:51 sampled_front
+16:55 sampled_front exit 0
+[sampled_front] 15 qubits, Fig 6 alpha 0.591, ideal support 2^0
+[sampled_front] arms planned (commute=True): naive, random_budget, interaction_matching, interaction_partition, interaction_partition_descent, hypergraph_24, greedy_pairs, aqorn_seed_only, aqorn_descent_from_naive, annealing, aqorn_raw, aqorn
+[sampled_front] 2312 placements -> results/optimality_front/sampled_front_multiplier_n15.csv; miscompiled 0; errors 0
+16:55 check_space
+17:03 check_space exit 0
+[check_space] 3183 placements of 75 programs checked; miscompiled 0; failed jobs 0
+17:03 figure_packers
+17:03 figure_packers exit 0
+[packers_corpus] saved /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/results/figures/packers_corpus.svg
+[packers_corpus] saved /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/results/figures/packers_corpus.pdf
+[packers_corpus] saved /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/.claude/worktrees/logical-opt-pass/experiments/figures/packers_corpus/packers_corpus.svg
+17:03 figure_sampled
+17:03 figure_sampled exit 0
+[sampled_front] saved /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/results/figures/sampled_front_multiplier_n15.svg
+[sampled_front] saved /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/results/figures/sampled_front_multiplier_n15.pdf
+[sampled_front] saved /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/.claude/worktrees/logical-opt-pass/experiments/figures/sampled_front/sampled_front_multiplier_n15.svg
+10-10 17:03 done

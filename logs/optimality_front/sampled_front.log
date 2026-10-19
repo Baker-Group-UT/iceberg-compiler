@@ -1,0 +1,29 @@
+[sampled_front] logical optimisation: verified-routes-2; program multiplier_n15
+[sampled_front] 15 qubits, Fig 6 alpha 0.591, ideal support 2^0
+[sampled_front] arms planned (commute=True): naive, random_budget, interaction_matching, interaction_partition, interaction_partition_descent, hypergraph_24, greedy_pairs, aqorn_seed_only, aqorn_descent_from_naive, annealing, aqorn_raw, aqorn
+  [sampled_front] 116 items across 12 workers
+  [sampled_front] 5/116  11.3 min elapsed, ~251.4 min left
+  [sampled_front] 10/116  11.6 min elapsed, ~122.6 min left
+  [sampled_front] 15/116  23.5 min elapsed, ~158.1 min left
+  [sampled_front] 20/116  23.7 min elapsed, ~113.6 min left
+  [sampled_front] 25/116  35.5 min elapsed, ~129.2 min left
+  [sampled_front] 30/116  35.9 min elapsed, ~103.0 min left
+  [sampled_front] 35/116  36.1 min elapsed, ~83.6 min left
+  [sampled_front] 40/116  47.7 min elapsed, ~90.5 min left
+  [sampled_front] 45/116  48.0 min elapsed, ~75.8 min left
+  [sampled_front] 50/116  59.3 min elapsed, ~78.3 min left
+  [sampled_front] 55/116  59.6 min elapsed, ~66.2 min left
+  [sampled_front] 60/116  60.3 min elapsed, ~56.3 min left
+  [sampled_front] 65/116  71.5 min elapsed, ~56.1 min left
+  [sampled_front] 70/116  72.1 min elapsed, ~47.4 min left
+  [sampled_front] 75/116  83.6 min elapsed, ~45.7 min left
+  [sampled_front] 80/116  84.1 min elapsed, ~37.9 min left
+  [sampled_front] 85/116  95.1 min elapsed, ~34.7 min left
+  [sampled_front] 90/116  95.9 min elapsed, ~27.7 min left
+  [sampled_front] 95/116  96.3 min elapsed, ~21.3 min left
+  [sampled_front] 100/116  107.7 min elapsed, ~17.2 min left
+  [sampled_front] 105/116  108.4 min elapsed, ~11.4 min left
+  [sampled_front] 110/116  117.5 min elapsed, ~6.4 min left
+  [sampled_front] 115/116  118.6 min elapsed, ~1.0 min left
+  [sampled_front] 116/116  118.6 min elapsed, ~0.0 min left
+[sampled_front] 2312 placements -> results/optimality_front/sampled_front_multiplier_n15.csv; miscompiled 0; errors 0

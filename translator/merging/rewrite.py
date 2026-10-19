@@ -21,9 +21,15 @@ def build_rewritten_circuit(
     if hasattr(original, "metadata"):
         new_qc.metadata = copy.deepcopy(original.metadata)
 
-    skip_nodes = {record.first for record in records}
+    # Every node a macro absorbs except its last is dropped here and reconstituted
+    # by the macro. At k=2 that is exactly `record.first`; at larger k a macro
+    # absorbs up to k nodes, so all of `record.dropped` must be skipped.
     replacements = {record.second: record for record in records}
-    waiting_lookup = {record.first: record for record in records}
+    waiting_lookup: Dict[DAGOpNode, MacroReplacement] = {}
+    for record in records:
+        for node in record.dropped:
+            waiting_lookup[node] = record
+    skip_nodes = set(waiting_lookup)
 
     # Each entry in a qubit's blocking stack is a (record, min_layer, min_order)
     # triple. A node on that qubit is only blocked by `record` if its own
@@ -41,15 +47,30 @@ def build_rewritten_circuit(
 
     ordered_nodes = sorted(dag.topological_op_nodes(), key=_key)
 
+    # Branch v2-tvd-explore (`explore_switches.MERGE_KEEP_PROGRAM_ORDER`): the program
+    # position each emitted instruction stands for, so the result can be re-linearized.
+    # Macros and their pre/undo/post ops take the position of the node they replace.
+    keys: List[Tuple[int, int]] = []
+
+    def _emit(op, qargs, cargs, key) -> None:
+        new_qc.append(op, qargs, cargs)
+        keys.append(key)
+
     for node in ordered_nodes:
         node_layer = layer_index.get(node, 0)
         node_order = order_index.get(node, 0)
 
-        # ── first: drop it and arm blocking on first's qubit(s) ──────────────
+        # ── a dropped node: remove it and arm blocking on its own qubit(s) ───
         if node in skip_nodes:
             record = waiting_lookup.get(node)
             if record is not None:
-                for qubit in record.blocked_qubits:
+                # Arm on *this* node's qubits at *this* node's position. A macro
+                # spanning k lanes drops one node per lane at different positions,
+                # and each lane's block must start where that lane's gate was:
+                # arming every lane at the earliest node's position would delay
+                # gates that legitimately precede a later lane's gate, pushing them
+                # after the macro and reordering them against it.
+                for qubit in node.qargs:
                     blocked_qubits.setdefault(qubit, []).append(
                         (record, node_layer, node_order)
                     )
@@ -59,13 +80,17 @@ def build_rewritten_circuit(
         # ── second: emit the macro and flush delayed gates ───────────────────
         if node in replacements:
             record = replacements[node]
+            at = order_index.get(node, 0)
             for planned in record.pre_ops:
-                new_qc.append(planned.gate.copy(), list(planned.qargs), [])
-            new_qc.append(record.macro_gate, list(record.macro_qargs), [])
+                _emit(planned.gate.copy(), list(planned.qargs), [], (at, 0))
+            _emit(record.macro_gate, list(record.macro_qargs), [], (at, 1))
+            for planned in record.undo_ops:
+                _emit(planned.gate.copy(), list(planned.qargs), [], (at, 2))
             for planned in record.post_ops:
-                new_qc.append(planned.gate.copy(), list(planned.qargs), [])
+                _emit(planned.gate.copy(), list(planned.qargs), [], (at, 3))
             for delayed in delayed_nodes.get(record, []):
-                new_qc.append(delayed.op.copy(), delayed.qargs, delayed.cargs)
+                _emit(delayed.op.copy(), delayed.qargs, delayed.cargs,
+                      (order_index.get(delayed, 0), 0))
             delayed_nodes.pop(record, None)
             # Remove this record from every qubit stack — including qubits that
             # were added dynamically by the Part-1 extension below.
@@ -92,7 +117,7 @@ def build_rewritten_circuit(
                     break
 
         if not blocking_records:
-            new_qc.append(node.op.copy(), node.qargs, node.cargs)
+            _emit(node.op.copy(), node.qargs, node.cargs, (node_order, 0))
             continue
 
         # Delay under the record whose second fires latest. This guarantees the
@@ -108,4 +133,37 @@ def build_rewritten_circuit(
             if not any(e[0] is chosen for e in entries):
                 entries.append((chosen, node_layer, node_order))
 
+    from translator import explore_switches
+
+    if explore_switches.MERGE_KEEP_PROGRAM_ORDER:
+        return _relinearize(new_qc, keys)
     return new_qc
+
+
+def _relinearize(circuit: QuantumCircuit, keys: List[Tuple[int, int]]) -> QuantumCircuit:
+    """
+    The same circuit, in the topological order closest to program order.
+
+    Lexicographic topological sort on each instruction's program position: whenever
+    several instructions are ready, the earliest in the program goes first. Dependencies
+    are respected exactly, so this is the same unitary; only adjacency changes.
+    """
+    from qiskit.converters import circuit_to_dag, dag_to_circuit
+
+    dag = circuit_to_dag(circuit)
+    ops = list(dag.topological_op_nodes())
+    if len(ops) != len(keys):
+        return circuit
+    # circuit_to_dag adds op nodes in instruction order, so node ids sort the same way.
+    by_id = {node._node_id: key for node, key in zip(sorted(ops, key=lambda n: n._node_id), keys)}
+    order = dag.topological_op_nodes(
+        key=lambda node: "%010d.%d" % by_id.get(node._node_id, (0, 0))
+        if node._node_id in by_id else "0000000000.0"
+    )
+    out = QuantumCircuit(*circuit.qregs, *circuit.cregs)
+    out.global_phase = circuit.global_phase
+    if hasattr(circuit, "metadata"):
+        out.metadata = copy.deepcopy(circuit.metadata)
+    for node in order:
+        out.append(node.op, node.qargs, node.cargs)
+    return out

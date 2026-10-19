@@ -9,10 +9,13 @@ counts→probability distribution utilities.
 
 from __future__ import annotations
 
+import dataclasses
+
+import random
 from collections import Counter
 from contextlib import contextmanager
 from logging import warning
-from typing import Optional, Callable, Sequence, Union, TYPE_CHECKING
+from typing import Iterator, Optional, Callable, Sequence, Union, TYPE_CHECKING
 
 from qiskit import QuantumCircuit
 from qiskit.result import Result
@@ -20,20 +23,16 @@ from qiskit_aer import AerSimulator
 from qiskit_aer.noise import NoiseModel  # kept for future use with AerSimulator
 from tqdm.auto import trange
 
-from simulator.grid_constructor import build_physical_qubit_positions
+from simulator.grid_constructor import positions_for_circuit
 
 from .config import SimulatorConfig
+from .transport import Geometry
 from .noise_markers import strip_noise_markers
 from .result_types import SimulationResult
 from .utils import bhattacharyya
 
 from .stim_backend import run_stim_backend
-from .noise_models import (
-    DistanceDependentNoiseModel,
-    stim_params_from_noise_model,
-    apply_stim_scaling,
-    StimParameterScaling,
-)
+from .noise_models import stim_params_from_noise_model
 
 if TYPE_CHECKING:  # pragma: no cover
     from translator.core import TranslationResult
@@ -64,9 +63,11 @@ class Simulator:
         self._idle_time_scalar = config.idle_time_scalar
         self._noise_model: Optional[NoiseModel] = config.noise_model
         self._stim: bool = config.stim
-        self._stim_scaling: Optional[StimParameterScaling] = config.stim_scaling
-        self._show_shot_progress: bool = True
+        self._show_shot_progress: bool = config.show_shot_progress
         self._shot_chunk_size: int = self._DEFAULT_SHOT_CHUNK
+        # Opt-in Aer `method`; None keeps `AerSimulator()` and the chunked loop. See
+        # `SimulatorConfig.aer_method`.
+        self._aer_method: Optional[str] = getattr(config, "aer_method", None)
 
     # -------- Fluent Configuration Methods --------
 
@@ -90,10 +91,6 @@ class Simulator:
         self._stim = stim
         return self
 
-    def with_stim_scaling(self, scaling: StimParameterScaling | None) -> "Simulator":
-        self._stim_scaling = scaling
-        return self
-
     def with_shot_progress(self, show: bool = True) -> "Simulator":
         self._show_shot_progress = show
         return self
@@ -103,17 +100,25 @@ class Simulator:
         return self
 
     def clone(self) -> "Simulator":
-        return (
-            Simulator()
-            .with_repetitions(self._repetitions)
-            .with_noise_model(self._noise_model)
-            .with_seed(self._seed if self._seed is not None else 0)
-            .with_noiseless(self._noiseless)
-            .with_stim(self._stim)
-            .with_stim_scaling(self._stim_scaling)
-            .with_shot_progress(self._show_shot_progress)
-            .with_shot_chunk_size(self._shot_chunk_size)
-        )
+        """
+        A field-for-field copy. Copies *every* setting -- the fluent-method version this
+        replaces dropped the distance/idle configuration and turned an unseeded simulator
+        (fresh entropy per run) into one pinned at seed 0.
+        """
+        other = Simulator()
+        other._repetitions = self._repetitions
+        other._noiseless = self._noiseless
+        other._seed = self._seed
+        other._distance_noise = self._distance_noise
+        other._distance_scalar = self._distance_scalar
+        other._idle_noise = self._idle_noise
+        other._idle_time_scalar = self._idle_time_scalar
+        other._noise_model = self._noise_model
+        other._stim = self._stim
+        other._show_shot_progress = self._show_shot_progress
+        other._shot_chunk_size = self._shot_chunk_size
+        other._aer_method = self._aer_method
+        return other
 
     # -------------- ( Helpers ) -------------
 
@@ -170,13 +175,42 @@ class Simulator:
         adaptive_target = max(total // self._SHOT_BAR_TARGET_UPDATES, 1)
         return max(1, min(self._shot_chunk_size, adaptive_target))
 
-    def _shot_chunk_generator(self, total: int):
-        """Yield shot chunk sizes used for incremental simulation."""
+    def _chunk_seed_stream(self) -> Iterator[Optional[int]]:
+        """
+        An endless stream of per-chunk simulator seeds derived from the configured seed.
+
+        Aer's `seed_simulator` seeds a *run*, not a simulator object: calling
+        `sim.run(...)` twice on one `AerSimulator(seed_simulator=s)` replays the same
+        samples byte for byte. Shots are simulated in chunks so the progress bar can
+        move, so a single fixed seed made every chunk after the first a duplicate of
+        the first. The aggregate then carried `repetitions / _SHOT_BAR_TARGET_UPDATES`
+        distinct samples while the counts summed to `repetitions` -- 1% of the
+        requested shots at the default chunking, with nothing in the output to say so.
+        Distributions came back quantised to 1/40 for a 4000-shot run, and every
+        sampling-error bound computed from the nominal shot count was too tight by 10x.
+
+        Chunk seeds come from a PRNG keyed on the configured seed rather than from
+        `seed + index`, because consecutive base seeds would otherwise share almost
+        their entire stream and correlate any experiment that sweeps the seed.
+
+        Yields `None` forever when unseeded, which leaves Aer to draw fresh entropy
+        per run -- the behaviour callers already relied on to dodge this bug.
+        """
+        if self._seed is None:
+            while True:
+                yield None
+        rng = random.Random(self._seed)
+        while True:
+            yield rng.randrange(2**31 - 1)
+
+    def _shot_chunk_generator(self, total: int) -> Iterator[tuple[int, Optional[int]]]:
+        """Yield (shots, seed) per chunk for incremental simulation."""
         chunk_size = self._shot_chunk_size_for(total)
+        seeds = self._chunk_seed_stream()
         remaining = total
         while remaining > 0:
             current = min(chunk_size, remaining)
-            yield current
+            yield current, next(seeds)
             remaining -= current
 
     @contextmanager
@@ -219,10 +253,13 @@ class Simulator:
         # ---- Run via Stim ----
         include_noise = add_noise and (not self._noiseless)
 
+        # `replace`, not attribute assignment. `stim_params_from_noise_model` hands back
+        # the object hanging off the noise model, so assigning here mutated state shared
+        # with every other simulator holding that model.
         stim_params = stim_params_from_noise_model(self._noise_model)
-        stim_params = apply_stim_scaling(stim_params, self._stim_scaling)
-        stim_params.idle_time_scalar = (
-            self._idle_time_scalar if self._idle_noise else 0.0
+        stim_params = dataclasses.replace(
+            stim_params,
+            idle_time_scalar=self._idle_time_scalar if self._idle_noise else 0.0,
         )
 
         with self._shot_progress_bar("Shots") as progress_update:
@@ -237,13 +274,14 @@ class Simulator:
                 layout=layout,
                 distance_scalar=self._distance_scalar if layout is not None else None,
             )
+        # `run_stim_backend` already emits the post-inversion convention Aer reaches
+        # via `_invert_endianness`: registers in declaration order, position i = bit i.
+        # No further reordering here, and in particular none conditioned on
+        # `add_noise` -- this branch used to invert only the ideal call, which
+        # compensated for a reversal in `_format_key_by_cregs` on the one code path
+        # (the unencoded reference circuit) where a single creg made the register
+        # reordering a no-op, and left the encoded noisy distribution reversed.
         key_order, key_widths = self._key_meta(tcirc)
-
-        if not add_noise:
-            probs = self._invert_endianness(probs)
-
-            key_order = list(reversed(key_order))
-            key_widths = list(reversed(key_widths))
 
         return probs, key_order, key_widths
 
@@ -255,33 +293,44 @@ class Simulator:
         """
 
         if self._distance_noise and add_noise:
-            layout = build_physical_qubit_positions(circuit.num_qubits // 6)
             if not self._stim:
-                stim_params = stim_params_from_noise_model(self._noise_model)
-                stim_params = apply_stim_scaling(stim_params, self._stim_scaling)
-                n_model = DistanceDependentNoiseModel(
-                    layout=layout,
-                    distance_scalar=self._distance_scalar,
-                    p1=stim_params.one_qubit_error,
-                    p2=stim_params.two_qubit_error,
-                    p_meas=stim_params.readout_error,
-                    T1=stim_params.T1,
-                    T2=stim_params.T2,
-                    t_1q=stim_params.one_qubit_gate_time,
-                    t_2q=stim_params.two_qubit_gate_time,
+                # Aer never had a transport model, only a per-physical-gate distance
+                # charge that priced one logical cross-patch CNOT as four round trips.
+                # That is gone rather than ported: geometry now lives in grouped
+                # transport events, which need the layered schedule in
+                # `simulator.scheduler`, and Stim is what this project simulates on.
+                # Failing loudly beats two backends quietly modelling different machines.
+                raise NotImplementedError(
+                    "Distance-dependent noise is Stim-only. Set `stim=True`, or turn "
+                    "distance noise off with `with_distance_noise(distance_noise=False)`."
                 )
-                self._noise_model = n_model
-            else:
-                return self._stimulate(circuit, add_noise=add_noise, layout=layout)
+            # Build the layout with the geometry the run will actually use -- gutter and
+            # pitch come from the noise parameters, not the module defaults, so a swept
+            # `patch_gutter` moves the atoms it claims to move.
+            params = stim_params_from_noise_model(self._noise_model)
+            geometry = Geometry(
+                pitch=params.atom_pitch,
+                blockade_radius=params.blockade_radius,
+                movement_speed=params.movement_speed,
+                gutter=int(params.patch_gutter),
+            )
+            return self._stimulate(
+                circuit,
+                add_noise=add_noise,
+                layout=positions_for_circuit(circuit, geometry=geometry),
+            )
 
         if self._stim:
             return self._stimulate(circuit, add_noise=add_noise)
 
-        # Choose simulator backend
+        # Choose simulator backend. The seed is supplied per `run` below rather than
+        # here -- see `_chunk_seed_stream` for why a constructor seed silently
+        # collapsed a chunked run to one chunk's worth of samples.
+        method = {} if self._aer_method is None else {"method": self._aer_method}
         if (not add_noise) or (self._noise_model is None) or self._noiseless:
-            sim = AerSimulator(seed_simulator=self._seed)
+            sim = AerSimulator(**method)
         else:
-            sim = AerSimulator(noise_model=self._noise_model, seed_simulator=self._seed)
+            sim = AerSimulator(noise_model=self._noise_model, **method)
 
         # Transpile for the chosen simulator (ensures basis/optimization compatible)
         # tcirc = transpile(circuit, sim, optimization_level=0, seed_transpiler=self._seed)
@@ -297,8 +346,15 @@ class Simulator:
         first_result: Result | None = None
 
         with self._shot_progress_bar("Shots") as progress_update:
-            for chunk in self._shot_chunk_generator(self._repetitions):
-                job = sim.run(tcirc, shots=chunk)
+            # One run when an Aer method is pinned: a density matrix is evolved once per
+            # `run`, so chunking would redo it ~100 times. Default: the chunked loop.
+            chunks = (
+                self._shot_chunk_generator(self._repetitions)
+                if self._aer_method is None
+                else [(self._repetitions, next(self._chunk_seed_stream()))]
+            )
+            for chunk, chunk_seed in chunks:
+                job = sim.run(tcirc, shots=chunk, seed_simulator=chunk_seed)
                 result = job.result()
                 if first_result is None:
                     first_result = result

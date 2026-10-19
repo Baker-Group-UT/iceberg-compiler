@@ -1,0 +1,40 @@
+[2_tvd_vs_noise_ratio_by_k] 8 circuits x 7 ratios x 5 code sizes at n = 16
+  [circuit x ratio] 56 items across 4 workers
+[2_tvd_vs_noise_ratio_by_k] 40 floor points at alpha = 1e-09
+  [floor] 40 items across 4 workers
+[2_tvd_vs_noise_ratio_by_k] wrote 320 rows to /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/experiments/figures/2_tvd_vs_noise_ratio_by_k/2_tvd_vs_noise_ratio_by_k.csv
+[2_tvd_vs_noise_ratio_by_k] persisted to /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/results/data/2_tvd_vs_noise_ratio_by_k.csv
+[2_tvd_vs_noise_ratio_by_k] TVD by ratio and k (mean over circuits)
+  ratio            k=2       k=4       k=6       k=8      k=10
+  1/64          0.1232    0.1043    0.1001    0.0882    0.0883
+  1/16          0.1191    0.1073    0.1057    0.0988    0.0992
+  1/4           0.1160    0.1094    0.1119    0.1105    0.1144
+  1             0.1094    0.1106    0.1168    0.1229    0.1299
+  4             0.1035    0.1092    0.1199    0.1296    0.1425
+  16            0.0974    0.1053    0.1181    0.1306    0.1474
+  64            0.0903    0.0989    0.1135    0.1275    0.1478
+[2_tvd_vs_noise_ratio_by_k] sampling floor (alpha = 1e-09): TVD = 0.0498
+[2_tvd_vs_noise_ratio_by_k] lowest plotted TVD is 0.0882, 1.77x the floor
+[2_tvd_vs_noise_ratio_by_k] selection rate by ratio and k (the other half of the tradeoff)
+  ratio            k=2       k=4       k=6       k=8      k=10
+  1/64          0.1350    0.2537    0.3034    0.4435    0.4644
+  1/16          0.1461    0.2488    0.2896    0.4012    0.4103
+  1/4           0.1624    0.2447    0.2740    0.3582    0.3545
+  1             0.1841    0.2444    0.2617    0.3217    0.3082
+  4             0.2020    0.2415    0.2457    0.2899    0.2661
+  16            0.2520    0.2711    0.2598    0.2924    0.2577
+  64            0.2982    0.2963    0.2697    0.2939    0.2508
+[2_tvd_vs_noise_ratio_by_k] best (lowest-TVD) k at each ratio
+  ratio   1/64: k=8 (TVD 0.0882, 0.1% better than the next)
+  ratio   1/16: k=8 (TVD 0.0988, 0.4% better than the next)
+  ratio    1/4: k=4 (TVD 0.1094, 1.0% better than the next)
+  ratio      1: k=2 (TVD 0.1094, 1.1% better than the next)
+  ratio      4: k=2 (TVD 0.1035, 5.4% better than the next)
+  ratio     16: k=2 (TVD 0.0974, 8.2% better than the next)
+  ratio     64: k=2 (TVD 0.0903, 9.6% better than the next)
+[2_tvd_vs_noise_ratio_by_k] CROSSOVER: the lowest-TVD code size changes across the axis ([2, 4, 8]).
+[2_tvd_vs_noise_ratio_by_k] patch count by k: k=2: 8, k=4: 4, k=6: 3, k=8: 2, k=10: 2
+[2_tvd_vs_noise_ratio_by_k] accepted shots per point: 42,313-145,989
+[2_tvd_vs_noise_ratio_by_k] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/results/figures/2_tvd_vs_noise_ratio_by_k_v2.svg
+[2_tvd_vs_noise_ratio_by_k] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/results/figures/2_tvd_vs_noise_ratio_by_k_v2.pdf
+[2_tvd_vs_noise_ratio_by_k] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/experiments/figures/2_tvd_vs_noise_ratio_by_k/2_tvd_vs_noise_ratio_by_k_v2.svg

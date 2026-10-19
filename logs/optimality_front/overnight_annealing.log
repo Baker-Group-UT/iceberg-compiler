@@ -1,0 +1,20 @@
+10-10 17:03 start at 4803a6c
+17:28 annealing corpus exit 0
+69 circuits; annealing vs AQORN (negative = annealing lower)
+  search objective (model value)   median +0.00%  mean -0.42%  annealing better on 45%  equal on 36%
+  AQORN's full criterion AH*       median +0.00%  mean -0.42%  annealing better on 24%  equal on 50%
+  measured LSR                     median +0.42%  mean +3.37%  annealing better on 60%  equal on 0%
+  measured LER                     median +0.28%  mean -0.50%  annealing better on 45%  equal on 0%
+        model_gap_pct  ah_gap_pct  lsr_pct  ler_pct
+size                                               
+<10q             0.00         0.0    -0.09    -0.00
+10-30q          -0.91         0.0     1.68     1.02
+>30q            -0.19         0.0     2.94    -2.11
+largest search gaps:
+  circuit  num_qubits  model_gap_pct  ah_gap_pct  lsr_pct  ler_pct   size
+adder_n28          28          -9.28         NaN      NaN      NaN 10-30q
+ising_n26          26          -6.00         NaN      NaN      NaN 10-30q
+ising_n42          42          -4.32        -1.4     9.59    -2.84   >30q
+ising_n34          34          -3.62        -9.6    72.12    -6.69   >30q
+ising_n10          10          -2.73         NaN      NaN      NaN 10-30q
+10-10 17:28 done

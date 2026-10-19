@@ -13,9 +13,37 @@ Each circuit has one stacked bar broken into additive benefit components:
 2) additional merging benefit
 3) additional packing benefit
 
+The packing row is planned by the `packing` package through `common.pack_program`;
+`packer/merge_packer.py`, which used to do it, is archived. Both place two logical
+qubits per patch, so the figure measures the same quantity as before. Head to head on
+circuit counts at k=2 the two agree closely -- on `dnn_n33` the archived pairwise packer
+returns 53.5% of depth and this one 53.0% -- so a bar that changed against the published
+version changed for one of the two reasons below, not because the packer got worse.
+
+**Segments are clipped cumulatively, not one at a time.** `stack_heights` owns the rule
+and explains it; the short version is that clipping each segment at zero and summing
+overstates the bar whenever one technique hurts and a later one recovers. On `ising_n42`
+H commutation costs 91% of depth and merging returns 171%; the honest total is 80%, and
+the per-segment rule this script used to apply drew 171% on an axis where 100% is all of
+it.
+
+**Each stage keeps the better of H commutation on and off.** `H_COMMUTATION_MODES`
+explains the three settings and their trade-offs. The default is `best`: a stage is never
+charged for a pass the compiler would have declined, so no segment goes negative because
+a technique hurt -- which is the right reading of an ablation, since
+`enable_h_commutation` is a flag and not applying it is always available. Forcing the
+pass on, as the published figure did, is what produced the >100% bars: on `ising_n98` it
+takes naive depth from 335 to 1013, and merging's return to 55 then reads as +286%.
+
+Circuits are ordered alphabetically within each size group. Ordering by summed depth
+benefit, as this script used to, made every panel look monotonic in a quantity only one
+of them plotted.
+
 Run with:
 
     python -m experiments.figures.merging_improvement.merging_improvement_benchmark_stylized
+    python -m ... --h-commutation auto     # the planner's own per-circuit decision
+    python -m ... --h-commutation on       # reproduce the published figure
 """
 
 from __future__ import annotations
@@ -46,12 +74,12 @@ plt.rcParams.update(
     }
 )
 
-from evaluator.gate_count_stats import one_two_qubit_gate_totals
+from analysis.gate_count_stats import one_two_qubit_gate_totals
+from experiments.figures.merging_improvement.common import pack_program
+from experiments.shared.figures import stack_heights
 from experiments.shared.benchmark_circuits import load_proxy_circuits
-from packer.merge_packer import MergeMaximizingPacker
 from pipeline.config import PipelineConfig
 from pipeline.tasks.translate_permutation import translate_permutation
-from translator.passes import cancel_inverse_gates, commute_hadamards
 
 Perm = List[Tuple[int, int]]
 
@@ -61,6 +89,34 @@ METRICS = {
     "circuit_depth": ("pct_reduction_circuit_depth", "depth"),
 }
 
+#: How the H commutation pass is chosen. This is a *figure* decision, not a compiler one,
+#: and the distinction matters:
+#:
+#: `best`   -- measure every stage with the pass on and off and keep the better result,
+#:     per metric. The default, and what the ablation should show: `enable_h_commutation`
+#:     is a config flag, so declining a pass that costs you is always available, and a
+#:     stage can never be charged for a technique it would not have used. It is also why
+#:     no segment here can go negative for the reason a *pass* made things worse.
+#:
+#:     The caveat is that "per metric" means the 2q panel and the depth panel may be
+#:     describing two different compiled circuits. On `dnn_n33` at k=2 the packed circuit
+#:     with the pass on has 1q 1155 / 2q 1503 / depth 535 and with it off 1q 1045 /
+#:     2q 1565 / depth 472 -- off wins 1q and depth, on wins 2q. That is honest as "what
+#:     the compiler achieves on each objective when it is free to decline the pass", which
+#:     is what an ablation is asking, but it is not one circuit.
+#:
+#: `auto`   -- the planner's own per-circuit decision, from `commutation_pays`. One
+#:     circuit, so all three panels describe the same compilation, at the cost of showing
+#:     less than the compiler can do on any single metric: the decision minimises the
+#:     weighted scalar `1q + 13*2q + 12*depth`, which no individual panel plots.
+#:
+#: `on`     -- forced on everywhere. Reproduces the published figure. Not recommended:
+#:     forcing the pass where it does not pay inflates the row the next stage is
+#:     differenced against, which is what drew the >100% depth bars. On `ising_n98` it
+#:     takes naive depth from 335 to 1013, merging returns it to 55, and the segment reads
+#:     +286% on an axis where 100% is all of it.
+H_COMMUTATION_MODES = ("best", "auto", "on")
+
 
 @dataclass
 class BenchmarkSettings:
@@ -69,6 +125,8 @@ class BenchmarkSettings:
     max_proxy_qubits: int | None = 100
     proxy_timeout_seconds: float | None = 1.0
     drop_equal_packings: bool = False
+    #: One of `H_COMMUTATION_MODES`.
+    h_commutation: str = "best"
     output_path: Path = field(
         default_factory=lambda: Path(
             "experiments/figures/merging_improvement/merging_improvement_benchmark_stylized.svg"
@@ -106,23 +164,11 @@ def compute_metrics(
     return one_q, two_q, depth
 
 
-def preprocess_for_packing(
-    program_circuit: qiskit.QuantumCircuit, config: PipelineConfig
-) -> qiskit.QuantumCircuit:
-    processed = cancel_inverse_gates(program_circuit)
-    if config.translator_config.enable_h_commutation:
-        processed = commute_hadamards(processed)
-        processed = cancel_inverse_gates(processed)
-    return processed
-
-
 def run_experiment(
     circuits: Sequence[Tuple[str, qiskit.QuantumCircuit]],
     size_group: str,
     settings: BenchmarkSettings,
 ) -> pd.DataFrame:
-    packer = MergeMaximizingPacker()
-
     baseline_cfg = PipelineConfig()
     baseline_cfg.translator_config.enable_merging = False
     baseline_cfg.translator_config.enable_h_commutation = False
@@ -144,33 +190,50 @@ def run_experiment(
         n_qubits = program_circuit.num_qubits
         target_codes = math.ceil(n_qubits / 2)
         tight_perm = tight_trivial_packing(n_qubits, target_codes)
-        processed_for_packing = preprocess_for_packing(program_circuit, h_merge_cfg)
-        packed_perm = packer.pack(processed_for_packing, num_codes=target_codes).permutation
-        
         base_one_q, base_two_q, base_depth = compute_metrics(
             program_circuit, tight_perm, baseline_cfg
         )
-        h_only_one_q, h_only_two_q, h_only_depth = compute_metrics(
-            program_circuit, tight_perm, h_only_cfg
-        )
-        h_merge_one_q, h_merge_two_q, h_merge_depth = compute_metrics(
-            program_circuit, tight_perm, h_merge_cfg
-        )
-        packed_one_q, packed_two_q, packed_depth = compute_metrics(
-            program_circuit, packed_perm, h_merge_cfg
-        )
+        base = (base_one_q, base_two_q, base_depth)
 
-        h_cum_pct_one_q = pct_reduction(base_one_q, h_only_one_q)
-        h_cum_pct_two_q = pct_reduction(base_two_q, h_only_two_q)
-        h_cum_pct_depth = pct_reduction(base_depth, h_only_depth)
+        # Every stage is measured under both commutation settings and the better one
+        # wins, per metric. `H_COMMUTATION_MODES` documents why. Note the H-off arm of
+        # stage 1 *is* the baseline -- declining the pass leaves the circuit untouched --
+        # so the H segment is non-negative by construction rather than by clipping.
+        arms = [True, False] if settings.h_commutation == "best" else [None]
+        stages: Dict[str, List[Tuple[int, int, int]]] = {"h": [], "hm": [], "pack": []}
+        for arm in arms:
+            if arm is None:
+                packed_perm, commute = pack_program(
+                    program_circuit,
+                    h_commutation=True if settings.h_commutation == "on" else "auto",
+                )
+            else:
+                commute = arm
+                packed_perm, _ = pack_program(program_circuit, h_commutation=commute)
+            h_only_cfg.translator_config.enable_h_commutation = commute
+            h_merge_cfg.translator_config.enable_h_commutation = commute
+            stages["h"].append(compute_metrics(program_circuit, tight_perm, h_only_cfg))
+            stages["hm"].append(compute_metrics(program_circuit, tight_perm, h_merge_cfg))
+            stages["pack"].append(
+                compute_metrics(program_circuit, packed_perm, h_merge_cfg)
+            )
 
-        h_merge_cum_pct_one_q = pct_reduction(base_one_q, h_merge_one_q)
-        h_merge_cum_pct_two_q = pct_reduction(base_two_q, h_merge_two_q)
-        h_merge_cum_pct_depth = pct_reduction(base_depth, h_merge_depth)
+        def best(stage: str, index: int) -> float:
+            """Largest reduction any arm achieves for one metric at one stage."""
+            return max(
+                pct_reduction(base[index], measured[index])
+                for measured in stages[stage]
+            )
 
-        packed_cum_pct_one_q = pct_reduction(base_one_q, packed_one_q)
-        packed_cum_pct_two_q = pct_reduction(base_two_q, packed_two_q)
-        packed_cum_pct_depth = pct_reduction(base_depth, packed_depth)
+        h_cum_pct_one_q, h_cum_pct_two_q, h_cum_pct_depth = (
+            best("h", 0), best("h", 1), best("h", 2)
+        )
+        h_merge_cum_pct_one_q, h_merge_cum_pct_two_q, h_merge_cum_pct_depth = (
+            best("hm", 0), best("hm", 1), best("hm", 2)
+        )
+        packed_cum_pct_one_q, packed_cum_pct_two_q, packed_cum_pct_depth = (
+            best("pack", 0), best("pack", 1), best("pack", 2)
+        )
 
         h_only_seg_one_q = h_cum_pct_one_q
         h_only_seg_two_q = h_cum_pct_two_q
@@ -210,6 +273,12 @@ def run_experiment(
             ):
                 continue
 
+        # Both the segment and the cumulative reduction it lands at. `stack_heights`
+        # needs the cumulative series: clipping each segment at zero and summing
+        # inflates the bar whenever one technique hurts and a later one recovers, and
+        # on this suite that is not a corner case. Forcing H commutation on `dnn_n33`
+        # costs 6.7% of depth and packing then returns 53.0%; the true full-pipeline
+        # reduction is 46.3%, but dropping the negative segment draws 53.0%.
         rows.append(
             {
                 "size_group": size_group,
@@ -220,6 +289,9 @@ def run_experiment(
                 "pct_reduction_one_qubit_gates": h_only_seg_one_q,
                 "pct_reduction_two_qubit_gates": h_only_seg_two_q,
                 "pct_reduction_circuit_depth": h_only_seg_depth,
+                "cumulative_pct_reduction_one_qubit_gates": h_cum_pct_one_q,
+                "cumulative_pct_reduction_two_qubit_gates": h_cum_pct_two_q,
+                "cumulative_pct_reduction_circuit_depth": h_cum_pct_depth,
             }
         )
         rows.append(
@@ -232,6 +304,9 @@ def run_experiment(
                 "pct_reduction_one_qubit_gates": merge_seg_one_q,
                 "pct_reduction_two_qubit_gates": merge_seg_two_q,
                 "pct_reduction_circuit_depth": merge_seg_depth,
+                "cumulative_pct_reduction_one_qubit_gates": h_merge_cum_pct_one_q,
+                "cumulative_pct_reduction_two_qubit_gates": h_merge_cum_pct_two_q,
+                "cumulative_pct_reduction_circuit_depth": h_merge_cum_pct_depth,
             }
         )
         rows.append(
@@ -241,6 +316,9 @@ def run_experiment(
                 "circuit_name": circuit_name,
                 "target_codes": target_codes,
                 "component": "packing",
+                "cumulative_pct_reduction_one_qubit_gates": packed_cum_pct_one_q,
+                "cumulative_pct_reduction_two_qubit_gates": packed_cum_pct_two_q,
+                "cumulative_pct_reduction_circuit_depth": packed_cum_pct_depth,
                 "pct_reduction_one_qubit_gates": pack_seg_one_q,
                 "pct_reduction_two_qubit_gates": pack_seg_two_q,
                 "pct_reduction_circuit_depth": pack_seg_depth,
@@ -250,35 +328,50 @@ def run_experiment(
     return pd.DataFrame(rows)
 
 
+def _plotted_total(frame: pd.DataFrame, metric_column: str) -> float:
+    """Mean stack height over the circuits in `frame`, drawn exactly as the bars are."""
+    components = ["h_commutation", "merging", "packing"]
+    names = frame["circuit_name"].unique()
+    if not len(names):
+        return 0.0
+    return float(
+        np.mean(
+            [
+                sum(
+                    stack_heights(
+                        frame.loc[frame["circuit_name"] == name],
+                        metric_column,
+                        components,
+                    )
+                )
+                for name in names
+            ]
+        )
+    )
+
+
 def print_metric_averages(df: pd.DataFrame) -> None:
-    print("[merging_improvement_benchmark_stylized] Plot averages (matching clipped bar values)")
-    size_groups = ["small", "medium", "large"]
-    for size_group in size_groups:
+    print("[merging_improvement_benchmark_stylized] Plot averages (matching bar heights)")
+    for size_group in ["small", "medium", "large"]:
         group_df = df.loc[df["size_group"] == size_group]
         if group_df.empty:
             continue
         print(f"  {size_group}:")
-        metric_parts = []
-        for _, (metric_column, metric_label) in METRICS.items():
-            total = 0.0
-            for component in ["h_commutation", "merging", "packing"]:
-                component_df = group_df.loc[group_df["component"] == component, metric_column]
-                if not component_df.empty:
-                    total += float(
-                        component_df.astype(float).clip(lower=0.0).mean()
-                    )
-            metric_parts.append(f"{metric_label}={total:.2f}%")
-        print("    plotted total: " + ", ".join(metric_parts))
+        print(
+            "    plotted total: "
+            + ", ".join(
+                f"{label}={_plotted_total(group_df, column):.2f}%"
+                for _, (column, label) in METRICS.items()
+            )
+        )
 
-    overall_parts = []
-    for _, (metric_column, metric_label) in METRICS.items():
-        total = 0.0
-        for component in ["h_commutation", "merging", "packing"]:
-            component_df = df.loc[df["component"] == component, metric_column]
-            if not component_df.empty:
-                total += float(component_df.astype(float).clip(lower=0.0).mean())
-        overall_parts.append(f"{metric_label}={total:.2f}%")
-    print("  plotted overall average: " + ", ".join(overall_parts))
+    print(
+        "  plotted overall average: "
+        + ", ".join(
+            f"{label}={_plotted_total(df, column):.2f}%"
+            for _, (column, label) in METRICS.items()
+        )
+    )
 
 
 def plot_results(df: pd.DataFrame, settings: BenchmarkSettings) -> None:
@@ -292,35 +385,20 @@ def plot_results(df: pd.DataFrame, settings: BenchmarkSettings) -> None:
     fig, axes = plt.subplots(nrows=3, ncols=1, figsize=(20, 14), sharex=True)
     bar_width = 0.75
     gap = 4.0
-    depth_metric_column = METRICS["two_qubit_gates"][0]
 
-    # Build one canonical ordering (ascending) from depth totals and reuse it
-    # for every subplot so the shared x-axis labels remain correct.
+    # Alphabetical within each size group, and the same order in every subplot because
+    # the x axis is shared. This replaces sorting by summed depth benefit: that put the
+    # same circuit at a different x in a reader's memory of the previous version of the
+    # figure, and it made the three panels' bar heights look monotonic in a panel whose
+    # own metric was not the sort key.
     ordered_circuits_by_group: Dict[str, List[str]] = {}
     for size_group in size_groups:
         group_df = df.loc[df["size_group"] == size_group]
         if group_df.empty:
             continue
-        depth_pivot = (
-            group_df.pivot_table(
-                index="circuit_name",
-                columns="component",
-                values=depth_metric_column,
-                aggfunc="mean",
-            )
-            .reset_index()
+        ordered_circuits_by_group[size_group] = sorted(
+            group_df["circuit_name"].unique(), key=str.lower
         )
-        for component, _, _ in components:
-            if component not in depth_pivot.columns:
-                depth_pivot[component] = 0.0
-            depth_pivot[component] = (
-                depth_pivot[component].fillna(0.0).astype(float).clip(lower=0.0)
-            )
-        sort_key = depth_pivot[[c for c, _, _ in components]].sum(axis=1)
-        depth_pivot = depth_pivot.assign(_sort=sort_key).sort_values(
-            by=["_sort", "circuit_name"], ascending=[True, True]
-        )
-        ordered_circuits_by_group[size_group] = depth_pivot["circuit_name"].tolist()
 
     for ax, (_, (metric_column, metric_label)) in zip(axes, METRICS.items()):
         all_positions: List[float] = []
@@ -333,33 +411,25 @@ def plot_results(df: pd.DataFrame, settings: BenchmarkSettings) -> None:
                 continue
             group_df = df.loc[df["size_group"] == size_group]
 
-            pivot = (
-                group_df.pivot_table(
-                    index="circuit_name",
-                    columns="component",
-                    values=metric_column,
-                    aggfunc="mean",
+            # One `stack_heights` call per circuit rather than a pivot-and-clip: the
+            # rule is cumulative, so a segment cannot be computed from the segment
+            # column alone.
+            segments = {
+                name: stack_heights(
+                    group_df.loc[group_df["circuit_name"] == name],
+                    metric_column,
+                    [component for component, _, _ in components],
                 )
-                .reset_index()
-            )
-            for component, _, _ in components:
-                if component not in pivot.columns:
-                    pivot[component] = 0.0
-                pivot[component] = (
-                    pivot[component].fillna(0.0).astype(float).clip(lower=0.0)
-                )
-            pivot = (
-                pivot.set_index("circuit_name")
-                .reindex(ordered_circuits)
-                .fillna(0.0)
-                .reset_index()
-            )
+                for name in ordered_circuits
+            }
             circuit_names = ordered_circuits
             positions = np.arange(len(circuit_names)) + current_x
 
             running_bottom = np.zeros(len(circuit_names), dtype=float)
-            for component, label, color in components:
-                values = pivot[component].astype(float).values
+            for index, (component, label, color) in enumerate(components):
+                values = np.array(
+                    [segments[name][index] for name in circuit_names], dtype=float
+                )
                 ax.bar(
                     positions,
                     values,
@@ -381,13 +451,22 @@ def plot_results(df: pd.DataFrame, settings: BenchmarkSettings) -> None:
         avg_x = current_x + 1.0
         avg_width = 5 * bar_width
         avg_bottom = 0.0
-        for component, label, color in components:
-            avg_value = (
-                df.loc[df["component"] == component, metric_column]
-                .astype(float)
-                .clip(lower=0.0)
-                .mean()
-            )
+        # Mean of each circuit's *clipped* segment, so the average bar is the mean of the
+        # bars drawn beside it. Clipping the pooled column instead lets one circuit's
+        # inflated segment raise the average above every bar it summarises.
+        average_segments = np.mean(
+            [
+                stack_heights(
+                    df.loc[df["circuit_name"] == name],
+                    metric_column,
+                    [component for component, _, _ in components],
+                )
+                for name in df["circuit_name"].unique()
+            ],
+            axis=0,
+        )
+        for index, (component, label, color) in enumerate(components):
+            avg_value = float(average_segments[index])
             if np.isnan(avg_value):
                 avg_value = 0.0
             ax.bar(
@@ -491,6 +570,14 @@ def parse_args() -> BenchmarkSettings:
         help="Path to save the resulting plot.",
     )
     parser.add_argument(
+        "--h-commutation",
+        choices=H_COMMUTATION_MODES,
+        default="best",
+        help="best: keep whichever of on/off wins, per metric per stage (default). "
+             "auto: the planner's per-circuit decision. on: forced everywhere, "
+             "reproducing the published figure.",
+    )
+    parser.add_argument(
         "--no-show",
         action="store_true",
         help="Skip displaying the plot window (useful for headless runs).",
@@ -503,6 +590,7 @@ def parse_args() -> BenchmarkSettings:
         max_proxy_qubits=args.max_qubits,
         proxy_timeout_seconds=args.proxy_timeout,
         drop_equal_packings=args.drop_equal_packings,
+        h_commutation=args.h_commutation,
         output_path=args.output,
         show_plot=not args.no_show,
     )

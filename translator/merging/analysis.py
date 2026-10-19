@@ -21,6 +21,14 @@ from .transversal import _scan_patch_pair_for_transversal
 class PairMergeAnalyzer:
     """
     Expose per-qubit-pair merge counts without requiring a concrete patch assignment.
+
+    A k=2 estimator, and deliberately still one. It asks what two qubits would gain
+    from sharing a patch by running the detectors on a hypothetical two-lane patch,
+    which is what `packer.merge_packer` -- itself pairwise -- needs to score
+    candidates. Do not read its counts as a prediction for k > 2: the detectors it
+    calls require a whole-patch macro to cover every lane, so on a real patch of k
+    slots an `hh_merges` count derived from two lanes is an upper bound, and usually
+    a loose one. `grouping.cost_model` is the k-general counterpart.
     """
 
     def __init__(

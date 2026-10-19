@@ -1,0 +1,25 @@
+  [recount] 1422 items across 12 workers
+[density_references] 1422 conversions for 1560 arm-points; 180 need none
+  [recount] 71/1422  9.6 min elapsed, ~182.3 min left
+  [recount] 142/1422  38.1 min elapsed, ~343.1 min left
+  [recount] 213/1422  56.7 min elapsed, ~321.9 min left
+  [recount] 284/1422  69.2 min elapsed, ~277.1 min left
+  [recount] 355/1422  81.6 min elapsed, ~245.3 min left
+  [recount] 426/1422  89.7 min elapsed, ~209.7 min left
+  [recount] 497/1422  95.8 min elapsed, ~178.3 min left
+  [recount] 568/1422  98.2 min elapsed, ~147.6 min left
+  [recount] 639/1422  103.3 min elapsed, ~126.5 min left
+  [recount] 710/1422  106.5 min elapsed, ~106.8 min left
+  [recount] 781/1422  109.1 min elapsed, ~89.6 min left
+  [recount] 852/1422  110.6 min elapsed, ~74.0 min left
+  [recount] 923/1422  113.4 min elapsed, ~61.3 min left
+  [recount] 994/1422  115.3 min elapsed, ~49.7 min left
+  [recount] 1065/1422  116.4 min elapsed, ~39.0 min left
+  [recount] 1136/1422  117.2 min elapsed, ~29.5 min left
+  [recount] 1207/1422  119.3 min elapsed, ~21.2 min left
+  [recount] 1278/1422  119.6 min elapsed, ~13.5 min left
+  [recount] 1349/1422  119.9 min elapsed, ~6.5 min left
+  [recount] 1420/1422  120.5 min elapsed, ~0.2 min left
+  [recount] 1422/1422  120.6 min elapsed, ~0.0 min left
+[density_references] 1740 arm-points, 1560 recounted; the all-lane count equals the sweep's on 1560/1560; failed: none
+[density_references] wrote experiments/figures/density_ablation_sweep/density_ablation_sweep_split_std_recount.csv

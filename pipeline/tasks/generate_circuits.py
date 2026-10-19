@@ -18,7 +18,9 @@ def generate_circuits(program_circuit: qiskit.QuantumCircuit, config: PipelineCo
     """
     # Step 1: Generate permutation space
     q = program_circuit.num_qubits  # Assumes 1 logical qubit per qubit
-    code_sets = generate_uniform_code_sets(q)
+    # Code size comes from the translator config, so one knob selects the
+    # [[n, n-2, 2]] code for the whole pipeline.
+    code_sets = generate_uniform_code_sets(q, n=config.translator_config.n_code)
     permutations = generate_permutations(code_sets, q)
 
     # Step 2: Translate logical to physical

@@ -6,9 +6,17 @@ Open-source implementation for the paper **"Logical Compilation for Multi-Qubit 
 
 ## Overview
 
-This framework solves the **qubit packing problem** for the [[4, 2, 2]] Iceberg quantum error-detecting (QED) code: given a program circuit, which pairs of logical qubits should share a physical code patch, and how should those patches be laid out? The choice of mapping determines which gate implementations are available — intra-patch, inter-patch, or transversal — producing up to 4× variation in gate cost and circuit depth (see Table 1 and Figure 4 in the paper).
+This framework solves the **qubit packing problem** for the [[n, n−2, 2]] Iceberg quantum error-detecting (QED) code family: given a program circuit, which logical qubits should share a physical code patch, and how should those patches be laid out? The choice of mapping determines which gate implementations are available — intra-patch, inter-patch, or transversal — producing up to 4× variation in gate cost and circuit depth (see Table 1 and Figure 4 in the paper).
 
-The compiler pipeline takes an arbitrary Clifford+Rz program circuit and produces a fully encoded physical circuit optimized for the [[4, 2, 2]] Iceberg code, using Hadamard commutation, gate merging, and a merge-maximizing packing heuristic. Across 71 QASMBench circuits, this reduces circuit depth by 34%, one- and two-qubit gate counts by 31% and 17%, and improves total variation distance by 1.75× relative to a naive compilation baseline.
+The compiler pipeline takes an arbitrary Clifford+Rz program circuit and produces a fully encoded physical circuit, using Hadamard commutation, gate merging, and qubit packing. Across 71 QASMBench circuits at [[4, 2, 2]], this reduces one- and two-qubit gate counts by 23% and 17% and circuit depth by 33% relative to a naive compilation baseline.
+
+> **Beyond [[4, 2, 2]].** The paper evaluates the [[4, 2, 2]] code, where a patch holds two logical qubits. The compiler now supports the whole **[[n, n−2, 2]]** family at any even n ≥ 4, with gate merging and packing working at every code size.
+>
+> **Depth improves 7–8 points past k = 2** — 31.4% at k = 2 against 39.3% at k = 6 on the medium group, with every benchmark placing at every code size. Gate counts do not follow: they decline slowly with k, because merging's whole-patch macros need a gate on every occupied lane at once and fire less often as k grows. So the multi-qubit-patch argument holds for depth and not for gate count. See §3.3 of [STATUS.md](STATUS.md), which records the two wrong answers it took to get there.
+>
+> Two more things to know before comparing against published numbers. The one-qubit gate figure above (23%) is lower than the paper's 31% and the discrepancy is not yet explained. And the compiler on `main` mistranslates any program containing a `swap`, an `sx` or an `xcx`, and silently drops any gate it cannot place — ten pre-existing correctness bugs, since fixed — so data collected before this branch should be regenerated.
+>
+> **[STATUS.md](STATUS.md) is the current-state document:** capabilities, limitations, and what changed across the branches since `main`. Read it before quoting any number from this repository.
 
 ## Compilation Pipeline
 
@@ -22,10 +30,10 @@ The pipeline follows three phases (Figure 9 in the paper):
 
 **Phase 2 — Logical circuit: packing and merging**
 
-1. Pairwise merge scoring: run the gate merging algorithm on every candidate qubit pair and build a score matrix
-2. Greedy packing: commit qubit pairs in order of net gain `w_ij - w_ii - w_jj` until the target patch count is reached
-3. Grid alignment: map patches onto a 2D grid to minimize inter-patch communication distance
-4. Circuit rewrite: substitute mergeable gate pairs with cheaper patch-wise or transversal primitives
+1. Build a signed interaction graph over logical qubits, weighted by gate count *and* depth
+2. Multilevel partition into patches, then exact Hungarian slot assignment within each patch pair
+3. Local search on the analytic cost model, verified against the naive placement so the result is never worse
+4. Circuit rewrite: substitute mergeable gate groups with cheaper whole-patch or transversal primitives
 
 **Phase 3 — Physical circuit**
 
@@ -35,24 +43,29 @@ The pipeline follows three phases (Figure 9 in the paper):
 
 The translator selects the cheapest available implementation for each gate automatically. Intra-patch swap gates are treated as free qubit relabelings — this assumption holds for architectures with flexible connectivity such as neutral atom arrays.
 
+The paper's Phase 2 is the pairwise greedy heuristic in [`archive/packer/`](archive/packer/), which scores every qubit pair and commits the best. It is archived for reference but is superseded: it cannot express a placement at k > 2, since a patch then holds a *group* whose value is not the sum of its pairs. See [`packing/`](packing/) and §2.4 of [STATUS.md](STATUS.md).
+
 ## Repository Structure
 
 ```
 .
 ├── pipeline/           # High-level orchestration: run_full_scan, run_random_scan, etc.
-├── iceberg/            # [[4, 2, 2]] Iceberg code implementation (IcebergModule, IcebergSet, postselection)
-├── translator/         # Logical-to-physical circuit translation with merging and H commutation
-├── packer/             # Merge-maximizing greedy qubit packing heuristic
+├── iceberg/            # [[n, n-2, 2]] code family: layout, physical gates, cost/depth tables
+├── translator/         # Logical-to-physical translation with merging and H commutation
+├── packing/            # Qubit packing: incremental cost objective, graph seed, descent (any k)
 ├── permutations/       # Permutation generation and canonical-form deduplication
 ├── simulator/          # Qiskit Aer and Stim simulation backends with configurable noise models
-├── evaluator/          # Post-hoc analysis: efficiency scores, effectiveness metrics
-├── repository/         # Persistence layer for RunRecord/RunManifest (JSON + gzip)
+├── analysis/           # Post-hoc analysis: gate counts, postselection, fidelity/TVD metrics
 ├── experiments/        # Research experiment scripts (see Experiments section)
+│   ├── shared/         # Circuit loaders and generators
+│   ├── tests/          # testexp.py, the translator fuzz driver
+│   └── figures/merging_improvement/  # The code-size sweep, ported to `packing`
 ├── benchmarks/
 │   └── qasmbench/      # Git submodule: QASMBench benchmark circuits (71 circuits used in paper)
-├── circuits/           # DAG visualizers and circuit graph tools
-├── dag/                # DAG representation utilities
-└── results/            # Output directory for saved run records
+├── tests/              # Test suite; pytest.ini collects this directory only
+└── archive/            # Superseded but still importable: grouping/, packer/, repository/,
+                        #   evaluator/, circuits/, dag/, and most of experiments/.
+                        #   See archive/README.md for the full mapping
 ```
 
 ## Installation
@@ -143,11 +156,17 @@ Top-level orchestration. Main entry points:
 
 ### `iceberg/`
 
-Implements the [[4, 2, 2]] Iceberg code (and the general [[n, n-2, 2]] family).
+Implements the [[n, n−2, 2]] Iceberg code family at any even n ≥ 4.
 
 - `IcebergModule` — single code patch with `n` physical qubits and `n-2` logical qubits
 - `IcebergSet` — collection of patches forming the full physical register
+- `layout.py` — the code convention in one place (anchors, lanes, decode rule); gates, decoder and cost model all consult it
+- `physical.py` — physical gate emission and the flagged fault-tolerant gadget
+- `costs.py` — `work_table(n)` for (1q, 2q) gate counts and `depth_table(n)` for depth, both measured from the emitted circuits and pinned in tests
 - `iceberg_postselect()` — filters measurement outcomes where any syndrome bit is non-zero
+- `python -m iceberg.demo` — encodes a program at several code sizes and prints the circuits
+
+The identity that makes the family work: **transversal H equals H^k composed with `C_A = I + J`, and `C_A` is a physical swap of the two anchors.** So the whole-patch Hadamard is transversal H plus one SWAP at any n, with no frame tracking and no cost penalty.
 
 ### `translator/`
 
@@ -155,10 +174,50 @@ Translates logical gates to their physical Iceberg implementations:
 
 - **Single-qubit gates** (H, X, Z, S, RX, RZ, SX): targeted or patch-wise depending on permutation
 - **Two-qubit gates** (CX, CZ, XCX): intra-patch, inter-patch, or transversal based on qubit placement
-- Gate merging pass consolidates adjacent compatible operations into cheaper compiled primitives
+- Gate merging pass consolidates adjacent compatible operations into cheaper compiled primitives, at any k
 - Hadamard commutation pass reduces targeted H gates (the most expensive operation; see Table 1 in the paper)
 
-### `packer/`
+Merging distinguishes **whole-patch** macros (`hh`, `cxt`, `czt`, `xcxt`), which act on every lane whether asked to or not and so require a gate on every *occupied* lane, from **per-lane** macros (`xx`, `zz`), which fuse on any subset. At k = 2 the two rules coincide, which is why the original pairwise implementation never had to distinguish them.
+
+### `packing/`
+
+Qubit packing at any k. `plan_packing` is the entry point:
+
+1. `cost` — `PackingCost`, the objective as an incremental function of the partition, so a move rescores only the terms it touches. It scores a placement in ~0.1 ms instead of the ~700 ms a translation costs at 140 qubits, and `tests/test_packing.py` pins it against the `AnalyticCost` it replaces (kept importable at `archive/grouping/analytic.py` for exactly that check)
+2. `graph`, `seed` — a signed interaction graph: negative weight where a pair is cheaper apart, priced on gate count *and* depth, plus Hadamard-coincidence and transversal-affinity edges. It seeds the search, and nothing after the seed consults it again
+3. `partition` — coarsen/solve/uncoarsen partitioning of that graph
+4. `search` — `descend`: move / spread / swap sweeps on the real objective, since the graph is a pairwise proxy for a conjunctive objective it cannot express
+5. `lanes` — exact slot assignment, against every already-placed patch
+6. `plan` — chooses *how many* patches to spend under a `ResourceBudget` (`packing/budget.py`) and `NoiseProfile` (`packing/profiles.py`), rather than assuming the tightest packing
+
+The final candidate is checked against the naive placement by exact measurement, so packing is never a regression.
+
+```python
+from packing import plan_packing
+from packing.budget import ResourceBudget
+
+plan = plan_packing(qc, n_code=6, budget=ResourceBudget(max_physical_qubits=256))
+print(plan.summary())   # patches, occupancy, physical qubits, cost, moves
+record = run_specific_scan(qc, config, [plan.placement])
+```
+
+`plan_packing` needs a code size. `compile_circuit` (`packing/compiler.py`) is the entry point that does not: it runs `packing.resource.select_resources` to choose the code size and patch count, runs the placement search at that code size, then translates the planner's placement, the selector's placement and the naive packing and keeps whichever measures best on expected detectable errors. The winner's translation is the returned circuit, so nothing is translated twice.
+
+```python
+from packing import compile_circuit
+from packing.resource import NoiseKnobs
+
+built = compile_circuit(qc, budget=ResourceBudget(max_physical_qubits=256))
+print(built.summary())      # code size, patches, density, error split, which arm won
+built.circuit               # the physical circuit, ready to simulate
+built.resources.frontier    # every (code size, patch count) candidate considered
+```
+
+The `noise=NoiseKnobs(...)` argument is the one machine description: it ranks the resource candidates directly and, converted to weighted-gate units, tells the placement search what movement and idling cost. `NoiseKnobs(density_weight=...)` trades accepted-shot rate against how many logical qubits sit behind each detector pair; it has no defensible default other than 0, which optimises throughput alone and picks the tightest packing.
+
+`python -m packing.bench` compares packing strategies by exact translation; `--techniques` reports the h-commutation / merging / packing decomposition instead. It replaces the archived `grouping.evaluate`; `grouping.tune`, which grid-searched `depth_weight`, has no live equivalent and is superseded (`archive/grouping/`).
+
+### `archive/packer/` — archived
 
 `MergeMaximizingPacker` implements the greedy pair-selection algorithm (Section 4.3 in the paper):
 
@@ -167,6 +226,8 @@ Translates logical gates to their physical Iceberg implementations:
 3. Optionally apply grid alignment to minimize inter-patch communication cost
 
 Composite pair score: `w_ij = α·s¹_ij + β·s²_ij - γ·Δ_ij + δ·T_ij` where `s¹`, `s²` are 1q/2q gate savings, `Δ` is a depth-based delay penalty, and `T` is a gate-type preference bias.
+
+**Superseded by `packing/`, and archived to [`archive/packer/`](archive/packer/).** It is k = 2 only by construction, and a correlation study over 3,600 placements found that measured cost tracks cross-patch two-qubit gates at +0.80 while tracking the merge savings this packer maximises at **−0.17** — so the objective is the wrong one even at k = 2. `packing/` imports nothing from it; it is retained as a reference point only.
 
 ### `permutations/`
 
@@ -179,18 +240,24 @@ Two backends:
 - **Qiskit Aer** (default): full density-matrix simulation with configurable depolarizing, thermal relaxation, and readout noise
 - **Stim** (faster): stabilizer simulation via Clifford proxies; better for circuits with >10 logical qubits
 
-Noise parameters match Table 2 in the paper: `p1 = 1e-3`, `p2 = 5e-3`, `pm = 2e-2`, `T1 = 100 μs`, `T2 = 80 μs`. Distance-dependent inter-patch noise scales with patch separation on the grid.
+Noise parameters match Table 2 in the paper: `p1 = 1e-3`, `p2 = 5e-3`, `pm = 2e-2`, `T1 = 100 μs`, `T2 = 80 μs`. Distance-dependent inter-patch noise scales with patch separation on the grid, computed from the circuit's own registers (which also gives fault-tolerant flag ancillas a real coordinate rather than attributing them to nonexistent patches).
 
-### `evaluator/`
+> **Seeded Aer runs before commit `864d9f4` used 1% of their shots.** Aer's `seed_simulator` seeds a *run*, not a backend, and the simulator built one backend then called `run()` once per shot chunk — so every chunk replayed the first. Chunks now derive their own seeds from the configured one, pinned by `tests/test_simulator_seeding.py`. Noisy numbers collected before that commit carry roughly ten times the sampling error their shot count implies; Stim-backed results were never affected.
 
-Post-hoc analysis utilities:
+### `analysis/`
 
-- `add_efficiency_score()` — combined metric: gate count + λ × codes used
-- `attach_effectiveness_columns()` — merge fidelity metrics onto summary DataFrames
+Post-hoc analysis utilities. The old `evaluator/` and `pipeline/analysis/` merged into this one package:
 
-### `repository/`
+- `gate_count_stats` — one- and two-qubit gate totals; the metric every benchmark here is scored with
+- `postselection` — Iceberg postselection and the selection rate that comes with it
+- `metrics` — fidelity and TVD; `result_row` and `result_types` turn simulation results into DataFrame rows
+- `extremal_selection` — pick the best and worst permutations out of a scan
 
-Persists results as `RunRecord` objects (JSON, optionally gzipped) with an integrity hash. Use `RunRepository` to save/load records and `RunBuilder` to accumulate results during a pipeline run.
+`add_efficiency_score()` and `attach_effectiveness_columns()` were not carried over. They are archived at [`archive/evaluator/evaluator.py`](archive/evaluator/evaluator.py).
+
+### `archive/repository/` — archived
+
+Persisted results as `RunRecord` objects (JSON, optionally gzipped) with an integrity hash, via `RunRepository` and `RunBuilder`. Archived to [`archive/repository/`](archive/repository/): the scan tasks now return `analysis.result_types.ScanResult` and write nothing to disk, so `PipelineConfig.save` no longer has a store behind it.
 
 ## Configuration
 
@@ -201,8 +268,8 @@ Persists results as `RunRecord` objects (JSON, optionally gzipped) with an integ
 class PipelineConfig:
     fault_tolerant: bool = False       # Enable fault-tolerant gate encodings
     verbose: bool = True               # Print progress during execution
-    save: bool = False                 # Persist results to disk
-    save_dir: str = "results/pipeline" # Output directory when save=True
+    save: bool = False                 # Inert: the persistence layer is archived
+    save_dir: str = "results/pipeline" # Inert, see `archive/repository/`
     sim_config: SimulatorConfig = ...  # See below
     translator_config: TranslatorConfig = ...
     seed: int = None                   # Random seed
@@ -222,17 +289,50 @@ from simulator.config_presets import (
 
 ### `TranslatorConfig`
 
-| Option                          | Default | Effect                                         |
-| ------------------------------- | ------- | ---------------------------------------------- |
-| `enable_merging`                | `True`  | Gate consolidation pass                        |
-| `enable_h_commutation`          | `True`  | Hadamard commutation pass                      |
-| `allow_transversal_swap_merges` | `True`  | Include SWAP gates in merge candidates         |
-| `fault_tolerant`                | `False` | Use fault-tolerant gate implementations        |
-| `n_code`                        | `4`     | Physical qubits per patch (default: [[4,2,2]]) |
+| Option                          | Default            | Effect                                                                |
+| ------------------------------- | ------------------ | --------------------------------------------------------------------- |
+| `n_code`                        | `4`                | Physical qubits per patch; any even n ≥ 4, giving k = n−2 logical qubits |
+| `enable_merging`                | `True`             | Gate consolidation pass                                               |
+| `enable_h_commutation`          | `True`             | Hadamard commutation pass                                             |
+| `h_commutation_stage`           | `"before_merging"` | When commutation runs relative to merging: `before_merging` (the paper's order), `after_merging`, or `never` |
+| `allow_transversal_swap_merges` | `True`             | Include SWAP gates in merge candidates                                |
+| `fault_tolerant`                | `False`            | Use fault-tolerant gate implementations                               |
+| `encode_override`               | `False`            | Skip decode and measurement (for inspecting the encoded circuit)      |
+
+`h_commutation_stage` exists so pass-order attribution can be measured rather than argued about. The paper notes that running commutation first hands it the largest share of the credit; the numbers in §3.2 of [STATUS.md](STATUS.md) came from `fig_pass_order.py`, now archived at `archive/experiments/figures/updated/`, and the nearest live measurement is `python -m packing.bench --techniques`, which decomposes h commutation, merging and packing but does not sweep the stage itself. All three orders are verified to preserve the logical action exactly at n ∈ {4, 6, 8, 10, 12}.
 
 ## Experiments
 
-Scripts in [`experiments/`](experiments/) reproduce figures and analyses from the paper:
+### Live — `experiments/figures/merging_improvement/`
+
+The one figure directory still in the live tree, ported to `packing`. Six scripts, all of which run; `merging_improvement_code_size.py` is the code-size sweep with per-size-group bars ([writeup](experiments/figures/merging_improvement/CODE_SIZE_SWEEP.md)).
+
+The same three-technique measurement, without the figure, is in `packing/bench.py`:
+
+```bash
+PYTHONPATH=. venv/bin/python -m packing.bench --techniques --code-sizes 4 6 8 10 12
+```
+
+`--code-sizes` takes n, not k, so that line is k = 2…10. Drop `--techniques` to compare packing strategies against each other instead, by exact translation.
+
+### Archived — `archive/experiments/figures/updated/`
+
+These recreated the paper's **data** figures on the placement and merging stack of the time, each script taking `--from-csv` to replot without recomputing and `--n-code` to change the code size, which the originals could not do. **They are archived and will not run as-is** — they import `grouping`, `packer` and the pre-strip `pipeline`. Kept as the record of how the numbers quoted in [STATUS.md](STATUS.md) were produced. Results and caveats: [RESULTS.md](archive/experiments/figures/updated/RESULTS.md).
+
+| Script                        | Description                                                                    |
+| ----------------------------- | ------------------------------------------------------------------------------ |
+| `fig10_spacetime_reduction.py`| Gate and depth reduction over 71 QASMBench circuits (Figure 10)                 |
+| `fig11_density_sweep.py`      | Improvement over random permutations vs packing density (Figure 11)            |
+| `fig12_random_circuits.py`    | Reduction on random circuits by size group (Figure 12)                          |
+| `fig13_ablation_sweep.py`     | Per-technique ablation over density (Figure 13)                                 |
+| `fig05_cnot_implementations.py` | Fidelity of the three CNOT implementations (Figure 5)                        |
+| `fig17_lsr_tvd_correlation.py`| LSR/TVD anticorrelation (Figure 17)                                             |
+| `fig_k_sweep.py`              | **New** — full-pipeline reduction against code size, k = 2…10                    |
+| `fig_pass_order.py`           | **New** — what merging and packing are worth without commutation first           |
+
+### Archived — the original scripts, now under `archive/experiments/`
+
+Written against the paper's compiler. They still import — self-references were rewritten to `archive.*` — but they predate the correctness fixes and the packing rewrite, so their numbers are not comparable to the figures above.
 
 | Script                       | Description                                                          |
 | ---------------------------- | -------------------------------------------------------------------- |
@@ -247,6 +347,10 @@ Scripts in [`experiments/`](experiments/) reproduce figures and analyses from th
 | `violins_30.py`              | Violin plots of metric distributions over permutation space          |
 
 Helper utilities in `experiments/shared/` provide pre-built circuits (`example_circuits.py`), benchmark circuit loaders (`benchmark_circuits.py`), and random circuit generators (`random_circuits.py`).
+
+### Debugging harness
+
+`python -m experiments.tests.testexp` generates a random Clifford program, simulates it as a reference, then translates it onto a random permutation at k = 2, 4 and 6 — printing the seed, permutation, logical circuit and translated circuit, and flagging any code size whose postselected distribution disagrees with the reference. Loops on the seed.
 
 ## Benchmarks
 
@@ -264,10 +368,22 @@ Results DataFrames include the following columns, as defined in Section 5.1.1 of
 | `raw_fidelity`                           | Fidelity before postselection                                             |
 | `total_1q_gates`, `total_2q_gates`       | Physical gate counts of the compiled circuit                              |
 | `depth`                                  | Compiled circuit depth                                                    |
-| `codes_used`                             | Number of distinct [[4, 2, 2]] patches in the permutation                 |
+| `codes_used`                             | Number of distinct patches in the permutation                             |
 | `merge_savings_1q`, `merge_savings_2q`   | Gate reduction from the merging pass                                      |
 
-LSR and TVD are strongly anticorrelated under the [[4, 2, 2]] code: permutations that retain more shots after postselection consistently produce output distributions closer to ideal (see Appendix A.2 and Figure 17 in the paper).
+LSR and TVD are strongly anticorrelated under the [[4, 2, 2]] code: permutations that retain more shots after postselection consistently produce output distributions closer to ideal (see Appendix A.2 and Figure 17 in the paper). Reproduced on the current compiler at Pearson −0.913 / Spearman −0.906.
+
+## Testing
+
+```bash
+PYTHONPATH=. venv/bin/python -m pytest -q     # 358 tests
+```
+
+The correctness tests are exact rather than statistical where possible: `test_iceberg_logical_action.py` and `test_pipeline_logical_action.py` compare the logical Clifford *induced by the translated physical circuit* against the program, via symplectic tableau, at n ∈ {4, 6, 8}. The round-trip tests cover what those skip — encode, decode, postselect — and derive their sampling bounds from multinomial error rather than fixing them, since TVD and Bhattacharyya deficit both grow with support size and a constant threshold goes flaky once a program spreads over enough outcomes.
+
+`tests/random_programs.py` generates over the translator's own gate set rather than using `qiskit.random_clifford`, which transpiles to gates the translator has never seen.
+
+See §2.6 of [STATUS.md](STATUS.md) for what each suite pins.
 
 ## Citation
 

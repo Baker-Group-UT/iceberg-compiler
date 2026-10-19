@@ -1,134 +1,57 @@
 """
-iceberg_module.py — Defines the IcebergModule class,
-an instance of an Iceberg quantum code which contains
-n phsyical qubits and k (n-2) logical qubits.
+iceberg_module.py — one encoded patch of the [[n, n-2, 2]] Iceberg code.
 
+`IcebergModule` owns n data qubits plus 2 parity qubits and exposes the logical
+gate set as methods. Qubit roles and the logical-operator convention live in
+`layout.CodeLayout`; physical gate emission (including the flagged
+fault-tolerant gadgets) lives in `physical.FlaggedGates`.
 
-iceberg_module_qiskit.py — Qiskit port of IcebergModule.
+Design of the gate constructions
+--------------------------------
+Every logical operator is weight-2 and shares an anchor with all the others of
+its type: `Xbar_i = X[x_anchor] X[lane_i]` and `Zbar_i = Z[z_anchor] Z[lane_i]`.
+That gives the gate set a Z/X duality which the constructions follow literally:
 
-Defines the IcebergModule class, an instance of an Iceberg quantum code which
-contains n physical qubits and k = (n-2) logical qubits.
+    Z-type ops  anchor on data[z_anchor]  and are built from `cz`
+    X-type ops  anchor on data[x_anchor]  and are built from `x_basis_cz`
 
-Notes on the port:
-- cirq.LineQubit.range(...) is replaced by adding dedicated QuantumRegisters for
-  data and parity qubits within the circuit.
-- Measurement "keys" are emulated by creating ClassicalRegisters with those names.
-- The SharedInt `ids` is still used to name new ancilla registers and flag cregs,
-  and is incremented consistently.
+So S/CZ/RZ/RZZ are Z-type, SX/XCX/RX are X-type, and each X-type construction is
+its Z-type partner with (z_anchor, cz) replaced by (x_anchor, x_basis_cz). Using
+the wrong anchor yields a gate that happens to be correct at k=2 and is silently
+wrong beyond it, because the two anchors differ by the patch-wide map C_A (see
+`layout`); that was the origin of the old k=2-only `SX` and `XCX` special cases.
+
+For the whole-patch Hadamard, C_A is realized by physically swapping the two
+anchors, so `HH` is transversal H plus one SWAP at any n.
 """
 
-from logging import warning
-from typing import Collection, Iterable
+from __future__ import annotations
 
-from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister
+from logging import warning
+from typing import Collection
+
+from qiskit import QuantumCircuit, QuantumRegister
 
 from .base import CircuitClass
+from .layout import CodeLayout
+from .physical import FlaggedGates, measure_many
 from .utils import SharedInt, rand_clifford_angles
 
 SWAP_GATE_ALLOWED = True
 BARRIERS = True
 
-def _ensure_creg(circ: QuantumCircuit, name: str, size: int = 1) -> ClassicalRegister:
-    """
-    Get or create a ClassicalRegister with the given name and size.
-    If it already exists and the size matches, reuse it; otherwise create a new one.
-    """
-    for creg in circ.cregs:
-        if creg.name == name:
-            if len(creg) != size:
-                raise ValueError(f"Existing creg '{name}' has size {len(creg)} != {size}")
-            return creg
-    creg = ClassicalRegister(size, name=name)
-    circ.add_register(creg)
-    return creg
-
-
-def _measure_one(circ: QuantumCircuit, q, creg_name: str):
-    """
-    Measure a single qubit into a 1-bit ClassicalRegister named `creg_name`.
-    """
-    creg = _ensure_creg(circ, creg_name, 1)
-    circ.measure(q, creg[0])
-
-
-def _measure_many(circ: QuantumCircuit, qubits: Iterable, creg_name: str):
-    """
-    Measure a list of qubits into a ClassicalRegister named `creg_name`
-    of matching length, mapping qubit i -> bit i (left-to-right as provided).
-    """
-    qubits = list(qubits)
-    creg = _ensure_creg(circ, creg_name, len(qubits))
-    circ.measure(qubits, creg)  # Qiskit supports list-to-creg measure
-
-
-def _add_flag_ancillas(circ: QuantumCircuit, ids: SharedInt, count: int = 2) -> QuantumRegister:
-    """
-    Allocate `count` ancilla qubits in a new QuantumRegister named with the current `ids`.
-    Increments `ids` by `count`.
-    """
-    qreg = QuantumRegister(count, name=f"flag_{int(ids)}")
-    circ.add_register(qreg)
-    ids += count
-    return qreg
-
-
-def _physical_two_qubit_gate(
-    circuit: QuantumCircuit,
-    ids: SharedInt,
-    i,  # Qubit
-    j,  # Qubit
-    gate: str,
-    fault_tolerant: bool = True,
-):
-    """
-    Apply a CZ or CNOT gate between physical qubits i and j.
-    In FT mode, use a flagged construction with two temporary ancillas (freshly allocated).
-    """
-    if gate not in ("CZ", "CNOT"):
-        raise ValueError("gate must be 'CZ' or 'CNOT'")
-
-    if fault_tolerant:
-        flag_anc = _add_flag_ancillas(circuit, ids, 2)
-        a0, a1 = flag_anc[0], flag_anc[1]
-
-        circuit.h(a1)
-        circuit.cx(i, a0)
-        if gate == "CZ":
-            circuit.cx(a1, j)
-        else:
-            circuit.cz(a1, j)
-
-        if gate == "CZ":
-            circuit.cz(i, j)
-        else:
-            circuit.cx(i, j)
-
-        circuit.cz(a1, i)
-        circuit.cx(i, a0)
-
-        if gate == "CZ":
-            circuit.cx(a1, j)
-        else:
-            circuit.cz(a1, j)
-
-        circuit.h(a1)
-
-        _measure_one(circuit, a0, f"flag{int(ids) - 2}")
-        _measure_one(circuit, a1, f"flag{int(ids) - 1}")
-    else:
-        if gate == "CZ":
-            circuit.cz(i, j)
-        else:
-            circuit.cx(i, j)
-
 
 class IcebergModule(CircuitClass):
     """
-    [[n, n-2, 2]] Iceberg error-detection code, representing a single encoded module.
+    A single [[n, n-2, 2]] Iceberg error-detection patch.
 
-    Qubit layout per module (Qiskit registers created per instance):
-      - data:   n qubits  (data[0] and data[-1] act as ancillas in some protocols)
-      - parity: 2 qubits  (parity[0] = X-type parity ancilla, parity[1] = Z-type parity ancilla)
+    Registers created per instance:
+      - data:   n qubits — carries the k = n-2 logical qubits plus the two
+                anchors, `data[layout.x_anchor]` and `data[layout.z_anchor]`,
+                which are the shared support of the logical X and Z operators.
+      - parity: 2 qubits — the syndrome ancillas used by `decode`.
+
+    Logical qubits are addressed by lane index 0 .. k-1.
     """
 
     def __init__(
@@ -138,35 +61,70 @@ class IcebergModule(CircuitClass):
         ids: SharedInt,
         initialize: str | None = None,
     ):
-        if n & 1:
-            raise ValueError("n must be even")
-        self.n = n
-        self.k = n - 2
+        self.layout = CodeLayout(n)
         self._ids = ids
         self.circuit = circuit
         self._encoded = False
 
-        # Allocate registers dedicated to this module
         self._data = QuantumRegister(self.n, name=f"data_{int(ids)}")
         circuit.add_register(self._data)
-
         self._parity = QuantumRegister(2, name=f"parity_{int(ids)}")
         circuit.add_register(self._parity)
         ids += 1
 
-        # For convenience, make these lists of qubit references (indexable like before)
         self.data_qubits = list(self._data)
         self.parity_qubits = list(self._parity)
 
         if initialize is not None:
             self.encode(initialize)
 
-    # --- Initialization / encoding / decoding ---
+    # --- shape and qubit roles ---
+
+    @property
+    def n(self) -> int:
+        """Physical data qubits in the patch."""
+        return self.layout.n
+
+    @property
+    def k(self) -> int:
+        """Logical qubits (lanes) in the patch."""
+        return self.layout.k
+
+    @property
+    def x_anchor(self) -> object:
+        """Data qubit shared by every logical X operator."""
+        return self.data_qubits[self.layout.x_anchor]
+
+    @property
+    def z_anchor(self) -> object:
+        """Data qubit shared by every logical Z operator."""
+        return self.data_qubits[self.layout.z_anchor]
+
+    def lane(self, i: int) -> object:
+        """Data qubit carrying logical qubit `i`."""
+        return self.data_qubits[self.layout.lane(i)]
+
+    def gates(self, fault_tolerant: bool = False) -> FlaggedGates:
+        """Physical two-qubit gate emitter for this patch's circuit."""
+        return FlaggedGates(
+            self.circuit,
+            self._ids,
+            fault_tolerant=fault_tolerant,
+            allow_swap=SWAP_GATE_ALLOWED,
+        )
+
+    @staticmethod
+    def _as_lanes(i: int | Collection[int]) -> list[int]:
+        return [i] if isinstance(i, int) else list(i)
+
+    # --- initialization / encoding / decoding ---
 
     def encode(self, initialize: str | None = None):
         """
-        Initialize the module into the |initialize_L> state.
-        Accepts a binary string of length k (e.g., "00" or "0+"). Defaults to all 0s.
+        Initialize the patch into |initialize>_L.
+
+        Accepts a binary string of length k (e.g. "00" or "0+"); defaults to all
+        zeros, prepared as the n-qubit GHZ state (|0^n> + |1^n>)/sqrt(2).
         """
         if self._encoded:
             warning(f"{self.__class__.__name__} is already encoded")
@@ -174,7 +132,9 @@ class IcebergModule(CircuitClass):
 
         if initialize is None:
             initialize = "0" * self.k
-        elif (initialize.count("0") + initialize.count("+") != self.k) or (len(initialize) != self.k):
+        elif (initialize.count("0") + initialize.count("+") != self.k) or (
+            len(initialize) != self.k
+        ):
             raise ValueError("Invalid initialization string")
 
         self._encoded = True
@@ -183,25 +143,22 @@ class IcebergModule(CircuitClass):
             warning(f"{self.__class__.__name__}: + state initialization not implemented")
             return
 
-        # Default: |0^k> encoding via GHZ-like fanout across data qubits
         self.circuit.h(self.data_qubits[0])
-        for i in range(0, self.n - 1):
+        for i in range(self.n - 1):
             self.circuit.cx(self.data_qubits[i], self.data_qubits[i + 1])
-
 
     def decode(self, key_prefix: str = ""):
         """
-        Measure both parity ancilla qubits:
-          - {prefix}anc0 = X-type parity
-          - {prefix}anc1 = Z-type parity
+        Measure both stabilizers into the parity register.
+
+        parity[0] takes the Z^{\\otimes n} syndrome (data parity), parity[1] the
+        X^{\\otimes n} syndrome. Any 1 in the register means a detected error.
         """
-        # X-type parity (CNOT from each data into parity_qubits[0])
         for dq in self.data_qubits:
             self.circuit.cx(dq, self.parity_qubits[0])
         if BARRIERS:
             self.BARRIER()
 
-        # Z-type parity: H, CX to parity[1], H (on data)
         for dq in self.data_qubits:
             self.circuit.h(dq)
             self.circuit.cx(dq, self.parity_qubits[1])
@@ -209,332 +166,296 @@ class IcebergModule(CircuitClass):
         if BARRIERS:
             self.BARRIER()
 
-        _measure_many(self.circuit, self.parity_qubits, f"m_parity_{key_prefix}")
+        measure_many(self.circuit, self.parity_qubits, f"m_parity_{key_prefix}")
+
+    #: CNOT order of `syndrome_round` at n = 4, as (check, data index). "Z" is parity[0], which
+    #: collects Z^{\otimes 4} (data controls it); "X" is parity[1], prepared and read in the X
+    #: basis, which collects X^{\otimes 4} (it controls the data). An exhaustive search over the
+    #: 840 interleavings that measure both checks (72 qualify; 2026-10-10) picked one in which
+    #: every single fault inside the round either flips one of its two outcomes or leaves no
+    #: logical error. The naive order -- Z check, then X check -- has two hook faults (an ancilla
+    #: error spreading to two data qubits: a weight-2 logical operator) that do neither.
+    ROUND_SCHEDULE_4 = (("Z", 0), ("X", 0), ("X", 1), ("Z", 1),
+                        ("Z", 2), ("X", 2), ("X", 3), ("Z", 3))
+
+    def syndrome_round(self, key: str):
+        """
+        One mid-circuit measurement of both stabilizers into a new register `key`.
+
+        Uses the patch's two parity qubits without resetting them: in the noiseless circuit
+        every check reads 0, which leaves the ancilla in |0>, the state the next round (and the
+        final `decode`) expects; under noise an ancilla flip persists into later outcomes,
+        which a decoder reading the whole record sees. Fault-tolerant at n = 4 (see
+        `ROUND_SCHEDULE_4`); other code sizes are not implemented.
+        """
+        if self.n != 4:
+            raise NotImplementedError("syndrome_round is implemented for n = 4 only")
+        z_check, x_check = self.parity_qubits
+        self.circuit.h(x_check)
+        for check, index in self.ROUND_SCHEDULE_4:
+            data = self.data_qubits[index]
+            if check == "Z":
+                self.circuit.cx(data, z_check)
+            else:
+                self.circuit.cx(x_check, data)
+        self.circuit.h(x_check)
+        measure_many(self.circuit, self.parity_qubits, key)
 
     def measure(self, key: str):
-        """
-        Measure the data qubits into a classical register labeled `key`.
-        """
-        _measure_many(self.circuit, self.data_qubits, key)
+        """Measure the data qubits into a classical register named `key`."""
+        measure_many(self.circuit, self.data_qubits, key)
 
-    # --- Logical Paulis ---
+    # --- logical Paulis ---
 
     def X(self, i: int | Collection[int]):
-        """
-        Apply the logical X gate to logical qubit(s) `i`.
-        """
-        self._apply_pauli(i, gate="X", target_ancilla=self.data_qubits[0])
+        """Apply logical X to lane(s) `i`."""
+        self._apply_pauli(i, self.circuit.x, self.x_anchor)
 
     def Z(self, i: int | Collection[int]):
+        """Apply logical Z to lane(s) `i`."""
+        self._apply_pauli(i, self.circuit.z, self.z_anchor)
+
+    def _apply_pauli(self, i, emit, anchor):
         """
-        Apply the logical Z gate to logical qubit(s) `i`.
+        Xbar_i = X[x_anchor] X[lane_i], so an odd number of lanes also flips the
+        anchor; an even number leaves it alone because the anchor factors cancel.
         """
-        self._apply_pauli(i, gate="Z", target_ancilla=self.data_qubits[-1])
+        lanes = self.layout.validate_lanes(self._as_lanes(i))
+        if len(lanes) % 2:
+            emit(anchor)
+        for j in lanes:
+            emit(self.lane(j))
 
-    def _apply_pauli(self, i, gate: str, target_ancilla):
-        if isinstance(i, int):
-            i = [i]
-        if any(j < 0 or j >= self.k for j in i):
-            raise ValueError("Index out of range")
-        if len(set(i)) != len(i):
-            raise ValueError("Duplicate indices")
-
-        # odd parity of selected logicals -> also flip target ancilla
-        if len(i) % 2:
-            if gate == "X":
-                self.circuit.x(target_ancilla)
-            elif gate == "Z":
-                self.circuit.z(target_ancilla)
-            else:
-                raise ValueError("gate must be 'X' or 'Z'")
-
-        for j in i:
-            q = self.data_qubits[j + 1]
-            if gate == "X":
-                self.circuit.x(q)
-            else:
-                self.circuit.z(q)
-
-    # --- Clifford / 2-qubit logical ops ---
+    # --- single-lane Cliffords ---
 
     def S(self, i: int | Collection[int], fault_tolerant: bool = False):
         """
-        Apply the logical S gate to logical qubit(s) `i`.
+        Apply logical S to lane(s) `i`.
+
+        S = exp(-i pi/4 Zbar_i) up to phase, and Zbar_i = Z[z_anchor] Z[lane_i],
+        so this is the standard S-S-CZ realization of a two-qubit ZZ(pi/2)
+        rotation on the Z-type support.
         """
-        if isinstance(i, int):
-            i = [i]
-        for j in i:
-            if j < 0 or j >= self.k:
-                raise ValueError("Index out of range")
-        for j in i:
-            bottom_ancilla = self.data_qubits[-1]
-            data_qubit = self.data_qubits[j + 1]
-            self.circuit.s(bottom_ancilla)
-            _physical_two_qubit_gate(self.circuit, self._ids, data_qubit, bottom_ancilla, "CZ", fault_tolerant)
-            self.circuit.s(data_qubit)
+        gates = self.gates(fault_tolerant)
+        for j in self.layout.validate_lanes(self._as_lanes(i)):
+            self.circuit.s(self.z_anchor)
+            gates.cz(self.lane(j), self.z_anchor)
+            self.circuit.s(self.lane(j))
 
     def SX(self, i: int | Collection[int], fault_tolerant: bool = False):
         """
-        Apply the logical SX gate to logical qubit(s) `i`.
+        Apply logical SX to lane(s) `i`.
 
-        Sequence:
-            H on i
-            SX on bottom ancilla
-            CX from i to bottom ancilla
-            S on i
-            H on i
+        The X-type dual of `S`: SX = exp(-i pi/4 Xbar_i) with Xbar_i anchored on
+        `x_anchor`, realized as SX-SX-x_basis_cz. Same cost as `S` plus the two
+        Hadamards inside `x_basis_cz`.
         """
-        if isinstance(i, int):
-            i = [i]
-        for j in i:
-            if j < 0 or j >= self.k:
-                raise ValueError("Index out of range")
-        for j in i:
-            bottom_ancilla = self.data_qubits[-1]
-            data_qubit = self.data_qubits[j]
-            if self.k == 2:
-                data_qubit = self.data_qubits[2 - j]
-            # Physical single-qubit operations on the data qubit.
-            self.circuit.h(data_qubit)
-            self.circuit.sx(bottom_ancilla)
-            _physical_two_qubit_gate(
-                self.circuit, self._ids, data_qubit, bottom_ancilla, "CNOT", fault_tolerant
-            )
-            self.circuit.s(data_qubit)
-            self.circuit.h(data_qubit)
+        gates = self.gates(fault_tolerant)
+        for j in self.layout.validate_lanes(self._as_lanes(i)):
+            self.circuit.sx(self.x_anchor)
+            gates.x_basis_cz(self.lane(j), self.x_anchor)
+            self.circuit.sx(self.lane(j))
 
     def H(self, i: int | Collection[int], fault_tolerant: bool = False):
-        if isinstance(i, int):
-            i = [i]
-        if any(j < 0 or j >= self.k for j in i):
-            raise ValueError("Index out of range")
-        if len(set(i)) != len(i):
-            raise ValueError("Duplicate indices")
+        """
+        Apply logical H to lane(s) `i`.
 
-        if len(i) == self.k:
-            # Equivalent to HH (Hadamard on all + SWAP(1,2) for n=4)
-            for q in self.data_qubits:
-                self.circuit.h(q)
-            if fault_tolerant:
-                # Operate on the *middle* pair (1,2) for n=4 using flagged CNOT sandwich
-                _physical_two_qubit_gate(self.circuit, self._ids, self.data_qubits[1], self.data_qubits[2], "CNOT", True)
-                _physical_two_qubit_gate(self.circuit, self._ids, self.data_qubits[2], self.data_qubits[1], "CNOT", True)
-                _physical_two_qubit_gate(self.circuit, self._ids, self.data_qubits[1], self.data_qubits[2], "CNOT", True)
-            else:
-                self.circuit.swap(self.data_qubits[1], self.data_qubits[2])
+        A Hadamard has to move a lane's support between the two anchors, so
+        unlike the other single-lane Cliffords it needs a three-qubit gadget
+        (4 two-qubit gates, 7 single-qubit gates, independent of n).
+
+        Hadamards on *every* lane are much cheaper as one patch-wide operation,
+        so that case is routed to `HH`.
+        """
+        lanes = self.layout.validate_lanes(self._as_lanes(i))
+        if len(lanes) == self.k:
+            self.HH(fault_tolerant=fault_tolerant)
             return
 
-        # Per-qubit H with ancilla interactions
-        for j in i:
-            top_ancilla = self.data_qubits[0]
-            data_qubit = self.data_qubits[j + 1]
-            bottom_ancilla = self.data_qubits[-1]
-
-            _physical_two_qubit_gate(self.circuit, self._ids, data_qubit, bottom_ancilla, "CZ", fault_tolerant)
-            self.circuit.h(top_ancilla)
-            self.circuit.h(data_qubit)
-            _physical_two_qubit_gate(self.circuit, self._ids, top_ancilla, data_qubit, "CZ", fault_tolerant)
-            self.circuit.h(data_qubit)
-            _physical_two_qubit_gate(self.circuit, self._ids, top_ancilla, data_qubit, "CZ", fault_tolerant)
-            self.circuit.h(top_ancilla)
-            self.circuit.h(data_qubit)
-            _physical_two_qubit_gate(self.circuit, self._ids, data_qubit, bottom_ancilla, "CZ", fault_tolerant)
-            self.circuit.x(top_ancilla)
-            self.circuit.z(bottom_ancilla)
+        gates = self.gates(fault_tolerant)
+        for j in lanes:
+            lane = self.lane(j)
+            gates.cz(lane, self.z_anchor)
+            self.circuit.h(self.x_anchor)
+            self.circuit.h(lane)
+            gates.cz(self.x_anchor, lane)
+            self.circuit.h(lane)
+            gates.cz(self.x_anchor, lane)
+            self.circuit.h(self.x_anchor)
+            self.circuit.h(lane)
+            gates.cz(lane, self.z_anchor)
+            self.circuit.x(self.x_anchor)
+            self.circuit.z(self.z_anchor)
 
     def HH(self, fault_tolerant: bool = False):
         """
-        Apply an HH operation to this Iceberg module (n=4 only).
-        Equivalent to H on all data qubits + SWAP(1,2).
+        Apply logical H to every lane at once: n Hadamards and one SWAP.
+
+        Transversal H is *not* a patch-wide logical Hadamard on its own — it maps
+        Xbar_i to the product of Zbar_j over j != i, i.e. it is H^k composed with
+        the patch-wide map C_A of `layout`. C_A is realized by exchanging the two
+        anchors, so transversal H followed by SWAP(x_anchor, z_anchor) is exactly
+        H^k for every even n.
+
+        At k=2, C_A is the lane permutation (0 1), which is why swapping the two
+        *lane* qubits also worked there; that shortcut does not generalize.
+
+        The anchor exchange is a relabeling, so it is not flag-protected even in
+        fault-tolerant mode; `fault_tolerant` only reaches the CNOT decomposition
+        used when `SWAP_GATE_ALLOWED` is off.
         """
-        if self.n != 4:
-            raise ValueError("HH only implemented for n=4")
         for q in self.data_qubits:
             self.circuit.h(q)
-        if not SWAP_GATE_ALLOWED:
-            _physical_two_qubit_gate(self.circuit, self._ids, self.data_qubits[1], self.data_qubits[2], "CNOT", fault_tolerant)
-            _physical_two_qubit_gate(self.circuit, self._ids, self.data_qubits[2], self.data_qubits[1], "CNOT", fault_tolerant)
-            _physical_two_qubit_gate(self.circuit, self._ids, self.data_qubits[1], self.data_qubits[2], "CNOT", fault_tolerant)
-        else:
-            self.circuit.swap(self.data_qubits[1], self.data_qubits[2])
+        self.gates(fault_tolerant).swap(self.x_anchor, self.z_anchor)
+
+    # --- two-lane Cliffords ---
 
     def CNOT(self, i: int, j: int, fault_tolerant: bool = False):
         """
-        Apply a logical CNOT from qubit `i` -> `j`.
-        - Faulty mode (n=4): direct CX-based shortcut used (as in the original)
-        - Standard mode: 4-step logical CNOT sequence via ancillas
-        """
-        if i == j:
-            raise ValueError("control and target must differ")
-        if i < 0 or i >= self.k or j < 0 or j >= self.k:
-            raise ValueError("Index out of range")
+        Apply logical CNOT from lane `i` to lane `j`.
 
-        if not fault_tolerant and self.n == 4:
-            # Shortcut from original implementation
-            self.circuit.cx(self.data_qubits[i + 1], self.data_qubits[0])
-            self.circuit.cx(self.data_qubits[-1], self.data_qubits[0])
-            self.circuit.cx(self.data_qubits[-1], self.data_qubits[j + 1])
-            self.circuit.cx(self.data_qubits[i + 1], self.data_qubits[j + 1])
-        else:
-            top_ancilla = self.data_qubits[0]
-            control_qubit = self.data_qubits[i + 1]
-            target_qubit = self.data_qubits[j + 1]
-            bottom_ancilla = self.data_qubits[-1]
-            _physical_two_qubit_gate(self.circuit, self._ids, control_qubit, top_ancilla, "CNOT", fault_tolerant)
-            _physical_two_qubit_gate(self.circuit, self._ids, bottom_ancilla, top_ancilla, "CNOT", fault_tolerant)
-            _physical_two_qubit_gate(self.circuit, self._ids, bottom_ancilla, target_qubit, "CNOT", fault_tolerant)
-            _physical_two_qubit_gate(self.circuit, self._ids, control_qubit, target_qubit, "CNOT", fault_tolerant)
+        Four CNOTs between the control's Z-type support and the target's X-type
+        support, which is the general recipe for a logical CNOT between two
+        weight-2 logical qubits. Cost is independent of n.
+        """
+        self._require_distinct_lanes(i, j)
+        gates = self.gates(fault_tolerant)
+        gates.cx(self.lane(i), self.x_anchor)
+        gates.cx(self.z_anchor, self.x_anchor)
+        gates.cx(self.z_anchor, self.lane(j))
+        gates.cx(self.lane(i), self.lane(j))
 
     def CZ(self, i: int, j: int, fault_tolerant: bool = False):
         """
-        Apply a logical CZ gate between qubit `i` and `j`.
-        """
-        if i == j:
-            raise ValueError("i and j must differ")
-        if i < 0 or i >= self.k or j < 0 or j >= self.k:
-            raise ValueError("Index out of range")
+        Apply logical CZ between lanes `i` and `j`.
 
-        control_qubit = self.data_qubits[i + 1]
-        target_qubit = self.data_qubits[j + 1]
-        bottom_ancilla = self.data_qubits[-1]
-        _physical_two_qubit_gate(self.circuit, self._ids, control_qubit, target_qubit, "CZ", fault_tolerant)
-        self.circuit.z(bottom_ancilla)
-        _physical_two_qubit_gate(self.circuit, self._ids, control_qubit, bottom_ancilla, "CZ", fault_tolerant)
-        _physical_two_qubit_gate(self.circuit, self._ids, target_qubit, bottom_ancilla, "CZ", fault_tolerant)
+        CZ = S_i S_j exp(i pi/4 Zbar_i Zbar_j) up to phase. Expanding each factor
+        on the Z-type supports, the anchor's two S gates fuse into a single Z and
+        the lane S gates cancel against the ZZ rotation, leaving three CZs.
+        """
+        self._require_distinct_lanes(i, j)
+        from translator import explore_switches
+
+        if explore_switches.TRANSVERSAL_INTRA_TWO_QUBIT and self.k == 2:
+            for q in self.data_qubits:
+                self.circuit.s(q)
+            self.circuit.z(self.lane(i))
+            self.circuit.z(self.lane(j))
+            return
+        gates = self.gates(fault_tolerant)
+        gates.cz(self.lane(i), self.lane(j))
+        self.circuit.z(self.z_anchor)
+        gates.cz(self.lane(i), self.z_anchor)
+        gates.cz(self.lane(j), self.z_anchor)
 
     def XCX(self, i: int, j: int, fault_tolerant: bool = False):
         """
-        Apply a logical XCX gate between qubit `i` and `j`.
-        For n=4, use an optimized intra-patch sequence:
-            H2 H3
-            CX(2,1) Z3
-            CX(3,1)
-            CZ(3,2)
-            H2 H3
-        Otherwise, fall back to HH -> CZ -> HH.
+        Apply logical XCX between lanes `i` and `j` — CZ conjugated by H on both.
+
+        The X-type dual of `CZ`, term for term: `z_anchor` becomes `x_anchor`,
+        `cz` becomes `x_basis_cz`, and the fused anchor Z becomes an X. The two
+        Hadamards of the anchor's `x_basis_cz` pair cancel between the two anchor
+        terms, so the cost is 3 two-qubit gates and 5 single-qubit gates at any n.
         """
-        if i == j:
-            raise ValueError("i and j must differ")
-        if i < 0 or i >= self.k or j < 0 or j >= self.k:
-            raise ValueError("Index out of range")
+        self._require_distinct_lanes(i, j)
+        from translator import explore_switches
 
-        if self.n == 4 and self.k == 2:
-            if set((i, j)) != {0, 1}:
-                raise ValueError("n=4 XCX expects logical indices {0,1}")
-            q1 = self.data_qubits[1]
-            q2 = self.data_qubits[2]
-            q3 = self.data_qubits[3]
-            self.circuit.h(q2)
-            self.circuit.h(q3)
-            _physical_two_qubit_gate(self.circuit, self._ids, q2, q1, "CNOT", fault_tolerant)
-            self.circuit.z(q3)
-            _physical_two_qubit_gate(self.circuit, self._ids, q3, q1, "CNOT", fault_tolerant)
-            _physical_two_qubit_gate(self.circuit, self._ids, q3, q2, "CZ", fault_tolerant)
-            self.circuit.h(q2)
-            self.circuit.h(q3)
+        if explore_switches.TRANSVERSAL_INTRA_TWO_QUBIT and self.k == 2:
+            for q in self.data_qubits:
+                self.circuit.sx(q)
+            self.circuit.x(self.lane(i))
+            self.circuit.x(self.lane(j))
             return
+        gates = self.gates(fault_tolerant)
+        self.circuit.x(self.x_anchor)
+        self.circuit.h(self.x_anchor)
+        gates.cx(self.x_anchor, self.lane(i))
+        gates.cx(self.x_anchor, self.lane(j))
+        self.circuit.h(self.x_anchor)
+        gates.x_basis_cz(self.lane(i), self.lane(j))
 
-        self.HH(fault_tolerant=fault_tolerant)
-        self.CZ(i, j, fault_tolerant=fault_tolerant)
-        self.HH(fault_tolerant=fault_tolerant)
+    def SWAP(self, i: int, j: int, fault_tolerant: bool = False):
+        """
+        Apply logical SWAP between lanes `i` and `j`.
 
-    # --- Parametric rotations ---
+        Exchanging two lane qubits exchanges both Xbar and Zbar for those lanes
+        and touches nothing else, so a bare physical SWAP is a logical SWAP for
+        any n and any lane pair. Fault-tolerant mode instead uses three logical
+        CNOTs, which keeps every two-qubit gate flag-protected.
+        """
+        self._require_distinct_lanes(i, j)
+        if not fault_tolerant:
+            self.gates(fault_tolerant).swap(self.lane(i), self.lane(j))
+            return
+        self.CNOT(i, j, fault_tolerant=True)
+        self.CNOT(j, i, fault_tolerant=True)
+        self.CNOT(i, j, fault_tolerant=True)
 
-    def _RZZ(
-        self,
-        i: int,
-        j: int,
-        rads: float,
-        fault_tolerant: bool = False,
-        two_qubit: bool = True,
-    ):
+    def _require_distinct_lanes(self, i: int, j: int) -> None:
+        self.layout.validate_lane(i)
+        self.layout.validate_lane(j)
         if i == j:
-            raise ValueError("i and j must differ")
-        if (i < 0 or i >= self.k or
-            (two_qubit and (j < 0 or j >= self.k)) or
-            (not two_qubit and j != self.k)):
-            raise ValueError("Index out of range")
+            raise ValueError("lane indices must differ")
 
-        control_qubit = self.data_qubits[i + 1]
-        target_qubit = self.data_qubits[j + 1]
-        _physical_two_qubit_gate(self.circuit, self._ids, control_qubit, target_qubit, "CNOT", fault_tolerant)
-        self.circuit.rz(rads, target_qubit)
-        _physical_two_qubit_gate(self.circuit, self._ids, control_qubit, target_qubit, "CNOT", fault_tolerant)
+    # --- parametric rotations ---
+
+    def RZ(self, i: int, rads: float, fault_tolerant: bool = False):
+        """Apply logical RZ(rads) = exp(-i rads Zbar_i / 2) to lane `i`."""
+        self.layout.validate_lane(i)
+        self._pauli_rotation(self.lane(i), self.z_anchor, fault_tolerant, x_type=False, rads=rads)
+
+    def RX(self, i: int, rads: float, fault_tolerant: bool = False):
+        """Apply logical RX(rads) = exp(-i rads Xbar_i / 2) to lane `i`."""
+        self.layout.validate_lane(i)
+        self._pauli_rotation(self.lane(i), self.x_anchor, fault_tolerant, x_type=True, rads=rads)
 
     def RZZ(self, i: int, j: int, rads: float, fault_tolerant: bool = False):
         """
-        Apply a logical RZZ(i, j) = exp(-i rads Z_i Z_j / 2)
-        """
-        self._RZZ(i, j, rads, fault_tolerant=fault_tolerant, two_qubit=True)
+        Apply logical RZZ(rads) = exp(-i rads Zbar_i Zbar_j / 2).
 
-    def RZ(self, i: int, rads: float, fault_tolerant: bool = False):
+        The two z_anchor factors of Zbar_i Zbar_j cancel, so this is a plain
+        two-qubit ZZ rotation on the lane qubits.
         """
-        Apply a logical RZ(i) = exp(-i rads Z_i / 2)
-        """
-        self._RZZ(i, self.k, rads, fault_tolerant=fault_tolerant, two_qubit=False)
+        self._require_distinct_lanes(i, j)
+        self._pauli_rotation(self.lane(i), self.lane(j), fault_tolerant, x_type=False, rads=rads)
 
-    def RX(self, i: int, rads: float, fault_tolerant: bool = False):
+    def _pauli_rotation(self, a, b, fault_tolerant: bool, *, x_type: bool, rads: float):
         """
-        # Apply a logical RX(i) = exp(-i rads X_i / 2) using H RZ H.
-        """
-        if i < 0 or i >= self.k:
-            raise ValueError("Index out of range")
-        # self.circuit.h(0)
-        # self.circuit.h(i)
-        # self._RZZ(0, i + 1, rads, fault_tolerant=fault_tolerant, two_qubit=False)
-        _physical_two_qubit_gate(self.circuit, self._ids, self.data_qubits[i + 1], self.data_qubits[0], "CNOT", fault_tolerant)
-        self.circuit.rx(rads, self.data_qubits[i + 1])
-        _physical_two_qubit_gate(self.circuit, self._ids, self.data_qubits[i + 1], self.data_qubits[0], "CNOT", fault_tolerant)
-        # self.circuit.h(0)
-        # self.circuit.h(i)
+        exp(-i rads P_a P_b / 2) as CNOT - single-qubit rotation - CNOT.
 
-    # --- Misc helpers ---
+        For ZZ the rotation sits on the CNOT's target; the XX case is the same
+        circuit conjugated by Hadamards, which reverses the CNOT and turns the rz
+        into an rx — so emitting CNOT(a -> b) works for both and only the qubit
+        carrying the rotation changes.
+        """
+        gates = self.gates(fault_tolerant)
+        gates.cx(a, b)
+        if x_type:
+            self.circuit.rx(rads, a)
+        else:
+            self.circuit.rz(rads, b)
+        gates.cx(a, b)
+
+    # --- misc helpers ---
 
     def initialize_arbitrary_state(self, indices: Collection[int] | None = None):
         """
-        Prepare Haar-random states on `indices` logical qubits **before** calling `encode()`.
-        If indices is None, initializes all logical qubits.
+        Prepare Haar-random single-qubit states on `indices` lanes.
+
+        Must be called *before* `encode()`: it acts on the bare lane qubits.
         """
         if indices is None:
-            indices = range(self.k)
+            indices = self.layout.lanes()
         elif isinstance(indices, int):
             indices = [indices]
         for j in indices:
             theta, phi = rand_clifford_angles()
-            q = self.data_qubits[j + 1]
+            q = self.lane(j)
             self.circuit.rz(phi, q)
             self.circuit.h(q)
             self.circuit.rz(theta, q)
             self.circuit.h(q)
 
     def BARRIER(self):
-        """
-        Insert a visual barrier across all physical qubits in the module.
-        """
-        # Use Qiskit's built-in barrier across this module's qubits.
+        """Insert a barrier across every physical qubit of this patch."""
         self.circuit.barrier(*(self.data_qubits + self.parity_qubits))
-
-    def SWAP(self, i: int, j: int, fault_tolerant: bool = False):
-        """
-        Apply a logical SWAP between qubits `i` and `j`.
-        - Faulty mode (n=4, {0,1}): shortcut direct SWAP of data[1] <-> data[2]
-        - Default: FT SWAP via 3 logical CNOTs
-        """
-        if i == j:
-            raise ValueError("Cannot swap a qubit with itself")
-        if i < 0 or i >= self.k or j < 0 or j >= self.k:
-            raise ValueError("Index out of range")
-        if i > j:
-            i, j = j, i
-
-        if not fault_tolerant and self.n == 4:
-            if not SWAP_GATE_ALLOWED:
-                self.circuit.cx(self.data_qubits[1], self.data_qubits[2])
-                self.circuit.cx(self.data_qubits[2], self.data_qubits[1])
-                self.circuit.cx(self.data_qubits[1], self.data_qubits[2])
-            else:
-                self.circuit.swap(self.data_qubits[1], self.data_qubits[2])
-        else:
-            self.CNOT(i, j, fault_tolerant=fault_tolerant)
-            self.CNOT(j, i, fault_tolerant=fault_tolerant)
-            self.CNOT(i, j, fault_tolerant=fault_tolerant)
