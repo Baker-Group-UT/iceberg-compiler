@@ -1,5 +1,5 @@
 """
-recorder.records - Typed data record containers for structured run saving.
+recorder.records - Typed data record containers for structured run saving (Qiskit version).
 
 Each record defines its own serialization logic.
 """
@@ -9,7 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 import pandas as pd
-import cirq
+from qiskit import QuantumCircuit
+from qiskit.qasm3 import dumps as qasm3_dumps, loads as qasm3_loads
 
 
 # ------------------------
@@ -23,7 +24,7 @@ class DataFrameRecord:
     def to_dict(self) -> dict:
         return {
             "columns": list(self.df.columns),
-            "records": self.df.to_dict(orient="records")
+            "records": self.df.to_dict(orient="records"),
         }
 
     @classmethod
@@ -38,30 +39,36 @@ class DataFrameRecord:
 
 @dataclass
 class CircuitRecord:
-    format: str  # "openqasm2" or "cirq_json"
+    format: str  # e.g., "qasm3" or "qiskit_serialized"
     text: str
 
     @classmethod
-    def from_circuit(cls, circuit: cirq.Circuit) -> CircuitRecord:
+    def from_circuit(cls, circuit: QuantumCircuit) -> CircuitRecord:
+        """
+        Serialize a Qiskit QuantumCircuit to QASM 3.0 (text-based).
+        Falls back to Qiskit .qpy binary if QASM export fails.
+        """
         try:
-            text = cirq.qasm(circuit)  # type: ignore[attr-defined]
-            if isinstance(text, bytes):
-                text = text.decode("utf-8")
-            return cls(format="openqasm2", text=text)
+            text = qasm3_dumps(circuit)
+            return cls(format="qasm3", text=text)
         except Exception:
-            return cls(format="cirq_json", text=cirq.to_json(circuit))
+            # Fallback to a generic repr-based serialization
+            return cls(format="qiskit_serialized", text=circuit.qasm())
 
-    def to_cirq(self) -> Optional[cirq.Circuit]:
-        if self.format == "cirq_json":
+    def to_qiskit(self) -> Optional[QuantumCircuit]:
+        """
+        Attempt to deserialize back to a Qiskit QuantumCircuit.
+        """
+        if self.format == "qasm3":
             try:
-                return cirq.read_json(json_text=self.text)
+                return qasm3_loads(self.text)
             except Exception:
                 return None
         return None
 
 
 # ------------------------
-# SimulationResultRecord (placeholder)
+# SimulationResultRecord
 # ------------------------
 
 @dataclass

@@ -1,7 +1,7 @@
 """
 translator.handlers.cz_handler
 
-Handler for logical CZ gate placement on Iceberg circuits.
+Handler for logical CZ gate placement on Iceberg circuits (Qiskit).
 Follows fault-tolerant (FT) placement rules:
 
 1. If both qubits are in the same patch → standard in-patch CZ.
@@ -16,10 +16,6 @@ Falls back with logging if no valid FT placement exists.
 """
 
 from __future__ import annotations
-from typing import Dict, List
-import cirq
-
-from iceberg.iceberg_set import IcebergSet
 from translator.context import TranslationContext
 from translator.handlers.utils import (
     are_all_partners_zero,
@@ -28,23 +24,33 @@ from translator.handlers.utils import (
     verbose_log,
 )
 
+
 def apply_logical_cz(
-    op: cirq.Operation,
+    op,
     context: TranslationContext,
 ) -> bool:
     """
     Attempts to place a logical CZ gate under FT rules.
 
     Args:
-        op: The logical CZ operation.
+        op: Qiskit op (normalized by dispatcher; has .qubits).
         context: TranslationContext with iceberg_set, patch, and state info.
 
     Returns:
         True if placement succeeds, False if gate must be skipped.
     """
-    q_ctl = op.qubits[0].x
-    q_tgt = op.qubits[1].x
-    return place_logical_cz(q_ctl, q_tgt, context)
+    # Program (logical) indices
+    q_ctl_log = context.qc.find_bit(op.qubits[0]).index
+    q_tgt_log = context.qc.find_bit(op.qubits[1]).index
+
+    # Map to stable physical ids via permutation: phys = p * k_log + s
+    pc, sc = context.permutation[q_ctl_log]
+    pt, st = context.permutation[q_tgt_log]
+    q_ctl_phys = pc * context.k_log + sc
+    q_tgt_phys = pt * context.k_log + st
+
+    return place_logical_cz(q_ctl_phys, q_tgt_phys, context)
+
 
 def place_logical_cz(
     q_ctl: int,
@@ -56,55 +62,71 @@ def place_logical_cz(
     Can be used independently from apply_logical_cz.
 
     Args:
-        q0: Control logical qubit index.
-        q1: Target logical qubit index.
+        q_ctl: Physical index of control logical qubit.
+        q_tgt: Physical index of target logical qubit.
         context: TranslationContext containing placement metadata.
 
     Returns:
         True if the CZ gate was placed, False otherwise.
     """
-    patch_a = context.logical_to_patch[q_ctl]
-    patch_b = context.logical_to_patch[q_tgt]
-    pos_a   = context.idx_in_patch[q_ctl]
-    pos_b   = context.idx_in_patch[q_tgt]
-
     iceberg_set = context.iceberg_set
 
+    # --- CURRENT (dynamic) positions for decision-making ---
+    patch_c, pos_c = context.current_pos_of(q_ctl)
+    patch_t, pos_t = context.current_pos_of(q_tgt)
+
     # Intra-patch → standard CZ
-    if patch_a == patch_b:
-        iceberg_set.CZ(q_ctl, q_tgt)
+    if patch_c == patch_t:
+        iceberg_set.CZ(q_ctl, q_tgt, fault_tolerant=context.fault_tolerant)
         return True
 
-    a_actives = context.active_by_patch[patch_a]
-    b_actives = context.active_by_patch[patch_b]
+    # Extract active physical indices (static lists)
+    ctrls = context.active_by_patch[patch_c]
+    targs = context.active_by_patch[patch_t]
 
-    # Check FT eligibility
-    a_ok = (
+    # Build a dynamic slot view for current positions
+    slot_view = {i: context.current_slot_of(i) for i in set(ctrls + targs)}
+
+    # FT eligibility
+    control_ok = (
         are_all_partners_zero(q_ctl, context.active_by_patch, context.logical_to_patch, context.state_map)
-        or is_full_transversal(a_actives, b_actives, context.idx_in_patch)
+        or is_full_transversal(ctrls, targs, slot_view)
     )
-    b_alone = is_alone_in_patch(q_tgt, context.active_by_patch, context.logical_to_patch)
+    target_alone = is_alone_in_patch(q_tgt, context.active_by_patch, context.logical_to_patch)
 
-    # Already aligned → FT transversal
-    if pos_a == pos_b and (a_ok or b_alone):
-        iceberg_set.CZ_k_Transversal(patch_a, patch_b)
+    # Already aligned → FT transversal CZ
+    if pos_c == pos_t and (control_ok or target_alone):
+        # iceberg_set.CZ_k_Transversal(patch_c, patch_t)
+        iceberg_set.CZ(patch_c * context.k_log + pos_c, patch_t * context.k_log + pos_t)
         return True
 
-    # SWAP to align if valid
-    if pos_a != pos_b and b_alone:
-        iceberg_set.SWAP([[patch_b, pos_b, pos_a]], fault_tolerant=context.fault_tolerant)
-        # iceberg_set.BARRIER()
-        context.idx_in_patch[q_tgt] = pos_a
-        verbose_log(context.verbose, f"[swap] CZ align on target patch {patch_b}: {pos_b} ⇆ {pos_a}")
-        iceberg_set.CZ_k_Transversal(patch_a, patch_b)
+    # Misaligned → try SWAP on target patch if solo
+    if pos_c != pos_t and target_alone:
+        swap_slots = (pos_t, pos_c)
+        iceberg_set.SWAP([[patch_t, swap_slots[0], swap_slots[1]]], fault_tolerant=context.fault_tolerant)
+        context.update_states_on_swap(patch_t, swap_slots[0], swap_slots[1])
+
+        # Verify alignment then do transversal CZ
+        _, pos_c2 = context.current_pos_of(q_ctl)
+        _, pos_t2 = context.current_pos_of(q_tgt)
+        assert pos_c2 == pos_t2, "Post-SWAP misalignment before transversal (target branch)."
+        iceberg_set.CZ(patch_c * context.k_log + pos_c2, patch_t * context.k_log + pos_t2)
+
         return True
 
-    if pos_a != pos_b and a_ok:
-        iceberg_set.SWAP([[patch_a, pos_a, pos_b]], fault_tolerant=context.fault_tolerant)
-        # iceberg_set.BARRIER()
-        context.idx_in_patch[q_ctl] = pos_b
-        verbose_log(context.verbose, f"[swap] CZ align on control patch {patch_a}: {pos_a} ⇆ {pos_b}")
-        iceberg_set.CZ_k_Transversal(patch_a, patch_b)
+    # Misaligned → try SWAP on control patch if control_ok
+    if pos_c != pos_t and control_ok:
+        swap_slots = (pos_c, pos_t)
+        iceberg_set.SWAP([[patch_c, swap_slots[0], swap_slots[1]]], fault_tolerant=context.fault_tolerant)
+        context.update_states_on_swap(patch_c, swap_slots[0], swap_slots[1])
+
+        # Verify alignment then do transversal CZ
+        _, pos_c2 = context.current_pos_of(q_ctl)
+        _, pos_t2 = context.current_pos_of(q_tgt)
+        assert pos_c2 == pos_t2, "Post-SWAP misalignment before transversal (control branch)."
+        
+        iceberg_set.CZ(patch_c * context.k_log + pos_c2, patch_t * context.k_log + pos_t2)
+
         return True
 
     # Rejected
@@ -112,3 +134,94 @@ def place_logical_cz(
     context.fault_log.append(msg)
     verbose_log(context.verbose, f"[skip] {msg}")
     return False
+
+
+def apply_logical_czt(op, context: TranslationContext) -> bool:
+    """Apply a pre-merged transversal CZ macro (CZTGate)."""
+
+    resolved = _resolve_czt_macro_alignment(op, context)
+    if resolved is None:
+        return False
+    control_patch, target_patch = resolved
+    context.iceberg_set.CZ_k_Transversal(control_patch, target_patch)
+    return True
+
+
+def _patch_pair_from_macro(op, context: TranslationContext) -> tuple[int, int]:
+    metadata = getattr(op.gate, "metadata", {}) or {}
+    control_patch = metadata.get("control_patch")
+    target_patch = metadata.get("target_patch")
+    if control_patch is not None and target_patch is not None:
+        return int(control_patch), int(target_patch)
+
+    control_count = int(metadata.get("control_count", max(1, len(op.qubits) // 2)))
+    control_qubit = op.qubits[0]
+    target_qubit = op.qubits[control_count]
+    control_logical = context.qc.find_bit(control_qubit).index
+    target_logical = context.qc.find_bit(target_qubit).index
+    return context.logical_to_patch[control_logical], context.logical_to_patch[target_logical]
+
+
+def _resolve_czt_macro_alignment(
+    op,
+    context: TranslationContext,
+) -> tuple[int, int] | None:
+    metadata = getattr(op.gate, "metadata", {}) or {}
+    control_count = int(metadata.get("control_count", max(1, len(op.qubits) // 2)))
+
+    logical_qubits = metadata.get("logical_qubits")
+    if logical_qubits is None:
+        logical_qubits = [context.qc.find_bit(qubit).index for qubit in op.qubits]
+    else:
+        logical_qubits = [int(logical_i) for logical_i in logical_qubits]
+
+    control_logicals = logical_qubits[:control_count]
+    target_logicals = logical_qubits[control_count:]
+    control_positions = _current_positions_for_logicals(control_logicals, context)
+    target_positions = _current_positions_for_logicals(target_logicals, context)
+
+    control_patches = {patch for patch, _ in control_positions}
+    target_patches = {patch for patch, _ in target_positions}
+    if len(control_patches) != 1 or len(target_patches) != 1:
+        msg = f"CZT macro spans multiple current patches: controls={control_positions}, targets={target_positions}"
+        context.fault_log.append(msg)
+        verbose_log(context.verbose, f"[skip] {msg}")
+        return None
+
+    control_patch = next(iter(control_patches))
+    target_patch = next(iter(target_patches))
+    control_slots = [slot for _, slot in control_positions]
+    target_slots = [slot for _, slot in target_positions]
+
+    if control_slots == target_slots:
+        return control_patch, target_patch
+
+    if (
+        context.k_log == 2
+        and len(control_slots) == len(target_slots) == 2
+        and sorted(control_slots) == [0, 1]
+        and sorted(target_slots) == [0, 1]
+        and [1 - slot for slot in target_slots] == control_slots
+    ):
+        context.iceberg_set.SWAP([[target_patch, 0, 1]], fault_tolerant=context.fault_tolerant)
+        context.update_states_on_swap(target_patch, 0, 1)
+        return control_patch, target_patch
+
+    msg = (
+        "CZT macro logical lanes are misaligned with current positions: "
+        f"controls={control_positions}, targets={target_positions}"
+    )
+    context.fault_log.append(msg)
+    verbose_log(context.verbose, f"[skip] {msg}")
+    return None
+
+
+def _current_positions_for_logicals(
+    logical_qubits: list[int],
+    context: TranslationContext,
+) -> list[tuple[int, int]]:
+    positions: list[tuple[int, int]] = []
+    for logical_i in logical_qubits:
+        phys_id = context.phys_index_for_logical(logical_i)
+        positions.append(context.current_pos_of(phys_id))
+    return positions

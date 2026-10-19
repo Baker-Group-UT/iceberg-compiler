@@ -3,159 +3,94 @@ iceberg_postselect.py - Defines the logic for postselecting iceberg histograms.
 """
 
 from __future__ import annotations
-
 from typing import Dict, List
 
-import cirq
+
 
 __all__ = [
-    "ordered_measurement_keys",
     "iceberg_postselect",
-    "iceberg_kept_mass",
 ]
-
-def ordered_measurement_keys(circuit: cirq.Circuit) -> List[str]:
-    """
-    Return measurement keys in the deterministic order used by
-    ``leakage_sim.estimate_distribution``.
-    """
-    circuit = cirq.synchronize_terminal_measurements(circuit)
-    final_ops = sorted(circuit[-1], key=cirq.measurement_key_name)
-    return [
-        (op.gate.key.name if hasattr(op.gate.key, "name") else op.gate.key)
-        for op in final_ops
-    ]
 
 # ------------------------------------------------------------------
 # Iceberg-specific logic
 # ------------------------------------------------------------------
+
+# Physical 4-qubit → logical 2-qubit map (even-parity codewords only)
 _PHYS2LOGIC = {
     "0000": "00",
     "1111": "00",
-    "0011": "01",
-    "1100": "01",
-    "0101": "10",
-    "1010": "10",
+    "0011": "10",
+    "1100": "10",
+    "0101": "01",
+    "1010": "01",
     "0110": "11",
     "1001": "11",
 }
 
-def iceberg_postselect(
-    dist: Dict[str, float], key_order: List[str]
-) -> Dict[str, float]:
+def split_qiskit_bitstring(
+    bitstring: str,
+    key_order: list[str],
+) -> dict[str, str]:
     """
-    Collapse 4-qubit physical codewords → 2-qubit logical outcomes per Iceberg
-    patch and discard any shot whose ancilla registers are non-zero.
-
-    Expects registers to be named appropriately. 00_anc, 01_anc, ... for ancilla. Data marked as data_ 
+    Split a space-delimited Qiskit bitstring into a dict keyed by register name.
+    Example:
+        '00 10 0101 1111' + ['m_parity_0','m_parity_1','m_data_0','m_data_1']
+        → {'m_parity_0':'00','m_parity_1':'10','m_data_0':'0101','m_data_1':'1111'}
     """
-    logical_dist: Dict[str, float] = {}
+    parts = bitstring.split()
+    if len(parts) != len(key_order):
+        raise ValueError(f"Bitstring/register count mismatch: {len(parts)} vs {len(key_order)}")
+    return dict(zip(key_order, parts))
 
-    anc_cregs = [k for k in key_order if "_anc" in k]
-    data_cregs = sorted(
-        [k for k in key_order if k.startswith("data_")],
-        key=lambda n: int(n.split("_")[-1]),
-    )
 
-    # -- helper: build reg-map for one outcome string -----------------------
-    def _build_regmap(bits_or_blocks: str | list[str]) -> Dict[str, str]:
-        if isinstance(bits_or_blocks, list):  # space-delimited from simulator
-            return dict(zip(key_order, bits_or_blocks))
+# ===================== PUBLIC FUNCTIONS =====================
 
-        regmap: Dict[str, str] = {}
-        pos = 0
-        for k in key_order:
-            n = 1 if "_anc" in k else 4
-            regmap[k] = bits_or_blocks[pos : pos + n]
-            pos += n
-        return regmap
-
-    # -- iterate over Monte-Carlo outcomes ----------------------------------
-    for outcome, p in dist.items():
-        regmap = (
-            _build_regmap(outcome.split(" ")) if " " in outcome else _build_regmap(outcome)
-        )
-
-        # 1. reject leaked ancillas
-        if any(regmap[a] != "0" for a in anc_cregs):
-            continue
-
-        # 2. map data codewords → logical bits
-        logical = ""
-        for dk in data_cregs:  # data_0, data_1, …
-            word = regmap[dk]
-            if word.count("0") % 2:
-                logical = None
-                break
-            mapped = _PHYS2LOGIC.get(word)
-            if mapped is None:
-                logical = None
-                break
-            logical += mapped
-
-        if logical is None:
-            continue
-
-        logical = logical[::-1]  # legacy little-endian ordering
-        logical_dist[logical] = logical_dist.get(logical, 0.0) + p
-
-    Z = sum(logical_dist.values()) or 1.0
-    return {k: v / Z for k, v in logical_dist.items()}
-
-def iceberg_kept_mass(dist: Dict[str, float], key_order: List[str]) -> float:
+# TODO: expand postselect to give more information about percent keywords leaked?
+def iceberg_postselect(dist: Dict[str, float], key_order: List[str]) -> Dict[str, any]:
     """
-    Return the total probability mass retained by Iceberg post-selection
-    (ancillas==0 and valid 4→2 codeword projection), without renormalizing.
+    Qiskit-style postselection.
 
-    `dist` MUST be the distribution *after* removing leakage (i.e., built from
-    raw by dropping outcomes containing '2'), and its values must still be the
-    original (pre-renormalization) probabilities.
+    Args:
+        dist: probability distribution {bitstring: p}.
+        key_order: list of register names in output order.
+
+    Returns:
+        {
+            "logical_dist": normalized logical distribution,
+            "sel_rate": fraction of total probability kept after postselection
+        }
     """
     if not dist:
-        return 0.0
+        return {"logical_dist": {}, "sel_rate": 0.0}
 
-    anc_cregs = [k for k in key_order if "_anc" in str(k)]
-    data_cregs = sorted(
-        [k for k in key_order if str(k).startswith("data_")],
-        key=lambda n: int(str(n).split("_")[-1]),
-    )
+    data_keys = [k for k in key_order if "data" in k]
+    check_zero_keys = [k for k in key_order if ("parity" in k) or ("flag" in k)]
 
-    def _build_regmap(bits_or_blocks: str | list[str]) -> Dict[str, str]:
-        # Simulator sometimes returns space-delimited blocks per key
-        if isinstance(bits_or_blocks, list):
-            return dict(zip(key_order, bits_or_blocks))
-        regmap: Dict[str, str] = {}
-        pos = 0
-        for k in key_order:
-            n = 1 if "_anc" in str(k) else 4
-            regmap[str(k)] = bits_or_blocks[pos : pos + n]
-            pos += n
-        return regmap
+    logical_dist: Dict[str, float] = {}
+    kept_mass = 0.0
+    total_mass = sum(dist.values()) or 1.0
 
-    kept = 0.0
     for outcome, p in dist.items():
-        regmap = (
-            _build_regmap(outcome.split(" "))
-            if " " in outcome
-            else _build_regmap(outcome)
-        )
+        parts = outcome.split()
+        if len(parts) != len(key_order):
+            continue
+        regmap = dict(zip(key_order, parts))
 
-        # 1) ancillas must be 0
-        if any(regmap[str(a)] != "0" for a in anc_cregs):
+        # Reject outcomes with any 1 in parity/flag registers
+        if any("1" in regmap[k] for k in check_zero_keys):
             continue
 
-        # 2) each data block must be a valid codeword with even parity
-        valid = True
-        for dk in data_cregs:
-            word = regmap[str(dk)]
-            if word.count("0") % 2 == 1:
-                valid = False
-                break
-            if _PHYS2LOGIC.get(word) is None:
-                valid = False
-                break
+        try:
+            logical = "".join(_PHYS2LOGIC[regmap[k]] for k in data_keys)
+        except KeyError:
+            continue  # invalid codeword pattern
 
-        if valid:
-            kept += float(p)
+        logical_dist[logical] = logical_dist.get(logical, 0.0) + float(p)
+        kept_mass += float(p)
 
-    return kept
+    # normalize surviving probability
+    Z = sum(logical_dist.values()) or 1.0
+    logical_dist = {k: v / Z for k, v in logical_dist.items()}
+
+    sel_rate = kept_mass / total_mass
+    return logical_dist, sel_rate

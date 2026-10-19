@@ -15,15 +15,22 @@ class SharedInt:
     def __int__(self):
         return self.value
 
+    # >>> add this: range(), slicing, and many CPython APIs use __index__, not __int__
+    def __index__(self):
+        return self.value
+
+    # (optional, but helps with f-strings and logging)
+    def __repr__(self):
+        return f"SharedInt({self.value})"
+
+    def __str__(self):
+        return str(self.value)
+
     def __add__(self, other):
-        return SharedInt(
-            self.value + (other.value if isinstance(other, SharedInt) else other)
-        )
+        return SharedInt(self.value + (other.value if isinstance(other, SharedInt) else other))
 
     def __sub__(self, other):
-        return SharedInt(
-            self.value - (other.value if isinstance(other, SharedInt) else other)
-        )
+        return SharedInt(self.value - (other.value if isinstance(other, SharedInt) else other))
 
     def __iadd__(self, other):
         self.value += other.value if isinstance(other, SharedInt) else other

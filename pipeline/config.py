@@ -14,12 +14,18 @@ class PipelineConfig:
     Parent config object for pipeline orchestration.
     """
     fault_tolerant: bool = False
-    verbose: bool = False
+    verbose: bool = True
+    save: bool = False
     save_dir: str = "results/pipeline"
     sim_config: SimulatorConfig = field(default_factory=SimulatorConfig)
     translator_config: TranslatorConfig = field(default_factory=TranslatorConfig)
+    seed: int = None
 
-    def with_ft_only(self, ft: bool = True): self.fault_tolerant = ft; return self
+    def with_ft(self, ft: bool = True, ft_chance: float = -1.0): 
+        self.fault_tolerant = ft
+        self.translator_config.fault_tolerant = ft
+        self.translator_config.fault_tolerant_chance = ft_chance
+        return self
     def with_verbose(self, verbose: bool = True): self.verbose = verbose; return self
     def with_save_dir(self, d: str): self.save_dir = d; return self
     def with_sim_config(self, sim_config: SimulatorConfig):
@@ -28,3 +34,4 @@ class PipelineConfig:
     def with_translator_config(self, translator_config: TranslatorConfig):
         self.translator_config = translator_config
         return self
+    def with_seed(self, seed: int): self.seed = seed; return self

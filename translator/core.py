@@ -1,79 +1,94 @@
 """
 translator.core.py - Translator, Translation, and TranslationResult classes.
-Main functionality for this package.
+Main functionality for this package (Qiskit version).
 """
 
 from __future__ import annotations
 from typing import List, Tuple, Optional
 from dataclasses import dataclass
-import cirq
+
+from qiskit import QuantumCircuit
 
 from .context import TranslationContext
-from .utils import append_named_terminal_measurements
 from .gate_handlers import translate_and_apply
 from .config import TranslatorConfig
+from .merging import preprocess_program_for_merging_with_stats
+from .passes import cancel_inverse_gates, cancel_inverse_gates_through_swaps, commute_hadamards
+
 
 @dataclass
 class TranslationResult:
-    circuit: cirq.Circuit
+    circuit: QuantumCircuit
     permutation: List[Tuple[int, int]]
+    context: TranslationContext
     contains_faults: bool
     fault_log: List[str]
     verbose: bool
     fault_tolerant: bool
+    merge_savings_1q: float = 0.0
+    merge_savings_2q: float = 0.0
+    merge_savings_weighted: float = 0.0
+
+BARRIERS = False
 
 class Translation:
     def __init__(
         self,
         permutation: List[Tuple[int, int]],
-        program_circuit: cirq.Circuit,
+        program_circuit: QuantumCircuit,
         *,
         fault_tolerant: bool = False,
         verbose: bool = False,
+        encode_override: bool = False,
     ):
         self.permutation = permutation
         self.program_circuit = program_circuit
         self.fault_tolerant = fault_tolerant
         self.verbose = verbose
+        self.encode_override = encode_override
 
         self.context = TranslationContext.from_config(
-            permutation, program_circuit, fault_tolerant=fault_tolerant, verbose=verbose
+            permutation,
+            program_circuit,
+            fault_tolerant=fault_tolerant,
+            verbose=verbose,
+            encode_override=encode_override,
         )
 
-    def translate_gate(self, op: cirq.Operation, next_op: cirq.Operation | None = None):
-        return translate_and_apply(
-            self.context,
-            op,
-            next_op=next_op,
-        )
+    def translate_gate(self, op):
+        # `op` is an (inst, qargs, cargs) tuple from qc.data
+        return translate_and_apply(self.context, op)
 
     def translate_circuit(self) -> TranslationResult:
-        for moment in self.context.mapping["phys_circ"]:
-            ops = list(moment.operations)
-            skip_next = False
-            for i, op in enumerate(ops):
-                if skip_next:
-                    skip_next = False
-                    continue
-                next_op = ops[i + 1] if i + 1 < len(ops) else None
-                consumed = self.translate_gate(op, next_op)
-                if consumed is not None:
-                    skip_next = True
-            # self.context.iceberg_set.BARRIER()
+        # Iterate over the program circuit instructions
+        for op in self.program_circuit.data:
+            flag = self.translate_gate(op)
+            if flag is False:
+                # gate application failed
+                # TODO: make this pass further up the chain so we don't hault
+                # permutation should be marked as infeasible in set
+                raise RuntimeWarning("Gate application failed!")
+            if BARRIERS:
+                self.context.iceberg_set.BARRIER()
 
-        self.context.iceberg_set.decode()
-        # self.context.iceberg_set.BARRIER()
-
-        append_named_terminal_measurements(self.context.iceberg_set)
-
+        if not self.encode_override:
+            self.context.iceberg_set.decode()
+            if BARRIERS:
+                self.context.iceberg_set.BARRIER()
+            self.context.iceberg_set.measure()
+        processed_gates = cancel_inverse_gates(self.context.iceberg_set.circuit)
+        processed_gates = cancel_inverse_gates_through_swaps(processed_gates)
+        processed_gates = cancel_inverse_gates(processed_gates)
         return TranslationResult(
-            circuit=self.context.iceberg_set.circuit,
+            circuit=processed_gates,
             permutation=self.permutation,
+            context=self.context,
             contains_faults=(len(self.context.fault_log) == 0),
             fault_log=self.context.fault_log,
             verbose=self.verbose,
             fault_tolerant=self.fault_tolerant,
         )
+
 
 class Translator:
     def __init__(self, *, config: Optional[TranslatorConfig] = None):
@@ -82,18 +97,63 @@ class Translator:
         self.fault_tolerant = config.fault_tolerant
         self.verbose = config.verbose
         self.n_code = config.n_code
+        self.enable_merging = config.enable_merging
+        self.enable_h_commutation = config.enable_h_commutation
+        self.allow_transversal_swap_merges = config.allow_transversal_swap_merges
+        self.encode_override = config.encode_override
 
-    def translate(self, program_circuit: cirq.Circuit, permutation: List[Tuple[int, int]]) -> TranslationResult:
+    def translate(
+        self,
+        program_circuit: QuantumCircuit,
+        permutation: List[Tuple[int, int]],
+    ) -> TranslationResult:
+        """
+        Translate a program circuit and a permutation into a physical circuit.
+        """
+        processed_circuit = cancel_inverse_gates(program_circuit)
+        if self.enable_h_commutation:
+            processed_circuit = commute_hadamards(processed_circuit)
+            processed_circuit = cancel_inverse_gates(processed_circuit)
+        merge_savings_1q = 0.0
+        merge_savings_2q = 0.0
+        merge_savings_weighted = 0.0
+        # print(processed_circuit)
+        if self.enable_merging:
+            processed_circuit, merge_savings_1q, merge_savings_2q, merge_savings_weighted = (
+                preprocess_program_for_merging_with_stats(
+                    processed_circuit,
+                    permutation,
+                    allow_transversal_swap_merges=self.allow_transversal_swap_merges,
+                )
+            )
+        # print(processed_circuit)
         translation = Translation(
             permutation=permutation,
-            program_circuit=program_circuit,
+            program_circuit=processed_circuit,
             fault_tolerant=self.fault_tolerant,
             verbose=self.verbose,
+            encode_override=self.encode_override,
         )
-        return translation.translate_circuit()
+        translated = translation.translate_circuit()
+        return TranslationResult(
+            circuit=translated.circuit,
+            permutation=translated.permutation,
+            context=translated.context,
+            contains_faults=translated.contains_faults,
+            fault_log=translated.fault_log,
+            verbose=translated.verbose,
+            fault_tolerant=translated.fault_tolerant,
+            merge_savings_1q=merge_savings_1q,
+            merge_savings_2q=merge_savings_2q,
+            merge_savings_weighted=merge_savings_weighted,
+        )
 
-    def translate_batch(self, program_circuit: cirq.Circuit, permutations: List[List[Tuple[int, int]]]) -> List[TranslationResult]:
-        return [
-            self.translate(program_circuit, perm)
-            for perm in permutations
-        ]
+    def translate_batch(
+        self,
+        program_circuit: QuantumCircuit,
+        permutations: List[List[Tuple[int, int]]],
+    ) -> List[TranslationResult]:
+        """
+        Translate a program circuit and a list of permutations into physical circuits.
+        """
+        return [self.translate(program_circuit, perm) for perm in permutations]

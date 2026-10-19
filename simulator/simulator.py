@@ -1,145 +1,399 @@
 """
 simulator/simulator.py
 
-Defines the core Simulator class for executing quantum circuits with leakage-aware noise models.
-Follows a fluent interface pattern to configure simulation parameters.
+Defines the core Simulator class for executing quantum circuits (Qiskit).
+Next step (separate change): implement AerSimulator execution and
+counts→probability distribution utilities.
 """
 # pylint: disable=[C0116]
 
 from __future__ import annotations
 
-from typing import Optional, Union
-import cirq
-from experiments_superstaq.simulation.sqale_leakage_model import (
-    SqaleLeakageModel,
-    HilbertNoiseParams,
-)
-from experiments_superstaq.simulation.leakage_sim import estimate_distribution
+from collections import Counter
+from contextlib import contextmanager
+from logging import warning
+from typing import Optional, Callable, Sequence, Union, TYPE_CHECKING
+
+from qiskit import QuantumCircuit
+from qiskit.result import Result
+from qiskit_aer import AerSimulator
+from qiskit_aer.noise import NoiseModel  # kept for future use with AerSimulator
+from tqdm.auto import trange
+
+from simulator.grid_constructor import build_physical_qubit_positions
 
 from .config import SimulatorConfig
-from .utils import remove_leakage_states, bhattacharyya, remove_barriers
-from .result_types import SqaleSimulationResult
+from .noise_markers import strip_noise_markers
+from .result_types import SimulationResult
+from .utils import bhattacharyya
 
+from .stim_backend import run_stim_backend
+from .noise_models import (
+    DistanceDependentNoiseModel,
+    stim_params_from_noise_model,
+    apply_stim_scaling,
+    StimParameterScaling,
+)
+
+if TYPE_CHECKING:  # pragma: no cover
+    from translator.core import TranslationResult
+
+TranslationLike = Union[QuantumCircuit, "TranslationResult"]
 
 class Simulator:
     """
-    Leakage-aware quantum circuit simulator.
+    Quantum circuit simulator (Qiskit).
 
-    Provides a fluent interface to configure simulation parameters and run circuits under
-    a SQALE noise model. Leakage post-selection is applied by default.
+    Provides a fluent interface to configure simulation parameters.
+    Noise is expected to be supplied as a Qiskit Aer `NoiseModel` and will be
+    wired in when we add the AerSimulator in the next step.
     """
+
+    _DEFAULT_SHOT_CHUNK = 50_000
+    _SHOT_BAR_TARGET_UPDATES = 100
 
     def __init__(self, config: Optional[SimulatorConfig] = None):
         if config is None:
             config = SimulatorConfig()
-        self._repetitions = config.repetitions
-        self._noiseless_repetitions = config.noiseless_repetitions
-        self._oversample = config.oversample
-        self._ch_form = config.ch_form
-        self._preserve_leakage = config.preserve_leakage
-        self._noise_model = config.noise_model
-        self._noiseless = config.noiseless
-        self._seed = config.seed
-        self._progressbar = config.progressbar
+        self._repetitions: int = config.repetitions
+        self._noiseless: bool = config.noiseless
+        self._seed: Optional[int] = config.seed
+        self._distance_noise = config.distance_noise
+        self._distance_scalar = config.distance_scalar
+        self._idle_noise = config.idle_noise
+        self._idle_time_scalar = config.idle_time_scalar
+        self._noise_model: Optional[NoiseModel] = config.noise_model
+        self._stim: bool = config.stim
+        self._stim_scaling: Optional[StimParameterScaling] = config.stim_scaling
+        self._show_shot_progress: bool = True
+        self._shot_chunk_size: int = self._DEFAULT_SHOT_CHUNK
 
     # -------- Fluent Configuration Methods --------
 
-    def with_repetitions(self, repetitions: int) -> Simulator:
+    def with_repetitions(self, repetitions: int) -> "Simulator":
         self._repetitions = repetitions
         return self
 
-    def with_noiseless_repetitions(self, noiseless_repetitions: int) -> Simulator:
-        self._noiseless_repetitions = noiseless_repetitions
+    def with_noise_model(self, noise_model: NoiseModel | None) -> "Simulator":
+        self._noise_model = noise_model
         return self
 
-    def with_oversample(self, oversample: int) -> Simulator:
-        self._oversample = oversample
-        return self
-
-    def with_ch_form(self, ch_form: bool = True) -> Simulator:
-        self._ch_form = ch_form
-        return self
-
-    def with_leakage_preserved(self, preserve: bool = True) -> Simulator:
-        self._preserve_leakage = preserve
-        return self
-
-    def with_noise_model(self,
-            noise_model: Union[SqaleLeakageModel, HilbertNoiseParams]) -> Simulator:
-        if isinstance(noise_model, HilbertNoiseParams):
-            self._noise_model = SqaleLeakageModel(**noise_model.model_dump())
-        else:
-            self._noise_model = noise_model
-        return self
-
-    def with_seed(self, seed: int) -> Simulator:
+    def with_seed(self, seed: int) -> "Simulator":
         self._seed = seed
         return self
 
-    def with_progressbar(self, enabled: bool = True) -> Simulator:
-        self._progressbar = enabled
-        return self
-
-    def with_noiseless(self, noiseless: bool = True) -> Simulator:
+    def with_noiseless(self, noiseless: bool = True) -> "Simulator":
         self._noiseless = noiseless
         return self
 
-    def clone(self) -> Simulator:
-        return Simulator()\
-            .with_repetitions(self._repetitions)\
-            .with_noiseless_repetitions(self._noiseless_repetitions or self._repetitions)\
-            .with_oversample(self._oversample)\
-            .with_ch_form(self._ch_form)\
-            .with_leakage_preserved(self._preserve_leakage)\
-            .with_noise_model(self._noise_model)\
-            .with_seed(self._seed)\
-            .with_progressbar(self._progressbar)\
+    def with_stim(self, stim: bool = True) -> "Simulator":
+        self._stim = stim
+        return self
+
+    def with_stim_scaling(self, scaling: StimParameterScaling | None) -> "Simulator":
+        self._stim_scaling = scaling
+        return self
+
+    def with_shot_progress(self, show: bool = True) -> "Simulator":
+        self._show_shot_progress = show
+        return self
+
+    def with_shot_chunk_size(self, chunk_size: int) -> "Simulator":
+        self._shot_chunk_size = max(1, chunk_size)
+        return self
+
+    def clone(self) -> "Simulator":
+        return (
+            Simulator()
+            .with_repetitions(self._repetitions)
+            .with_noise_model(self._noise_model)
+            .with_seed(self._seed if self._seed is not None else 0)
             .with_noiseless(self._noiseless)
+            .with_stim(self._stim)
+            .with_stim_scaling(self._stim_scaling)
+            .with_shot_progress(self._show_shot_progress)
+            .with_shot_chunk_size(self._shot_chunk_size)
+        )
+
+    # -------------- ( Helpers ) -------------
+
+    def _counts_to_probs(self, counts: dict[str, int]) -> dict[str, float]:
+        """Convert counts to normalized probability distribution."""
+        total = sum(counts.values()) or 1
+        return {k: v / total for k, v in counts.items()}
+
+    def _key_meta(
+        self,
+        circuit: QuantumCircuit,
+        result: Optional[Result] = None,
+    ) -> tuple[list[str], list[int]]:
+        """
+        Return (key_order, key_widths) from Qiskit's metadata.
+        Prefer the simulator result header if provided; otherwise
+        fall back to circuit.cregs.
+        """
+        # --- Prefer post-run metadata (exact output ordering) ---
+        if result is not None and result.results:
+            header = getattr(result.results[0], "header", None)
+            if header and hasattr(header, "creg_sizes"):
+                creg_sizes = (
+                    header.creg_sizes
+                )  # e.g. [['m_parity_0', 2], ['m_data_0', 4]]
+                key_order = [name for name, _ in creg_sizes]
+                key_widths = [size for _, size in creg_sizes]
+                return key_order, key_widths
+
+        # --- Fallback: use circuit registers directly ---
+        key_order = [reg.name for reg in circuit.cregs]
+        key_widths = [len(reg) for reg in circuit.cregs]
+        return key_order, key_widths
+
+    # NOTE: We invert the endianness of the AerSim output from little to big endianness.
+    # this is so we can print out bitstrings and the left most character or [0] is the 0th bit.
+    def _invert_endianness(self, counts: dict[str, int | float]) -> dict[str, int]:
+        """
+        Reverse the bit order of each key in `counts`.
+        e.g. {'010 11': 5} → {'11 010': 5}
+
+        Works for both counts and probability dicts.
+        """
+        flipped = {}
+        for k, v in counts.items():
+            # Reverse each register separately (split by spaces)
+            parts = k.split()
+            flipped_key = " ".join(p[::-1] for p in parts[::-1])
+            flipped[flipped_key] = v
+        return flipped
+
+    def _shot_chunk_size_for(self, total: int) -> int:
+        """Compute an appropriate chunk size that keeps the shot bar responsive."""
+        adaptive_target = max(total // self._SHOT_BAR_TARGET_UPDATES, 1)
+        return max(1, min(self._shot_chunk_size, adaptive_target))
+
+    def _shot_chunk_generator(self, total: int):
+        """Yield shot chunk sizes used for incremental simulation."""
+        chunk_size = self._shot_chunk_size_for(total)
+        remaining = total
+        while remaining > 0:
+            current = min(chunk_size, remaining)
+            yield current
+            remaining -= current
+
+    @contextmanager
+    def _shot_progress_bar(self, desc: str) -> Callable[[int], None] | None:
+        """
+        Provide a nested tqdm bar that disappears on completion.
+        Returns a callback that updates the bar, or None if disabled.
+        """
+        if (not self._show_shot_progress) or self._repetitions <= 0:
+            yield None
+            return
+
+        bar = trange(
+            self._repetitions,
+            desc=desc,
+            leave=False,
+            unit="shot",
+            position=1,
+            dynamic_ncols=True,
+        )
+        try:
+            yield bar.update
+        finally:
+            bar.close()
 
     # -------- Core Simulation Method --------
 
-    def run(self, circuit: cirq.Circuit) -> SqaleSimulationResult:
+    def _stimulate(self, circuit: QuantumCircuit, add_noise: bool = True, layout=None):
         """
-        Simulates the given Cirq circuit with the current configuration.
-
-        Returns:
-            SqaleSimulationResult: object containing post-leakage distributions and raw fidelity.
+        Execute `circuit` and return a (probs, key_order, key_widths) tuple.
+        This version uses the Stim backend (quasi-probabilities), replacing Aer sim.run().
         """
-        clean_circuit = remove_barriers(circuit=circuit)
 
-        ideal_raw_dist = estimate_distribution(
-            clean_circuit,
-            repetitions=self._noiseless_repetitions or self._repetitions,
-            oversample=self._oversample,
-            ch_form=self._ch_form,
-            seed=self._seed,
-            progressbar=self._progressbar,
+        # If there are no classical bits, nothing to count
+        tcirc = circuit  # preserve naming from your original
+        if len(tcirc.clbits) == 0:
+            warning("Did you forget to add measurement registers?")
+            return {}, [], []
+
+        # ---- Run via Stim ----
+        include_noise = add_noise and (not self._noiseless)
+
+        stim_params = stim_params_from_noise_model(self._noise_model)
+        stim_params = apply_stim_scaling(stim_params, self._stim_scaling)
+        stim_params.idle_time_scalar = (
+            self._idle_time_scalar if self._idle_noise else 0.0
         )
 
-        noise_model = self._noise_model
-        noisy_circuit = clean_circuit if self._noiseless else clean_circuit.with_noise(noise_model)
+        with self._shot_progress_bar("Shots") as progress_update:
+            probs = run_stim_backend(
+                circuit=tcirc,
+                shots=self._repetitions,
+                seed=self._seed,
+                include_noise=include_noise,
+                noise_params=stim_params,
+                shots_per_chunk=self._shot_chunk_size_for(self._repetitions),
+                progress_callback=progress_update,
+                layout=layout,
+                distance_scalar=self._distance_scalar if layout is not None else None,
+            )
+        key_order, key_widths = self._key_meta(tcirc)
 
-        noisy_raw_dist = estimate_distribution(
-            noisy_circuit,
-            repetitions=self._repetitions,
-            oversample=self._oversample,
-            ch_form=self._ch_form,
-            seed=self._seed,
-            progressbar=self._progressbar,
-        )
+        if not add_noise:
+            probs = self._invert_endianness(probs)
 
-        noisy_dist, percent_shots_kept, percent_shots_dropped = remove_leakage_states(
-            noisy_raw_dist, track_stats=True)
-        ideal_dist = remove_leakage_states(ideal_raw_dist)
+            key_order = list(reversed(key_order))
+            key_widths = list(reversed(key_widths))
 
-        raw_fidelity = bhattacharyya(ideal_raw_dist, noisy_raw_dist)
+        return probs, key_order, key_widths
 
-        return SqaleSimulationResult(
+
+    def _simulate(self, circuit: QuantumCircuit, add_noise: bool = True):
+        """
+        Execute `circuit` with Qiskit's AerSimulator and return a counts dict.
+        Uses class config: repetitions (shots), seed, noiseless, and noise_model.
+        """
+
+        if self._distance_noise and add_noise:
+            layout = build_physical_qubit_positions(circuit.num_qubits // 6)
+            if not self._stim:
+                stim_params = stim_params_from_noise_model(self._noise_model)
+                stim_params = apply_stim_scaling(stim_params, self._stim_scaling)
+                n_model = DistanceDependentNoiseModel(
+                    layout=layout,
+                    distance_scalar=self._distance_scalar,
+                    p1=stim_params.one_qubit_error,
+                    p2=stim_params.two_qubit_error,
+                    p_meas=stim_params.readout_error,
+                    T1=stim_params.T1,
+                    T2=stim_params.T2,
+                    t_1q=stim_params.one_qubit_gate_time,
+                    t_2q=stim_params.two_qubit_gate_time,
+                )
+                self._noise_model = n_model
+            else:
+                return self._stimulate(circuit, add_noise=add_noise, layout=layout)
+
+        if self._stim:
+            return self._stimulate(circuit, add_noise=add_noise)
+
+        # Choose simulator backend
+        if (not add_noise) or (self._noise_model is None) or self._noiseless:
+            sim = AerSimulator(seed_simulator=self._seed)
+        else:
+            sim = AerSimulator(noise_model=self._noise_model, seed_simulator=self._seed)
+
+        # Transpile for the chosen simulator (ensures basis/optimization compatible)
+        # tcirc = transpile(circuit, sim, optimization_level=0, seed_transpiler=self._seed)
+        tcirc = strip_noise_markers(circuit)
+
+        # If there are no classical bits, nothing to count
+        if len(tcirc.clbits) == 0:
+            warning("Did you forget to add measurement registers?")
+            return {}, [], []
+
+        # Run and return raw counts
+        aggregated_counts: Counter[str] = Counter()
+        first_result: Result | None = None
+
+        with self._shot_progress_bar("Shots") as progress_update:
+            for chunk in self._shot_chunk_generator(self._repetitions):
+                job = sim.run(tcirc, shots=chunk)
+                result = job.result()
+                if first_result is None:
+                    first_result = result
+
+                # <+======================================================================================+>*
+                # NOTE: EXTREMELY important Note. AerSim returns are little endian.                         |   HEY READ THE NOTE!!!
+                #  This also includes register order.                                                       |             ,\
+                #  We reverse the bitstring here so we can directly read                                    |             \\\,_
+                #  bit strings into their correct register from L to R                                      |              \` ,\
+                # For example:                                                                              |         __,.-" =__)
+                #   bits B -> L 0101 1111 00 01 != ['m_parity_0', 'm_parity_1', 'm_data_0', 'm_data_1']     |       ."        )
+                #        L -> B 10 00 1111 1010 == ['m_parity_0', 'm_parity_1', 'm_data_0', 'm_data_1']     |    ,_/   ,    \/\_
+                # NOTE: In summary, we invert bit strings to match registers                                |    \_|    )_-\ \_-`
+                #       and so we can print(bitstring[i]) to print the actual ith bit                       |       `-----` `--`
+                #       i.e. 0,1,1,0,1,0,1 -> bits 0,1,2,3,4,5,6                                            |
+                # <+======================================================================================+>*
+                little_endian_counts = result.get_counts(
+                    0
+                )  # first (and typically only) circuit
+                counts = self._invert_endianness(little_endian_counts)
+                aggregated_counts.update(counts)
+
+                if progress_update is not None:
+                    progress_update(chunk)
+
+        key_order, key_widths = self._key_meta(tcirc, first_result)
+
+        # counts: Dict[str, int], keys are space-delimited per creg in qc.cregs order
+        probs = self._counts_to_probs(dict(aggregated_counts))
+        return probs, key_order, key_widths
+
+    # ---------------------- Public APIs -----------------------
+
+    def run(self, circuit: QuantumCircuit) -> SimulationResult:
+        """
+        Simulate ideal and noisy distributions and compute Bhattacharyya fidelity.
+        """
+        ideal_dist, _, _ = self._simulate(circuit, add_noise=False)
+        noisy_dist, key_order, key_widths = self._simulate(circuit, add_noise=True)
+
+        raw_fidelity = bhattacharyya(ideal_dist, noisy_dist)
+
+        return SimulationResult(
             raw_fidelity=raw_fidelity,
             ideal_dist=ideal_dist,
             noisy_dist=noisy_dist,
-            ideal_raw_dist=ideal_raw_dist,
-            noisy_raw_dist=noisy_raw_dist,
-            percent_shots_kept=percent_shots_kept,
-            percent_shots_dropped=percent_shots_dropped
+            key_order=key_order,
+            key_widths=key_widths,
         )
+
+    def noisy(self, circuit: QuantumCircuit) -> SimulationResult:
+        """
+        Simulate only the noisy distribution.
+        """
+        noisy_dist, key_order, key_widths = self._simulate(circuit, add_noise=True)
+
+        return SimulationResult(
+            noisy_dist=noisy_dist,
+            key_order=key_order,
+            key_widths=key_widths,
+        )
+
+    def ideal(self, circuit: QuantumCircuit) -> SimulationResult:
+        """
+        Simulate only the ideal (noiseless) distribution.
+        """
+        ideal_dist, key_order, key_widths = self._simulate(circuit, add_noise=False)
+
+        return SimulationResult(
+            ideal_dist=ideal_dist,
+            key_order=key_order,
+            key_widths=key_widths,
+        )
+
+
+def simulate_batch(
+    program_circuit: QuantumCircuit,
+    translations: Sequence[TranslationLike],
+    sim_config: SimulatorConfig,
+    *,
+    desc: str = "Simulating circuits",
+) -> tuple[SimulationResult, list[SimulationResult]]:
+    """
+    Run the ideal simulation for the logical program circuit and noisy simulations
+    for each translated circuit in `translations`.
+
+    Returns a tuple of (ideal_simulation_result, noisy_results_list).
+    """
+    simulator = Simulator(sim_config)
+    ideal_sim_res = simulator.ideal(circuit=program_circuit)
+
+    simulation_results: list[SimulationResult] = []
+    for idx in trange(len(translations), desc=desc, unit=" sim"):
+        translation = translations[idx]
+        circuit = translation.circuit if hasattr(translation, "circuit") else translation
+        simulation_results.append(simulator.noisy(circuit))
+
+    return ideal_sim_res, simulation_results

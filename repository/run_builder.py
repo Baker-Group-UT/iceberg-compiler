@@ -1,5 +1,5 @@
 """
-recorder.run_builder.py - contains the dataclass for managing run data.
+recorder.run_builder.py - contains the dataclass for managing run data. (Qiskit)
 """
 
 from __future__ import annotations
@@ -7,9 +7,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field, asdict
 from typing import Any, Dict, Optional
 import pandas as pd
-import cirq
 import datetime as _dt
 import uuid
+
+from qiskit import QuantumCircuit
 
 from .manifest import RunManifest
 from .records import (
@@ -25,6 +26,15 @@ from .records import (
 
 @dataclass
 class RunRecord:
+    """
+    Stores a run.
+    args:
+    - manifest
+    - circuit
+    - dataframe
+    - sim_results
+    """
+
     manifest: RunManifest
     circuit: CircuitRecord
     dataframe: Optional[DataFrameRecord] = None
@@ -54,7 +64,7 @@ class RunRecord:
 
 @dataclass
 class RunBuilder:
-    circuit: cirq.Circuit
+    circuit: QuantumCircuit
     circuit_name: str
     repetitions: int
     options: Dict[str, Any] = field(default_factory=dict)
@@ -75,8 +85,10 @@ class RunBuilder:
         res_rec = SimulationResultRecord(self.sim_results) if self.sim_results is not None else None
 
         contents = ["circuit"]
-        if df_rec: contents.append("dataframe")
-        if res_rec: contents.append("sim_results")
+        if df_rec:
+            contents.append("dataframe")
+        if res_rec:
+            contents.append("sim_results")
 
         manifest = RunManifest(
             run_id=str(uuid.uuid4()),

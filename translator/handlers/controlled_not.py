@@ -1,16 +1,13 @@
 """
 translator.handlers.cnot
 
-Logical CNOT gate placement logic for Iceberg codes.
+Logical CNOT gate placement logic for Iceberg codes (Qiskit).
 Handles both intra-patch and inter-patch scenarios with
 fallbacks to SWAP-based transversal correction when possible.
 """
 
 from __future__ import annotations
-from typing import Dict, List
-import cirq
 
-from iceberg.iceberg_set import IcebergSet
 from translator.context import TranslationContext
 from translator.handlers.utils import (
     are_all_partners_zero,
@@ -19,23 +16,33 @@ from translator.handlers.utils import (
     verbose_log,
 )
 
+
 def apply_logical_cnot(
-    op: cirq.Operation,
+    op,
     context: TranslationContext,
 ) -> bool:
     """
-    Applies a logical CNOT gate from a Cirq operation.
+    Applies a logical CNOT gate from a Qiskit operation.
 
     Args:
-        op: Cirq Operation for logical CNOT.
+        op: Qiskit op (typically normalized by dispatcher; has .qubits).
         context: TranslationContext with circuit and patch state.
 
     Returns:
         True if placement succeeds, False otherwise.
     """
-    q_ctl = op.qubits[0].x
-    q_tgt = op.qubits[1].x
-    return place_logical_cnot(q_ctl, q_tgt, context)
+    # Program (logical) indices
+    q_ctl_log = context.qc.find_bit(op.qubits[0]).index
+    q_tgt_log = context.qc.find_bit(op.qubits[1]).index
+
+    # Map to stable physical ids via permutation: phys = p * k_log + s
+    pc, sc = context.permutation[q_ctl_log]
+    pt, st = context.permutation[q_tgt_log]
+    q_ctl_phys = pc * context.k_log + sc
+    q_tgt_phys = pt * context.k_log + st
+
+    return place_logical_cnot(q_ctl_phys, q_tgt_phys, context)
+
 
 def place_logical_cnot(
     q_ctl: int,
@@ -43,58 +50,76 @@ def place_logical_cnot(
     context: TranslationContext,
 ) -> bool:
     """
-    Places a logical CNOT gate under FT rules given control and target indices.
+    Places a logical CNOT gate under FT rules given control and target *physical* indices.
 
     Args:
-        q_ctl: Logical control qubit index.
-        q_tgt: Logical target qubit index.
-        context: Translation context containing state and patch mapping.
+        q_ctl: Physical index of control qubit in the program-translated circuit.
+        q_tgt: Physical index of target qubit in the program-translated circuit.
+        context: Translation context containing static mapping (immutable) and dynamic state view.
 
     Returns:
         True if placement succeeded, False otherwise.
     """
-    patch_c, patch_t = context.logical_to_patch[q_ctl], context.logical_to_patch[q_tgt]
-    pos_c, pos_t     = context.idx_in_patch[q_ctl], context.idx_in_patch[q_tgt]
     iceberg_set = context.iceberg_set
+
+    # --- CURRENT (dynamic) positions for decision-making ---
+    patch_c, pos_c = context.current_pos_of(q_ctl)
+    patch_t, pos_t = context.current_pos_of(q_tgt)
 
     # Intra-patch CNOT (always valid)
     if patch_c == patch_t:
-        iceberg_set.CNOT(q_ctl, q_tgt, fault_tolerant=context.fault_tolerant)
+        iceberg_set.CNOT(patch_c * context.k_log + pos_c, patch_t * context.k_log + pos_t, fault_tolerant=context.fault_tolerant)
         return True
 
-    # Extract logicals in each patch
+    # Extract physical indices considered active in each patch (static list of indices)
     ctrls = context.active_by_patch[patch_c]
     targs = context.active_by_patch[patch_t]
 
+    # Build a lightweight slot view reflecting the *current* (dynamic) slot of any qubit we test
+    slot_view = {i: context.current_slot_of(i) for i in set(ctrls + targs)}
+
     # Cross-patch constraints
     control_ok = (
-        are_all_partners_zero(q_ctl, context.active_by_patch,
-                              context.logical_to_patch, context.state_map)
-        or is_full_transversal(ctrls, targs, context.idx_in_patch)
+        are_all_partners_zero(
+            q_ctl, context.active_by_patch, context.logical_to_patch, context.state_map
+        )
+        or is_full_transversal(ctrls, targs, slot_view)
     )
     target_alone = is_alone_in_patch(q_tgt, context.active_by_patch, context.logical_to_patch)
 
     # Aligned for transversal
     if pos_c == pos_t and (control_ok or target_alone):
-        iceberg_set.CNOT_k_Transversal(patch_c, patch_t)
+        # iceberg_set.CNOT_k_Transversal(patch_c, patch_t)
+        iceberg_set.CNOT(patch_c * context.k_log + pos_c, patch_t * context.k_log + pos_t)
         return True
 
     # Misaligned → try SWAP on target patch if solo
     if pos_c != pos_t and target_alone:
-        iceberg_set.SWAP([[patch_t, pos_t, pos_c]], fault_tolerant=context.fault_tolerant)
-        # iceberg_set.BARRIER()
-        context.idx_in_patch[q_tgt] = pos_c
-        verbose_log(context.verbose, f"[swap] target patch {patch_t}: {pos_t} ⇆ {pos_c}")
-        iceberg_set.CNOT_k_Transversal(patch_c, patch_t)
+        swap_slots = (pos_t, pos_c)
+        iceberg_set.SWAP([[patch_t, swap_slots[0], swap_slots[1]]], fault_tolerant=context.fault_tolerant)
+        context.update_states_on_swap(patch_t, swap_slots[0], swap_slots[1])
+
+        # Re-read current positions to ensure alignment before transversal
+        _, pos_c2 = context.current_pos_of(q_ctl)
+        _, pos_t2 = context.current_pos_of(q_tgt)
+        assert pos_c2 == pos_t2, "Post-SWAP misalignment before transversal (target branch)."
+        iceberg_set.CNOT(patch_c * context.k_log + pos_c2, patch_t * context.k_log + pos_t2)
+
         return True
 
     # Misaligned → try SWAP on control patch if compatible
     if pos_c != pos_t and control_ok:
-        iceberg_set.SWAP([[patch_c, pos_c, pos_t]], fault_tolerant=context.fault_tolerant)
-        # iceberg_set.BARRIER()
-        context.idx_in_patch[q_ctl] = pos_t
-        verbose_log(context.verbose, f"[swap] control patch {patch_c}: {pos_c} ⇆ {pos_t}")
-        iceberg_set.CNOT_k_Transversal(patch_c, patch_t)
+        swap_slots = (pos_c, pos_t)
+        iceberg_set.SWAP([[patch_c, swap_slots[0], swap_slots[1]]], fault_tolerant=context.fault_tolerant)
+        context.update_states_on_swap(patch_c, swap_slots[0], swap_slots[1])
+
+        # Re-read positions to ensure alignment
+        _, pos_c2 = context.current_pos_of(q_ctl)
+        _, pos_t2 = context.current_pos_of(q_tgt)
+        assert pos_c2 == pos_t2, "Post-SWAP misalignment before transversal (control branch)."
+
+        iceberg_set.CNOT(patch_c * context.k_log + pos_c2, patch_t * context.k_log + pos_t2)
+
         return True
 
     # Placement rejected under FT rules
@@ -102,3 +127,96 @@ def place_logical_cnot(
     context.fault_log.append(msg)
     verbose_log(context.verbose, f"[skip] {msg}")
     return False
+
+
+def apply_logical_cxt(op, context: TranslationContext) -> bool:
+    """Apply a pre-merged transversal CNOT macro (CXTGate)."""
+
+    resolved = _resolve_cxt_macro_alignment(op, context)
+    if resolved is None:
+        return False
+    control_patch, target_patch = resolved
+    context.iceberg_set.CNOT_k_Transversal(control_patch, target_patch)
+    return True
+
+
+def _patch_pair_from_macro(op, context: TranslationContext) -> tuple[int, int]:
+    metadata = getattr(op.gate, "metadata", {}) or {}
+    control_patch = metadata.get("control_patch")
+    target_patch = metadata.get("target_patch")
+    if control_patch is not None and target_patch is not None:
+        return int(control_patch), int(target_patch)
+
+    control_count = int(metadata.get("control_count", max(1, len(op.qubits) // 2)))
+    control_qubit = op.qubits[0]
+    target_qubit = op.qubits[control_count]
+    control_logical = context.qc.find_bit(control_qubit).index
+    target_logical = context.qc.find_bit(target_qubit).index
+    return context.logical_to_patch[control_logical], context.logical_to_patch[target_logical]
+
+
+def _resolve_cxt_macro_alignment(
+    op,
+    context: TranslationContext,
+) -> tuple[int, int] | None:
+    metadata = getattr(op.gate, "metadata", {}) or {}
+    control_count = int(metadata.get("control_count", max(1, len(op.qubits) // 2)))
+
+    logical_qubits = metadata.get("logical_qubits")
+    if logical_qubits is None:
+        logical_qubits = [context.qc.find_bit(qubit).index for qubit in op.qubits]
+    else:
+        logical_qubits = [int(logical_i) for logical_i in logical_qubits]
+
+    control_logicals = logical_qubits[:control_count]
+    target_logicals = logical_qubits[control_count:]
+    control_positions = _current_positions_for_logicals(control_logicals, context)
+    target_positions = _current_positions_for_logicals(target_logicals, context)
+
+    control_patches = {patch for patch, _ in control_positions}
+    target_patches = {patch for patch, _ in target_positions}
+    if len(control_patches) != 1 or len(target_patches) != 1:
+        msg = f"CXT macro spans multiple current patches: controls={control_positions}, targets={target_positions}"
+        context.fault_log.append(msg)
+        verbose_log(context.verbose, f"[skip] {msg}")
+        return None
+
+    control_patch = next(iter(control_patches))
+    target_patch = next(iter(target_patches))
+    control_slots = [slot for _, slot in control_positions]
+    target_slots = [slot for _, slot in target_positions]
+
+    if control_slots == target_slots:
+        return control_patch, target_patch
+
+    # For k=2 macros, a prior CX may have swapped one patch's logical lanes.
+    # Realign the target patch so the transversal macro hits the intended pairs.
+    if (
+        context.k_log == 2
+        and len(control_slots) == len(target_slots) == 2
+        and sorted(control_slots) == [0, 1]
+        and sorted(target_slots) == [0, 1]
+        and [1 - slot for slot in target_slots] == control_slots
+    ):
+        context.iceberg_set.SWAP([[target_patch, 0, 1]], fault_tolerant=context.fault_tolerant)
+        context.update_states_on_swap(target_patch, 0, 1)
+        return control_patch, target_patch
+
+    msg = (
+        "CXT macro logical lanes are misaligned with current positions: "
+        f"controls={control_positions}, targets={target_positions}"
+    )
+    context.fault_log.append(msg)
+    verbose_log(context.verbose, f"[skip] {msg}")
+    return None
+
+
+def _current_positions_for_logicals(
+    logical_qubits: list[int],
+    context: TranslationContext,
+) -> list[tuple[int, int]]:
+    positions: list[tuple[int, int]] = []
+    for logical_i in logical_qubits:
+        phys_id = context.phys_index_for_logical(logical_i)
+        positions.append(context.current_pos_of(phys_id))
+    return positions

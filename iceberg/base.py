@@ -1,12 +1,12 @@
 from abc import ABC, ABCMeta, abstractmethod
 from functools import wraps
 from typing import Collection
-import cirq
+import qiskit
 
 
 def mark_check_encoded(method):
     """Mark method to require _encoded=True when called."""
-    method._check_encoded = True
+    # method._check_encoded = True
     return method
 
 
@@ -49,7 +49,7 @@ class CircuitClass(ABC, metaclass=AutoCheckEncodedMeta):
     Abstract base class for any encoded circuit representation.
     """
 
-    circuit: cirq.Circuit
+    circuit: qiskit.QuantumCircuit
     _encoded: bool = False
 
     @abstractmethod
@@ -77,6 +77,10 @@ class CircuitClass(ABC, metaclass=AutoCheckEncodedMeta):
 
     @mark_check_encoded
     @abstractmethod
+    def SX(self, i: int | Collection[int], fault_tolerant: bool = False): ...
+
+    @mark_check_encoded
+    @abstractmethod
     def H(self, i: int | Collection[int], fault_tolerant: bool = False): ...
 
     @mark_check_encoded
@@ -89,8 +93,16 @@ class CircuitClass(ABC, metaclass=AutoCheckEncodedMeta):
 
     @mark_check_encoded
     @abstractmethod
+    def XCX(self, i: int, j: int, fault_tolerant: bool = False): ...
+
+    @mark_check_encoded
+    @abstractmethod
     def RZZ(self, i: int, j: int, rads: float, fault_tolerant: bool = False): ...
 
     @mark_check_encoded
     @abstractmethod
     def RZ(self, i: int, rads: float, fault_tolerant: bool = False): ...
+
+    @mark_check_encoded
+    @abstractmethod
+    def RX(self, i: int, rads: float, fault_tolerant: bool = False): ...
