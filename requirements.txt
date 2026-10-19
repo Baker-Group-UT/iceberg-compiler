@@ -17,5 +17,5 @@ coverage==7.9.1
 ruff==0.12.1
 mypy==1.16.1
 
-# optional: required to load OpenQASM 3 benchmark circuits from disk
-# qiskit-qasm3-import==0.6.0
+# required to load OpenQASM 3 benchmark circuits from disk
+qiskit-qasm3-import==0.6.0

@@ -57,18 +57,22 @@ The translator selects the cheapest available implementation for each gate autom
 
 ## Installation
 
-Requires **Python 3.13+**.
+Requires **Python 3.12+**.
 
 ```bash
 # Clone the repo with submodules
 git clone --recurse-submodules https://github.com/Baker-Group-UT/iceberg-compiler.git
 cd iceberg-compiler
 
+# Create and activate a virtual environment (venv/ is gitignored)
+python3 -m venv venv
+source venv/bin/activate
+
 # Install dependencies
 pip install -r requirements.txt
 ```
 
-Key dependencies: `qiskit==2.2.1`, `qiskit-aer==0.17.0`, `stim==1.15.0`, `pandas==2.2.3`, `numpy==2.2.4`, `scipy==1.15.2`.
+Key dependencies: `qiskit==2.2.1`, `qiskit-aer==0.17.0`, `stim==1.15.0`, `pandas==2.2.3`, `numpy==2.2.4`, `scipy==1.15.2`, and `qiskit-qasm3-import==0.6.0`, which is needed to read back the OpenQASM 3 circuits stored in saved run records and generated circuit sets.
 
 If you already cloned without `--recurse-submodules`:
 
@@ -102,8 +106,8 @@ config = PipelineConfig(
 record = run_full_scan(qc, config)
 
 # Inspect results
-print(record.dataframe)
-# DataFrame columns include: permutation, codes_used, total_1q_gates, total_2q_gates,
+print(record.dataframe.df)
+# DataFrame columns include: permutation, codes_used, one_qubit_gates, two_qubit_gates,
 # logical_fidelity, logical_selection_rate, logical_total_variation_distance, ...
 ```
 
@@ -112,7 +116,7 @@ To search only a random subset of permutations (useful for larger circuits):
 ```python
 from pipeline import run_random_scan
 
-record = run_random_scan(qc, config, m=40)  # sample 40 random permutations
+record = run_random_scan(qc, m=40, config=config)  # sample 40 random permutations
 ```
 
 To analyze specific permutations:
@@ -123,7 +127,7 @@ from pipeline import run_specific_scan
 # Permutation format: list of (patch_id, slot_index) per logical qubit
 perms = [[(0, 0), (0, 1), (1, 0), (1, 1)],   # qubits 0,1 share patch 0; 2,3 share patch 1
           [(0, 0), (1, 0), (2, 0), (3, 0)]]   # all qubits in separate patches (sparse)
-record = run_specific_scan(qc, config, perms)
+record = run_specific_scan(qc, perms, config)
 ```
 
 ## Key Modules
@@ -135,8 +139,8 @@ Top-level orchestration. Main entry points:
 | Function                                       | Description                                                                 |
 | ---------------------------------------------- | --------------------------------------------------------------------------- |
 | `run_full_scan(circuit, config)`               | Enumerate all unique permutations, translate, simulate, and collect results |
-| `run_random_scan(circuit, config, m)`          | Sample `m` random permutations                                              |
-| `run_specific_scan(circuit, config, perms)`    | Analyze a provided list of permutations                                     |
+| `run_random_scan(circuit, m, config)`          | Sample `m` random permutations                                              |
+| `run_specific_scan(circuit, perms, config)`    | Analyze a provided list of permutations                                     |
 | `run_extremal_scan(circuit, config)`           | Find and compare best/worst permutations                                    |
 | `translate_permutation(circuit, perm, config)` | Translate a single permutation to a physical circuit                        |
 | `simulate_circuit(circuit, config)`            | Run ideal+noisy simulation and return distributions                         |
@@ -213,7 +217,7 @@ class PipelineConfig:
 ```python
 from simulator.config_presets import (
     TestSimulator,      # 1 shot, for unit tests
-    QuickSimulator,     # 100 shots
+    QuickSimulator,     # 100 shots: smoke tests only, too few for meaningful metrics
     StandardSimulator,  # 1000 shots (default noise model)
     ScaledSimulator,    # Scaled noise, useful for noise sweeps
     FinalizedSimulator, # 200,000 shots for publication-quality results
@@ -261,9 +265,8 @@ Results DataFrames include the following columns, as defined in Section 5.1.1 of
 | `logical_fidelity`                       | Bhattacharyya fidelity between ideal and noisy postselected distributions |
 | `logical_total_variation_distance` (TVD) | `½ Σ_x \|P_noisy(x) - P_ideal(x)\|` over postselected outcomes            |
 | `logical_selection_rate` (LSR)           | Fraction of shots surviving Iceberg postselection (syndrome = 0)          |
-| `raw_fidelity`                           | Fidelity before postselection                                             |
-| `total_1q_gates`, `total_2q_gates`       | Physical gate counts of the compiled circuit                              |
-| `depth`                                  | Compiled circuit depth                                                    |
+| `one_qubit_gates`, `two_qubit_gates`     | Physical gate counts of the compiled circuit                              |
+| `circuit_depth`                          | Compiled circuit depth                                                    |
 | `codes_used`                             | Number of distinct [[4, 2, 2]] patches in the permutation                 |
 | `merge_savings_1q`, `merge_savings_2q`   | Gate reduction from the merging pass                                      |
 
