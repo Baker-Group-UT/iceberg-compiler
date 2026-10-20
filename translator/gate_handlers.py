@@ -20,7 +20,7 @@ from .handlers.s import apply_logical_s
 from .handlers.sx import apply_logical_sx
 from .handlers.x import apply_logical_x, apply_logical_xx_merge
 from .handlers.z import apply_logical_z, apply_logical_zz_merge
-from .handlers.swap import apply_logical_swap
+from .handlers.swap import apply_logical_swap, apply_routing_swap
 
 BARRIERS = False
 
@@ -42,6 +42,7 @@ TABLE_SIMPLE: Dict[str, tuple[str, Callable]] = {
     "x":    ("X",    apply_logical_x),
     "z":    ("Z",    apply_logical_z),
     "swap": ("SWAP", apply_logical_swap),
+    "routing_swap": ("SWAP", apply_routing_swap),
 }
 
 # --- Special compound gate handlers ---
@@ -112,19 +113,29 @@ def translate_and_apply(
     if gname in SKIPPED_NAMES:
         return None
 
-    # --- Special compound handlers ---
-    if gname in TABLE_COMPLEX:
-        TABLE_COMPLEX[gname](op_like, context)
-        return None
+    # Handler protocol, for both tables below:
+    #   None / True -> the gate was applied (or deliberately consumed)
+    #   False       -> the gate could NOT be applied and nothing was emitted
+    #
+    # `False` has to reach the caller. `Translation.translate_circuit` raises on it, and
+    # the pipeline's callers read that as "this placement is infeasible" -- which is how
+    # the fault-tolerance rejection statistics are produced. Swallowing it means the
+    # gate silently does not happen.
+    #
+    # It was swallowed here for every compound gate: this branch called the handler and
+    # discarded the result. Since the merging pass replaces k program gates with one
+    # macro and drops the originals, a macro the handler then rejected took those gates
+    # with it and the translation still reported success. `simon_n6`-style programs came
+    # out at fidelity 0.5 with nothing in the return value to say why. The guard in
+    # `translate_circuit` was dead code for all ten names in TABLE_COMPLEX, `cx`, `cz`,
+    # `xcx` and `h` among them.
+    for table in (TABLE_COMPLEX, TABLE_SIMPLE):
+        if gname not in table:
+            continue
+        entry = table[gname]
+        handler = entry[1] if isinstance(entry, tuple) else entry
+        return False if handler(op_like, context) is False else None
 
-    # --- Simple one-to-one handlers ---
-    if gname in TABLE_SIMPLE:
-        _, handler = TABLE_SIMPLE[gname]
-        flag = handler(op_like, context)
-        # This looks stupid but handler mostly returns None
-        # None = Success, True = Gate consumed, False = Gate application failed
-        if flag is False:
-            return False
-        return None
+    raise ValueError(f"Unsupported logical gate type/name: {type(gate)} ('{gname}')")
 
     raise ValueError(f"Unsupported logical gate type/name: {type(gate)} ('{gname}')")

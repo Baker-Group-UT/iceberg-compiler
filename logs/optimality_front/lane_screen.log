@@ -1,0 +1,30 @@
+  [lane_refinement_screen] 71 items across 12 workers
+  [lane_refinement_screen] 3/71  5.9 min elapsed, ~134.7 min left
+  [lane_refinement_screen] 6/71  12.6 min elapsed, ~137.0 min left
+  [lane_refinement_screen] 9/71  19.0 min elapsed, ~131.1 min left
+  [lane_refinement_screen] 12/71  28.0 min elapsed, ~137.7 min left
+  [lane_refinement_screen] 15/71  30.6 min elapsed, ~114.3 min left
+  [lane_refinement_screen] 18/71  35.2 min elapsed, ~103.8 min left
+  [lane_refinement_screen] 21/71  37.9 min elapsed, ~90.3 min left
+  [lane_refinement_screen] 24/71  41.6 min elapsed, ~81.5 min left
+  [lane_refinement_screen] 27/71  43.1 min elapsed, ~70.3 min left
+  [lane_refinement_screen] 30/71  44.7 min elapsed, ~61.1 min left
+  [lane_refinement_screen] 33/71  45.4 min elapsed, ~52.2 min left
+  [lane_refinement_screen] 36/71  45.9 min elapsed, ~44.6 min left
+  [lane_refinement_screen] 39/71  46.5 min elapsed, ~38.2 min left
+  [lane_refinement_screen] 42/71  46.8 min elapsed, ~32.3 min left
+  [lane_refinement_screen] 45/71  46.9 min elapsed, ~27.1 min left
+  [lane_refinement_screen] 48/71  46.9 min elapsed, ~22.5 min left
+  [lane_refinement_screen] 51/71  47.0 min elapsed, ~18.4 min left
+  [lane_refinement_screen] 54/71  47.1 min elapsed, ~14.8 min left
+  [lane_refinement_screen] 57/71  47.2 min elapsed, ~11.6 min left
+  [lane_refinement_screen] 60/71  47.2 min elapsed, ~8.7 min left
+  [lane_refinement_screen] 63/71  47.8 min elapsed, ~6.1 min left
+  [lane_refinement_screen] 66/71  51.9 min elapsed, ~3.9 min left
+  [lane_refinement_screen] 69/71  61.8 min elapsed, ~1.8 min left
+  [lane_refinement_screen] 71/71  109.9 min elapsed, ~0.0 min left
+[lane_refinement_screen] 71 circuits -> results/optimality_front/lane_refinement_screen.csv; failed: []
+  G  vs A: objective median +0.00% (better on 3%), LER median +0.00% (mean +0.46), LSR median +0.00% (mean +1.14)
+  L  vs A: objective median -0.01% (better on 59%), LER median -0.25% (mean -1.81), LSR median -0.00% (mean -0.05)
+  GL vs A: objective median -0.01% (better on 59%), LER median -0.25% (mean -1.77), LSR median -0.00% (mean +0.75)
+exit 0

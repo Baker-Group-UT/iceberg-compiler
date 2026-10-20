@@ -12,6 +12,9 @@ from translator.handlers.utils import (
     are_all_partners_zero,
     is_full_transversal,
     is_alone_in_patch,
+    emit_targeted_cross_patch,
+    expand_transversal_macro,
+    resolve_transversal_macro,
     verbose_log,
 )
 
@@ -42,11 +45,16 @@ def apply_logical_xcx(
 
 
 def apply_logical_xcxt(op, context: TranslationContext) -> bool:
-    """Apply a pre-merged transversal XCX macro (XCXTGate)."""
+    """
+    Apply a pre-merged transversal XCX macro (XCXTGate).
 
-    resolved = _resolve_xcxt_macro_alignment(op, context)
+    A macro the live slot map will not admit falls back to one XCX per lane pair rather
+    than being dropped -- the merging pass has already removed the program gates this
+    stands in for, so returning empty-handed deletes them.
+    """
+    resolved = resolve_transversal_macro(op, context, "XCXT")
     if resolved is None:
-        return False
+        return expand_transversal_macro(op, context, apply_logical_xcx, "XCXT")
     control_patch, target_patch = resolved
     context.iceberg_set.XCX_k_Transversal(control_patch, target_patch)
     return True
@@ -73,9 +81,23 @@ def place_logical_xcx(
     patch_c, pos_c = context.current_pos_of(q_ctl)
     patch_t, pos_t = context.current_pos_of(q_tgt)
 
+    # Address the *current* slots, not the static ids q_ctl/q_tgt: an earlier
+    # alignment SWAP may have moved these qubits within the patch, in which case
+    # the static ids point at whichever qubits now occupy the original slots.
     if patch_c == patch_t:
-        iceberg_set.XCX(q_ctl, q_tgt, fault_tolerant=context.fault_tolerant)
+        iceberg_set.XCX(
+            patch_c * context.k_log + pos_c,
+            patch_t * context.k_log + pos_t,
+            fault_tolerant=context.fault_tolerant,
+        )
         return True
+
+    # Bare mode: emit the targeted cross-patch gate at whatever slots these qubits
+    # occupy. It is correct at any slot pair, so the alignment SWAP and the three FT
+    # predicates below are unnecessary here -- and rejecting when they all miss cost
+    # whole placements at k > 2. See utils.emit_targeted_cross_patch.
+    if not context.fault_tolerant:
+        return emit_targeted_cross_patch(context, iceberg_set.XCX, q_ctl, q_tgt)
 
     ctrls = context.active_by_patch[patch_c]
     targs = context.active_by_patch[patch_t]
@@ -134,68 +156,3 @@ def _patch_pair_from_macro(op, context: TranslationContext) -> tuple[int, int]:
     control_logical = context.qc.find_bit(control_qubit).index
     target_logical = context.qc.find_bit(target_qubit).index
     return context.logical_to_patch[control_logical], context.logical_to_patch[target_logical]
-
-
-def _resolve_xcxt_macro_alignment(
-    op,
-    context: TranslationContext,
-) -> tuple[int, int] | None:
-    metadata = getattr(op.gate, "metadata", {}) or {}
-    control_count = int(metadata.get("control_count", max(1, len(op.qubits) // 2)))
-
-    logical_qubits = metadata.get("logical_qubits")
-    if logical_qubits is None:
-        logical_qubits = [context.qc.find_bit(qubit).index for qubit in op.qubits]
-    else:
-        logical_qubits = [int(logical_i) for logical_i in logical_qubits]
-
-    control_logicals = logical_qubits[:control_count]
-    target_logicals = logical_qubits[control_count:]
-    control_positions = _current_positions_for_logicals(control_logicals, context)
-    target_positions = _current_positions_for_logicals(target_logicals, context)
-
-    control_patches = {patch for patch, _ in control_positions}
-    target_patches = {patch for patch, _ in target_positions}
-    if len(control_patches) != 1 or len(target_patches) != 1:
-        msg = f"XCXT macro spans multiple current patches: controls={control_positions}, targets={target_positions}"
-        context.fault_log.append(msg)
-        verbose_log(context.verbose, f"[skip] {msg}")
-        return None
-
-    control_patch = next(iter(control_patches))
-    target_patch = next(iter(target_patches))
-    control_slots = [slot for _, slot in control_positions]
-    target_slots = [slot for _, slot in target_positions]
-
-    if control_slots == target_slots:
-        return control_patch, target_patch
-
-    if (
-        context.k_log == 2
-        and len(control_slots) == len(target_slots) == 2
-        and sorted(control_slots) == [0, 1]
-        and sorted(target_slots) == [0, 1]
-        and [1 - slot for slot in target_slots] == control_slots
-    ):
-        context.iceberg_set.SWAP([[target_patch, 0, 1]], fault_tolerant=context.fault_tolerant)
-        context.update_states_on_swap(target_patch, 0, 1)
-        return control_patch, target_patch
-
-    msg = (
-        "XCXT macro logical lanes are misaligned with current positions: "
-        f"controls={control_positions}, targets={target_positions}"
-    )
-    context.fault_log.append(msg)
-    verbose_log(context.verbose, f"[skip] {msg}")
-    return None
-
-
-def _current_positions_for_logicals(
-    logical_qubits: list[int],
-    context: TranslationContext,
-) -> list[tuple[int, int]]:
-    positions: list[tuple[int, int]] = []
-    for logical_i in logical_qubits:
-        phys_id = context.phys_index_for_logical(logical_i)
-        positions.append(context.current_pos_of(phys_id))
-    return positions

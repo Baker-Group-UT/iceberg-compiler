@@ -1,0 +1,28 @@
+10-10 02:00 waiting for Fig 6 to finish (its log ends with an exit line)
+10-10 02:25 Fig 6: 10-10 02:25 exit 0
+10-10 02:25 start  v2-density-logical 697ef6a, 0 dirty tracked files; logical optimisation verified-routes-2
+[density_ablation_sweep] Wrote 384 rows to new experiments/figures/density_ablation_sweep/density_ablation_sweep_split_logical.csv
+[density_ablation_sweep] Appended 384 rows to experiments/figures/density_ablation_sweep/density_ablation_sweep_split_logical.csv
+[density_ablation_sweep] Appended 648 rows to experiments/figures/density_ablation_sweep/density_ablation_sweep_split_logical.csv
+07:09 sweep done: experiments/figures/density_ablation_sweep/density_ablation_sweep_split_logical.csv
+72 circuits, 354 density points; logical optimisation ['verified-routes-2']; shared arm-points 567 of 1416 (the four arms after the baseline)
+07:09 recount
+[density_references] 1077 conversions for 1590 arm-points; 180 need none
+[density_references] 1770 arm-points, 1590 recounted; the all-lane count equals the sweep's on 1590/1590; failed: none
+[density_references] wrote experiments/figures/density_ablation_sweep/density_ablation_sweep_split_logical_recount.csv
+08:32 floors
+[density_references] floors for 72 circuits (failed: none); support of at most 1 bit on 38; TVD at least 2x its floor at every point on 52/72
+[density_references] wrote experiments/figures/density_ablation_sweep/density_ablation_sweep_split_logical_floors.csv
+08:33 plot
+[density_references] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/results/figures/density_ablation_split_logical.svg
+[density_references] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/results/figures/density_ablation_split_logical.pdf
+[density_references] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/results/figures/density_vs_naive_tight_logical.svg
+[density_references] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/results/figures/density_vs_naive_tight_logical.pdf
+[density_references] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/results/figures/density_vs_naive_sparse_logical.svg
+[density_references] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/results/figures/density_vs_naive_sparse_logical.pdf
+[density_references] wrote experiments/figures/density_ablation_sweep/density_ablation_sweep_split_logical_summary.csv
+copied density_ablation_sweep_split_logical.csv to results/data/
+copied density_ablation_sweep_split_logical_recount.csv to results/data/
+copied density_ablation_sweep_split_logical_floors.csv to results/data/
+copied density_ablation_sweep_split_logical_summary.csv to results/data/
+10-10 08:33 done

@@ -20,7 +20,9 @@ def generate_permutation_set(program_circuit: qiskit.QuantumCircuit, config: Pip
     """
     # Step 1: Generate permutation space
     q = program_circuit.num_qubits
-    code_sets = generate_uniform_code_sets(q)
+    # Code size comes from the translator config, so one knob selects the
+    # [[n, n-2, 2]] code for the whole pipeline.
+    code_sets = generate_uniform_code_sets(q, n=config.translator_config.n_code)
     permutations = generate_permutations(code_sets, q)
 
     # Step 2: Optionally limit the number of permutations

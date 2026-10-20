@@ -7,8 +7,8 @@ from __future__ import annotations
 import qiskit
 
 from pipeline.config                    import PipelineConfig
-from pipeline.analysis.postselection    import calculate_metrics_for_bare_circuit
-from pipeline.analysis.result_types import PostselectedSimulationResult
+from analysis.postselection    import calculate_metrics_for_bare_circuit
+from analysis.result_types import PostselectedSimulationResult
 from simulator.simulator                import Simulator
 
 def simulate_circuit(circuit: qiskit.QuantumCircuit,

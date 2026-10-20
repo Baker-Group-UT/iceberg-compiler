@@ -1,0 +1,13 @@
+[seed] 71 Fig 6 originals; records in /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/results/cache/logical_optimization
+[seed] seeded    0  
+[seed] agrees   64  adder_n10 adder_n4 basis_change_n3 bb84_n8 bell_n4 cat_state_n4 dnn_n8 error_correctiond3_n5 ...
+[seed] kept      0  
+[seed] refused   7  basis_trotter_n4 qaoa_n6 variational_n4 dnn_n33 dnn_n51 qugan_n39 qugan_n71
+[seed] basis_trotter_n4: study answer refused (356 -> 461 rotations; 2q 582 -> 217); its record dropped; under the rule: 232 rotations, 2q 199
+[seed] qaoa_n6: study answer refused (60 -> 73 rotations; 2q 54 -> 36); its record dropped; under the rule: 60 rotations, 2q 54
+[seed] variational_n4: study answer refused (16 -> 20 rotations; 2q 16 -> 8); its record dropped; under the rule: 16 rotations, 2q 16
+[seed] dnn_n33: study answer refused (282 -> 323 rotations; 2q 248 -> 172); its record dropped; under the rule: 282 rotations, 2q 248
+[seed] dnn_n51: study answer refused (444 -> 501 rotations; 2q 392 -> 271); its record dropped; under the rule: 444 rotations, 2q 392
+[seed] qugan_n39: study answer refused (279 -> 344 rotations; 2q 296 -> 205); its record dropped; under the rule: 279 rotations, 2q 296
+[seed] qugan_n71: study answer refused (519 -> 635 rotations; 2q 552 -> 381); its record dropped; under the rule: 519 rotations, 2q 552
+[seed] Fig 6's loader with the pass on returns the study's circuit for 71/71

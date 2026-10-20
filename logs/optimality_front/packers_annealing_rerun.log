@@ -1,0 +1,27 @@
+[packers_corpus] logical optimisation: verified-routes-2
+  [packers_corpus] 71 items across 12 workers
+  [packers_corpus] 3/71  3.8 min elapsed, ~85.0 min left
+  [packers_corpus] 6/71  3.8 min elapsed, ~40.6 min left
+  [packers_corpus] 9/71  3.8 min elapsed, ~25.9 min left
+  [packers_corpus] 12/71  3.8 min elapsed, ~18.5 min left
+  [packers_corpus] 15/71  3.8 min elapsed, ~14.0 min left
+  [packers_corpus] 18/71  6.5 min elapsed, ~19.0 min left
+  [packers_corpus] 21/71  6.5 min elapsed, ~15.4 min left
+  [packers_corpus] 24/71  6.5 min elapsed, ~12.7 min left
+  [packers_corpus] 27/71  7.4 min elapsed, ~12.1 min left
+  [packers_corpus] 30/71  7.4 min elapsed, ~10.2 min left
+  [packers_corpus] 33/71  8.4 min elapsed, ~9.7 min left
+  [packers_corpus] 36/71  9.2 min elapsed, ~9.0 min left
+  [packers_corpus] 39/71  9.4 min elapsed, ~7.7 min left
+  [packers_corpus] 42/71  9.7 min elapsed, ~6.7 min left
+  [packers_corpus] 45/71  9.9 min elapsed, ~5.7 min left
+  [packers_corpus] 48/71  10.1 min elapsed, ~4.8 min left
+  [packers_corpus] 51/71  10.7 min elapsed, ~4.2 min left
+  [packers_corpus] 54/71  11.2 min elapsed, ~3.5 min left
+  [packers_corpus] 57/71  11.5 min elapsed, ~2.8 min left
+  [packers_corpus] 60/71  11.5 min elapsed, ~2.1 min left
+  [packers_corpus] 63/71  12.0 min elapsed, ~1.5 min left
+  [packers_corpus] 66/71  12.7 min elapsed, ~1.0 min left
+  [packers_corpus] 69/71  13.5 min elapsed, ~0.4 min left
+  [packers_corpus] 71/71  14.5 min elapsed, ~0.0 min left
+[packers_corpus] 71 circuits, 142 rows -> results/optimality_front/packers_corpus_annealing.csv; failed []; miscompiled placements 0 []

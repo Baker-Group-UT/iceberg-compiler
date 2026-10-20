@@ -1,0 +1,32 @@
+[5_tvd_vs_accepted_shots] 8 circuits x 6 shot budgets x 2 placements at n = 12, k = 2
+  [circuit] 8 items across 4 workers
+[5_tvd_vs_accepted_shots] wrote 96 rows to /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/experiments/figures/5_tvd_vs_accepted_shots/5_tvd_vs_accepted_shots.csv
+[5_tvd_vs_accepted_shots] persisted to /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/results/data/5_tvd_vs_accepted_shots.csv
+[5_tvd_vs_accepted_shots] fit of TVD on 1/sqrt(accepted shots), per circuit
+  circuit  series   slope   intercept   +-SE      r     mean LSR
+        0  aqorn     5.32     0.0020  0.0024   0.996   0.3236
+        0  naive     5.23     0.0054  0.0024   0.996   0.3203
+        1  aqorn     4.70     0.0125  0.0015   0.998   0.3301
+        1  naive     4.53     0.0090  0.0017   0.997   0.3215
+        2  aqorn     3.24     0.0160  0.0029   0.992   0.1720
+        2  naive     2.98     0.0218  0.0040   0.981   0.1762
+        3  aqorn     7.11     0.0071  0.0023   0.997   0.4095
+        3  naive     7.33     0.0073  0.0018   0.999   0.3698
+        4  aqorn    19.77     0.0041  0.0019   1.000   0.2427
+        4  naive    20.11     0.0042  0.0019   1.000   0.2353
+        5  aqorn    10.57     0.0022  0.0017   1.000   0.3010
+        5  naive    10.72    -0.0028  0.0057   0.995   0.2767
+        6  aqorn     2.90     0.0053  0.0019   0.988   0.4456
+        6  naive     3.81     0.0000  0.0066   0.932   0.4110
+        7  aqorn    14.82     0.0043  0.0023   1.000   0.2796
+        7  naive    14.71     0.0026  0.0034   0.999   0.2291
+[5_tvd_vs_accepted_shots] the two questions this figure answers
+  AQORN packing  mean slope    8.56   mean intercept 0.0067 (sd 0.0050)
+  naive packing  mean slope    8.68   mean intercept 0.0059 (sd 0.0074)
+[5_tvd_vs_accepted_shots] intercepts: AQORN - naive = +0.0008 on average (6/8 circuits agree within one combined SE)
+[5_tvd_vs_accepted_shots] READING: the intercepts agree, so the surviving distribution is not cleaner -- the gain is throughput. At a fixed shot budget that is the gain that matters.
+[5_tvd_vs_accepted_shots] slopes: AQORN 8.56 against naive 8.68; slope varies 2.90-20.11 across circuits, which is why a fit pooled over circuits is meaningless
+[5_tvd_vs_accepted_shots] accepted-shot advantage: AQORN keeps +6.8% more shots at the same raw budget, which moves it left along the fitted line
+[5_tvd_vs_accepted_shots] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/results/figures/5_tvd_vs_accepted_shots.svg
+[5_tvd_vs_accepted_shots] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/results/figures/5_tvd_vs_accepted_shots.pdf
+[5_tvd_vs_accepted_shots] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/experiments/figures/5_tvd_vs_accepted_shots/5_tvd_vs_accepted_shots.svg

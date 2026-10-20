@@ -2,29 +2,68 @@
 
 from __future__ import annotations
 
+from bisect import bisect_left
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 from qiskit.dagcircuit import DAGCircuit, DAGOpNode
 
+from iceberg.costs import DEFAULT_WORK_WEIGHTS as _CODE_WORK_WEIGHTS
+from iceberg.costs import pauli_macro_cost
+from iceberg.costs import work_table as code_work_table
+
 from .models import MacroReplacement, MergeConflictInfo
 
-DEFAULT_MERGE_WORK_TABLE: Dict[str, Tuple[int, int]] = {
-    "X": (2, 0),
-    "Z": (2, 0),
-    "H": (7, 4),
-    "HH": (4, 0),
-    "XX": (2, 0),
-    "ZZ": (2, 0),
-    "CX": (0, 4),
-    "CZ": (1, 3),
-    "XCX": (5, 3),
-    "CXT": (0, 4),
-    "CZT": (0, 4),
-    "XCXT": (8, 4),
+# Code size the merging pass is calibrated for; see `packer.work_table` for the
+# same knob on the packing side. Costs live in `iceberg.costs` so that the
+# constructions and the cost model cannot drift apart.
+DEFAULT_CODE_SIZE: int = 4
+
+DEFAULT_MERGE_WORK_TABLE: Dict[str, Tuple[int, int]] = code_work_table(DEFAULT_CODE_SIZE)
+
+DEFAULT_MERGE_WORK_WEIGHTS: Tuple[float, float] = _CODE_WORK_WEIGHTS
+
+#: Macro name -> the per-lane gate it stands in for. One table, so the savings
+#: estimate in `preprocessing` and the candidate ranking in `selection` cannot
+#: disagree about what a macro replaces.
+MACRO_TO_ORIGINAL: Dict[str, str] = {
+    "HH": "H",
+    "XX": "X",
+    "ZZ": "Z",
+    "CXT": "CX",
+    "CZT": "CZ",
+    "XCXT": "XCX",
 }
 
-DEFAULT_MERGE_WORK_WEIGHTS: Tuple[float, float] = (1.0, 13.0)
+
+def macro_cost(
+    name: str, fused: int, work_table: Dict[str, Tuple[int, int]]
+) -> Optional[Tuple[int, int]]:
+    """
+    (1q, 2q) cost of emitting one macro that fuses `fused` original gates.
+
+    XX/ZZ macros fuse *any* group of m >= 2 coincident Paulis, and the emitted
+    cost depends on m -- m + (m mod 2) single-qubit gates -- so the fixed
+    work-table entry (the whole-patch m = k value) is wrong for partial groups.
+    Everything else (HH, the transversal macros) emits the same circuit whatever
+    subset of lanes asked for it, so the table entry is the cost. Shared by
+    `preprocessing`, `selection`, and the conflict weighting here, so the three
+    estimates cannot disagree about what a macro costs.
+    """
+    if name in ("XX", "ZZ"):
+        return pauli_macro_cost(fused)
+    return work_table.get(name)
+
+
+def merge_work_table(n_code: int = DEFAULT_CODE_SIZE) -> Dict[str, Tuple[int, int]]:
+    """
+    Gate costs at a given code size.
+
+    The whole-patch and transversal macros scale with n -- HH is (n, 0) and CXT is
+    (0, n) -- so scoring a k=10 merge against the n=4 table would misprice exactly
+    the merges that only exist at larger k.
+    """
+    return code_work_table(n_code)
 
 
 @dataclass(frozen=True)
@@ -172,30 +211,39 @@ def _add_first_in_window_conflicts(
     before B's macro to after it — a reordering violation.
 
     This is checked symmetrically for both (A, B) and (B, A).
+
+    Still `O(C^2)` -- the pairs genuinely have to be visited -- but the per-pair work is
+    hoisted out. Positions and qarg sets used to be rebuilt inside the inner loop, so a
+    set of B's macro qargs was constructed once per *pair* rather than once per merge.
     """
     def pos(n: DAGOpNode) -> Tuple[int, int]:
         return (layer_index.get(n, 0), order_index.get(n, 0))
 
-    for idx_a, merge_a in enumerate(merges):
-        a_first_pos = pos(merge_a.first)
-        a_second_pos = pos(merge_a.second)
-        a_first_qubits = set(merge_a.first.qargs)
+    first_positions = [pos(merge.first) for merge in merges]
+    second_positions = [pos(merge.second) for merge in merges]
+    first_qubit_sets = [set(merge.first.qargs) for merge in merges]
+    macro_qubit_sets = [set(merge.macro_qargs) for merge in merges]
 
-        for idx_b, merge_b in enumerate(merges):
+    for idx_a in range(len(merges)):
+        a_first_pos = first_positions[idx_a]
+        a_second_pos = second_positions[idx_a]
+        a_first_qubits = first_qubit_sets[idx_a]
+
+        for idx_b in range(len(merges)):
             if idx_a == idx_b:
                 continue
             if idx_b in conflicts.get(idx_a, set()):
                 continue
 
-            b_first_pos = pos(merge_b.first)
-            b_second_pos = pos(merge_b.second)
+            b_first_pos = first_positions[idx_b]
+            b_second_pos = second_positions[idx_b]
 
             # A.first must fall strictly inside B's window.
             if not (b_first_pos <= a_first_pos < b_second_pos):
                 continue
 
             # A.first must touch a qubit that B's macro operates on.
-            if not (a_first_qubits & set(merge_b.macro_qargs)):
+            if a_first_qubits.isdisjoint(macro_qubit_sets[idx_b]):
                 continue
 
             # A's macro must fire after B's macro — otherwise there's no reorder.
@@ -224,10 +272,40 @@ def _add_cross_gate_conflicts(
       - G touches one of B's blocked_qubits (so it is actually caught by B's block)
       - G touches one of A's macro_qargs (so it has an ordering relationship with A)
 
-    We skip pairs already known to conflict to avoid redundant work.
+    Indexed rather than enumerated, which is worth a paragraph because the obvious
+    reading of that predicate is a triple loop over (A, B, every two-qubit gate) and
+    that is what this used to be. `O(C^2 * G2)` is cubic in circuit size, since the
+    candidate count grows with the gate count, and it dominated everything: on H-dense
+    circuits at a few thousand gates it was >99% of the whole merging pass, and the
+    `pos` closure alone was called 9.5M times on a 2000-gate circuit.
+
+    The observation that removes the third factor is that **the qualifying G depend only
+    on B**. Gather them once per B into `first_hit`, mapping each qubit to the earliest
+    position at which a gate caught by B's block touches it, and the pair test collapses
+    to a lookup over A's macro qargs:
+
+        conflict(A, B)  <=>  pos(B.second) > pos(A.second)
+                             and min(first_hit[q] for q in A.macro_qargs) < pos(A.second)
+
+    `first_hit` carries the window and B's block; the comparison carries the other two
+    conditions. Cost is `O(C * window + C^2 * k)`.
+
+    The edge set is unchanged, and that is the property to protect when editing here --
+    `tests/test_merging_conflict_index.py` pins it against the enumerated form on random
+    circuits. Two features of the old loop looked load-bearing and were not: the
+    already-conflicting `continue` and the `break` at the first witness are both
+    short-circuits over an existence question, and which witness G supplied the edge was
+    never recorded. Iterating B outer rather than A outer is likewise invisible, since
+    `_record_conflict` is symmetric.
     """
+    pos_cache: Dict[DAGOpNode, Tuple[int, int]] = {}
+
     def pos(n: DAGOpNode) -> Tuple[int, int]:
-        return (layer_index.get(n, 0), order_index.get(n, 0))
+        cached = pos_cache.get(n)
+        if cached is None:
+            cached = (layer_index.get(n, 0), order_index.get(n, 0))
+            pos_cache[n] = cached
+        return cached
 
     # Pre-build the set of all merge nodes so we can skip them as G candidates.
     # A first/second node is never emitted as a plain gate, so it can never be
@@ -237,56 +315,61 @@ def _add_cross_gate_conflicts(
         merge_nodes.add(m.first)
         merge_nodes.add(m.second)
 
-    # Collect only 2-qubit non-merge op nodes once, sorted by position.
-    two_qubit_nodes = [
+    # 2-qubit non-merge op nodes, sorted by position with a parallel key array, so a
+    # blocking window can be bisected out instead of found by scanning every gate.
+    bridges = [
         n for n in dag.topological_op_nodes()
         if len(n.qargs) == 2 and n not in merge_nodes
     ]
+    if not bridges:
+        return
+    bridges.sort(key=pos)
+    keys = [pos(n) for n in bridges]
 
-    for idx_a, merge_a in enumerate(merges):
-        a_second_pos = pos(merge_a.second)
-        a_qubits = set(merge_a.macro_qargs)
+    a_second_positions = [pos(m.second) for m in merges]
+    a_macro_qubits = [set(m.macro_qargs) for m in merges]
 
-        for idx_b, merge_b in enumerate(merges):
+    for idx_b, merge_b in enumerate(merges):
+        b_blocked = set(merge_b.blocked_qubits)
+        if not b_blocked:
+            # No block, so no gate is ever caught and B bridges to nothing.
+            continue
+        b_first_pos = pos(merge_b.first)
+        b_second_pos = pos(merge_b.second)
+
+        low = bisect_left(keys, b_first_pos)
+        high = bisect_left(keys, b_second_pos)
+
+        # Earliest position at which a gate inside B's window and caught by B's block
+        # touches each qubit. `keys` ascends over the slice, so the first write is the
+        # minimum and later ones can be skipped.
+        first_hit: Dict[object, Tuple[int, int]] = {}
+        for offset in range(low, high):
+            qargs = bridges[offset].qargs
+            if b_blocked.isdisjoint(qargs):
+                continue
+            key = keys[offset]
+            for qubit in qargs:
+                if qubit not in first_hit:
+                    first_hit[qubit] = key
+        if not first_hit:
+            continue
+
+        for idx_a in range(len(merges)):
             if idx_a == idx_b:
+                continue
+            a_second_pos = a_second_positions[idx_a]
+            # B must fire strictly after A for its delay to push G past A.
+            if b_second_pos <= a_second_pos:
                 continue
             # Skip pairs that are already recorded as conflicting.
             if idx_b in conflicts.get(idx_a, set()):
                 continue
-
-            b_first_pos = pos(merge_b.first)
-            b_second_pos = pos(merge_b.second)
-
-            # B must fire strictly after A for its delay to push G past A.
-            if b_second_pos <= a_second_pos:
-                continue
-
-            b_blocked = set(merge_b.blocked_qubits)
-
-            for g_node in two_qubit_nodes:
-                g_pos = pos(g_node)
-
-                # G must fall inside B's blocking window.
-                if g_pos < b_first_pos or g_pos >= b_second_pos:
-                    continue
-
-                # G must precede A's macro in the original circuit.
-                if g_pos >= a_second_pos:
-                    continue
-
-                g_qubits = set(g_node.qargs)
-
-                # G must be caught by B's block.
-                if not g_qubits & b_blocked:
-                    continue
-
-                # G must be connected to A's merge qubits.
-                if not g_qubits & a_qubits:
-                    continue
-
-                # All conditions satisfied — record the conflict and move on.
-                _record_conflict(conflicts, idx_a, idx_b)
-                break
+            for qubit in a_macro_qubits[idx_a]:
+                hit = first_hit.get(qubit)
+                if hit is not None and hit < a_second_pos:
+                    _record_conflict(conflicts, idx_a, idx_b)
+                    break
 
 
 def _build_segments(
@@ -338,6 +421,12 @@ def _merge_savings_counts(
     merges: Sequence[MacroReplacement],
     work_table: Dict[str, Tuple[int, int]],
 ) -> List[Tuple[int, int]]:
+    """
+    (1q, 2q) saved by each candidate: what its `len(nodes)` originals would have
+    cost, minus the macro. The count used to be hardcoded at 2, which was only
+    right at k=2 -- it understated HH at larger patches and ignored the size of
+    partial Pauli fusions entirely.
+    """
     savings: List[Tuple[int, int]] = []
     for merge in merges:
         name = getattr(merge.macro_gate, "name", "").upper()
@@ -345,13 +434,16 @@ def _merge_savings_counts(
         if orig is None:
             savings.append((0, 0))
             continue
+        fused = len(merge.nodes)
         base = work_table.get(orig)
-        macro = work_table.get(name)
+        macro = macro_cost(name, fused, work_table)
         if base is None or macro is None:
             savings.append((0, 0))
             continue
-        s1 = 2 * base[0] - macro[0]
-        s2 = 2 * base[1] - macro[1]
+        # Undo gates (branch v2-tvd-explore) are singles of the same kind, emitted.
+        net = fused - len(getattr(merge, "undo_ops", ()))
+        s1 = net * base[0] - macro[0]
+        s2 = net * base[1] - macro[1]
         savings.append((s1, s2))
     return savings
 

@@ -1,0 +1,12 @@
+[exhaustive_front] logical optimisation: verified-routes-2; out results/optimality_front
+[exhaustive_front] 75 programs: 4q 29, 5q 24, 6q 22
+  [plan] 3 items across 2 workers
+  [plan] 1/3  0.0 min elapsed, ~0.0 min left
+  [plan] 2/3  0.0 min elapsed, ~0.0 min left
+  [plan] 3/3  0.0 min elapsed, ~0.0 min left
+[exhaustive_front] plans: 75; AQORN fell back to naive on 3
+[exhaustive_front] 150 parts, 141 to do
+  [measure] 150 items across 2 workers
+/opt/homebrew/Cellar/python@3.13/3.13.2/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/resource_tracker.py:277: UserWarning: resource_tracker: There appear to be 5 leaked semaphore objects to clean up at shutdown: {'/mp-tlx04gzu', '/mp-nxwws_xv', '/mp-eyr7d_h8', '/mp-iu5xnxdc', '/mp-pa9b4y_k'}
+  warnings.warn(
+exit stopped by hand 22:07 (it measured every missing part, not only the redo's); superseded by redo2.log, which exited 0

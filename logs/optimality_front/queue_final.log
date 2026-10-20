@@ -1,0 +1,22 @@
+10-09 23:50 sweep exit 0, redo exit stopped by hand 22:07 (it measured every missing part, not only the redo's); superseded by redo2.log, which exited 0
+10-09 23:50 combine exit 0
+[exhaustive_front] plans: 75; AQORN fell back to naive on 3
+[exhaustive_front] 150 parts, 0 to do
+[exhaustive_front] space.csv: 67632 placements of 75 programs, 66048 distinct circuits; AQORN's cost equals the planner's recorded value on 75/75
+10-09 23:50 figure exit 0
+[optimality_front] median gap to the best placement (%), 75 programs
+              cost   lsr    ler    tvd  two_qubit_gates  depth  dominated_by_pct
+arm                                                                             
+aqorn         0.28  1.62   7.91  29.57             0.00   1.23              0.14
+naive        11.48  3.07  32.91  70.74            11.94   8.72              6.11
+interaction  13.28  0.18  52.61  96.80             0.00   6.78              1.11
+[optimality_front] AQORN cost gap by width, mean +- SD (P(opt)):
+    4 qubits: 0.48 +- 0.90% (34% optimal)
+    5 qubits: 0.60 +- 0.82% (8% optimal)
+    6 qubits: 0.59 +- 0.59% (5% optimal)
+[optimality_front] on the LSR/LER front: AQORN 36%, Naive 16%, Interaction partition 29%
+[optimality_front] TVD row excludes 10 uniform-output programs
+[optimality_front] panel (a) example: rand:6q:17
+[optimality_front] saved /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/results/figures/optimality_front.svg
+[optimality_front] saved /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/results/figures/optimality_front.pdf
+[optimality_front] saved /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/.claude/worktrees/logical-opt-pass/experiments/figures/optimality_front/optimality_front.svg

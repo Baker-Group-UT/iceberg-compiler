@@ -1,0 +1,58 @@
+[1_best_k_phase_diagram] 16 circuits x 7 ratios x 5 code sizes, 40,000 raw shots/point
+[1_best_k_phase_diagram] circuits: qram_n20, swap_test_n25, wstate_n27, ising_n26, knn_n25, qft_n29, qugan_n39, swap_test_n41, wstate_n36, dnn_n51, dnn_n33, adder_n28, knn_n31, ising_n34, knn_n41, ising_n42
+  [circuit x ratio] 112 items across 6 workers
+[1_best_k_phase_diagram] wrote 560 rows to /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/experiments/figures/1_best_k_phase_diagram/1_best_k_phase_diagram.csv
+[1_best_k_phase_diagram] persisted to /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/results/data/1_best_k_phase_diagram.csv
+[1_best_k_phase_diagram] 16 circuits after the completeness filter
+[1_best_k_phase_diagram] winning k by (size bin, ratio); * marks a margin above 1 SE
+  gates             1/64      1/16       1/4         1         4        16        64
+  164-258          k=10*     k=10*     k=10*     k=10*      k=8       k=6       k=6 
+  259-327          k=10*     k=10*     k=10*     k=10      k=10      k=10       k=6 
+  327-510          k=10      k=10      k=10      k=10       k=6       k=4       k=6 
+  510-2059         k=10*     k=10*     k=10*     k=10       k=2       k=2*      k=2*
+[1_best_k_phase_diagram] margins over the runner-up (%), same layout
+  gates             1/64      1/16       1/4         1         4        16        64
+  164-258           27.3      19.5      15.4       8.6       0.2       2.3       0.6
+  259-327           20.6      18.5      13.4       9.7       0.5       1.8       2.4
+  327-510           23.6      20.7      16.5       3.7       7.1       1.1       3.6
+  510-2059          31.0      27.5      18.4       7.0      17.7      69.2      65.5
+[1_best_k_phase_diagram] 5 distinct code sizes win somewhere on the map; 12/28 cells have a margin above one standard error
+  gates 510-2059, ratio 16: k=2 beats k=4 by 69.2%
+  gates 510-2059, ratio 64: k=2 beats k=4 by 65.5%
+  gates 510-2059, ratio 1/64: k=10 beats k=8 by 31.0%
+[1_best_k_phase_diagram] absolute selection rate by (size bin, ratio, k)
+  gates 164-258
+    ratio   1/64: k2=0.0955  k4=0.1246  k6=0.2468  k8=0.3141  k10=0.3997
+    ratio   1/16: k2=0.1183  k4=0.1480  k6=0.2436  k8=0.2851  k10=0.3408
+    ratio    1/4: k2=0.1343  k4=0.1639  k6=0.2291  k8=0.2484  k10=0.2866
+    ratio      1: k2=0.1544  k4=0.1816  k6=0.2210  k8=0.2264  k10=0.2458
+    ratio      4: k2=0.1770  k4=0.1969  k6=0.2149  k8=0.2158  k10=0.2154
+    ratio     16: k2=0.1962  k4=0.2021  k6=0.2144  k8=0.1969  k10=0.2096
+    ratio     64: k2=0.1796  k4=0.1878  k6=0.1889  k8=0.1802  k10=0.1838
+  gates 259-327
+    ratio   1/64: k2=0.1273  k4=0.1700  k6=0.2334  k8=0.3430  k10=0.4136
+    ratio   1/16: k2=0.1453  k4=0.1904  k6=0.2413  k8=0.3107  k10=0.3682
+    ratio    1/4: k2=0.1524  k4=0.1957  k6=0.2288  k8=0.2723  k10=0.3087
+    ratio      1: k2=0.1618  k4=0.2012  k6=0.2215  k8=0.2363  k10=0.2592
+    ratio      4: k2=0.1697  k4=0.1993  k6=0.2108  k8=0.2173  k10=0.2185
+    ratio     16: k2=0.1877  k4=0.2245  k6=0.2234  k8=0.2215  k10=0.2285
+    ratio     64: k2=0.2019  k4=0.2042  k6=0.2151  k8=0.1904  k10=0.2101
+  gates 327-510
+    ratio   1/64: k2=0.1520  k4=0.2416  k6=0.3051  k8=0.3278  k10=0.4052
+    ratio   1/16: k2=0.1586  k4=0.2382  k6=0.2886  k8=0.3036  k10=0.3665
+    ratio    1/4: k2=0.1575  k4=0.2264  k6=0.2539  k8=0.2645  k10=0.3082
+    ratio      1: k2=0.1802  k4=0.2366  k6=0.2327  k8=0.2574  k10=0.2668
+    ratio      4: k2=0.2101  k4=0.2624  k6=0.2810  k8=0.2284  k10=0.2496
+    ratio     16: k2=0.2379  k4=0.2944  k6=0.2910  k8=0.2563  k10=0.2515
+    ratio     64: k2=0.2523  k4=0.3071  k6=0.3324  k8=0.3210  k10=0.2757
+  gates 510-2059
+    ratio   1/64: k2=0.1429  k4=0.1721  k6=0.2520  k8=0.2818  k10=0.3692
+    ratio   1/16: k2=0.1450  k4=0.1683  k6=0.2311  k8=0.2535  k10=0.3231
+    ratio    1/4: k2=0.1651  k4=0.1738  k6=0.2189  k8=0.2357  k10=0.2789
+    ratio      1: k2=0.2112  k4=0.1965  k6=0.2144  k8=0.2264  k10=0.2424
+    ratio      4: k2=0.2598  k4=0.1920  k6=0.1728  k8=0.2111  k10=0.2206
+    ratio     16: k2=0.3095  k4=0.1829  k6=0.1538  k8=0.1689  k10=0.1784
+    ratio     64: k2=0.3335  k4=0.2016  k6=0.1546  k8=0.1638  k10=0.1707
+[1_best_k_phase_diagram] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/results/figures/1_best_k_phase_diagram.svg
+[1_best_k_phase_diagram] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/results/figures/1_best_k_phase_diagram.pdf
+[1_best_k_phase_diagram] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/experiments/figures/1_best_k_phase_diagram/1_best_k_phase_diagram.svg

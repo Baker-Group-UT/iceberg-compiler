@@ -1,0 +1,34 @@
+  [circuits (small)] 29 items across 12 workers
+[density_ablation_sweep] Loaded 29 small circuits (standard configuration, matched patch counts, merging split into single- and two-qubit steps, arms reused from density_ablation_sweep_matched.csv).
+  [circuits (small)] 1/29  0.3 min elapsed, ~9.2 min left
+  [circuits (small)] 2/29  0.4 min elapsed, ~5.5 min left
+  [circuits (small)] 3/29  0.5 min elapsed, ~4.7 min left
+  [circuits (small)] 4/29  0.6 min elapsed, ~3.7 min left
+  [circuits (small)] 5/29  0.6 min elapsed, ~2.9 min left
+  [circuits (small)] 6/29  0.6 min elapsed, ~2.5 min left
+  [circuits (small)] 7/29  0.7 min elapsed, ~2.2 min left
+  [circuits (small)] 8/29  1.0 min elapsed, ~2.6 min left
+  [circuits (small)] 9/29  1.2 min elapsed, ~2.6 min left
+  [circuits (small)] 10/29  1.4 min elapsed, ~2.7 min left
+  [circuits (small)] 11/29  1.7 min elapsed, ~2.7 min left
+  [circuits (small)] 12/29  1.7 min elapsed, ~2.4 min left
+  [circuits (small)] 13/29  2.0 min elapsed, ~2.5 min left
+  [circuits (small)] 14/29  2.0 min elapsed, ~2.2 min left
+  [circuits (small)] 15/29  2.3 min elapsed, ~2.1 min left
+  [circuits (small)] 16/29  2.4 min elapsed, ~1.9 min left
+  [circuits (small)] 17/29  2.9 min elapsed, ~2.1 min left
+  [circuits (small)] 18/29  2.9 min elapsed, ~1.8 min left
+  [circuits (small)] 19/29  3.0 min elapsed, ~1.6 min left
+  [circuits (small)] 20/29  3.1 min elapsed, ~1.4 min left
+  [circuits (small)] 21/29  3.3 min elapsed, ~1.3 min left
+  [circuits (small)] 22/29  3.4 min elapsed, ~1.1 min left
+  [circuits (small)] 23/29  4.4 min elapsed, ~1.1 min left
+  [circuits (small)] 24/29  4.9 min elapsed, ~1.0 min left
+  [circuits (small)] 25/29  5.6 min elapsed, ~0.9 min left
+  [circuits (small)] 26/29  5.6 min elapsed, ~0.6 min left
+  [circuits (small)] 27/29  6.3 min elapsed, ~0.5 min left
+  [circuits (small)] 28/29  6.7 min elapsed, ~0.2 min left
+  [circuits (small)] 29/29  8.4 min elapsed, ~0.0 min left
+[density_ablation_sweep] Wrote 384 rows to new /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/.claude/worktrees/exact-patches/experiments/figures/density_ablation_sweep/density_ablation_sweep_split.csv
+[density_ablation_sweep] split-merging CSV written; plot it with density_references (recount, floors, plot --matched density_ablation_sweep_split.csv)
+exit 0

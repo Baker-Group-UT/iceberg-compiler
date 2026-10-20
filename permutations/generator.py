@@ -218,6 +218,7 @@ def permutation_with_n_codes(
     q: int,
     n_codes: int,
     seed: int | None = None,
+    n: int = 4,
 ) -> List[Tuple[int, int]]:
     """
     Construct a single permutation that uses exactly ``n_codes`` distinct patches.
@@ -231,6 +232,9 @@ def permutation_with_n_codes(
         ``1 <= n_codes <= q``.
     seed : int | None, optional
         Optional seed for deterministic randomness.
+    n : int, optional
+        Code size, which fixes the slots per patch to ``logical_capacity(n)``.
+        Default is 4, i.e. two slots per patch.
 
     Returns
     -------
@@ -241,16 +245,18 @@ def permutation_with_n_codes(
     Raises
     ------
     ValueError
-        If ``n_codes`` is less than 1 or greater than ``q``.
+        If ``n_codes`` is less than 1 or greater than ``q``, or if ``q`` exceeds
+        the total slot capacity of ``n_codes`` patches.
     """
     if n_codes < 1:
         raise ValueError("n_codes must be at least 1.")
     if q < n_codes:
         raise ValueError("q must be >= n_codes to use that many codes.")
-    max_capacity = 2 * n_codes
+    slots_per_patch = logical_capacity(n)
+    max_capacity = slots_per_patch * n_codes
     if q > max_capacity:
         raise ValueError(
-            "Cannot place more than two qubits per patch. "
+            f"Cannot place more than {slots_per_patch} qubits per patch at n={n}. "
             f"q={q} exceeds max capacity {max_capacity} for n_codes={n_codes}."
         )
 
@@ -258,12 +264,12 @@ def permutation_with_n_codes(
     patch_ids = list(range(n_codes))
 
     # Ensure each code appears at least once, then distribute remaining slots
-    # randomly while respecting the 2-qubit-per-patch limit.
+    # randomly while respecting the per-patch slot limit.
     slot_usage: Dict[int, int] = {pid: 1 for pid in patch_ids}
     sequence = patch_ids.copy()
     remaining = q - n_codes
     while remaining:
-        available = [pid for pid in patch_ids if slot_usage[pid] < 2]
+        available = [pid for pid in patch_ids if slot_usage[pid] < slots_per_patch]
         pid = rng.choice(available)
         sequence.append(pid)
         slot_usage[pid] += 1

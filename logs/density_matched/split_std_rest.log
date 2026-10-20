@@ -1,0 +1,49 @@
+  [circuits (medium)] 15 items across 12 workers
+[density_ablation_sweep] Loaded 15 medium circuits (standard configuration, matched patch counts, merging split into single- and two-qubit steps, arms reused from density_ablation_sweep_matched.csv).
+  [circuits (medium)] 1/15  8.4 min elapsed, ~117.5 min left
+  [circuits (medium)] 2/15  8.5 min elapsed, ~55.2 min left
+  [circuits (medium)] 3/15  9.9 min elapsed, ~39.5 min left
+  [circuits (medium)] 4/15  10.7 min elapsed, ~29.5 min left
+  [circuits (medium)] 5/15  14.1 min elapsed, ~28.3 min left
+  [circuits (medium)] 6/15  15.1 min elapsed, ~22.7 min left
+  [circuits (medium)] 7/15  15.5 min elapsed, ~17.7 min left
+  [circuits (medium)] 8/15  17.1 min elapsed, ~15.0 min left
+  [circuits (medium)] 9/15  20.2 min elapsed, ~13.5 min left
+  [circuits (medium)] 10/15  23.0 min elapsed, ~11.5 min left
+  [circuits (medium)] 11/15  24.3 min elapsed, ~8.8 min left
+  [circuits (medium)] 12/15  24.4 min elapsed, ~6.1 min left
+  [circuits (medium)] 13/15  26.7 min elapsed, ~4.1 min left
+  [circuits (medium)] 14/15  27.2 min elapsed, ~1.9 min left
+  [circuits (medium)] 15/15  30.8 min elapsed, ~0.0 min left
+  [circuits (large)] 27 items across 12 workers
+[density_ablation_sweep] Wrote 360 rows to new experiments/figures/density_ablation_sweep/density_ablation_sweep_split_std_rest.csv
+[density_ablation_sweep] Loaded 27 large circuits (standard configuration, matched patch counts, merging split into single- and two-qubit steps, arms reused from density_ablation_sweep_matched.csv).
+  [circuits (large)] 1/27  13.3 min elapsed, ~345.8 min left
+  [circuits (large)] 2/27  24.9 min elapsed, ~311.6 min left
+  [circuits (large)] 3/27  27.0 min elapsed, ~216.4 min left
+  [circuits (large)] 4/27  33.3 min elapsed, ~191.4 min left
+  [circuits (large)] 5/27  39.7 min elapsed, ~174.8 min left
+  [circuits (large)] 6/27  42.9 min elapsed, ~150.1 min left
+  [circuits (large)] 7/27  47.4 min elapsed, ~135.5 min left
+  [circuits (large)] 8/27  49.1 min elapsed, ~116.6 min left
+  [circuits (large)] 9/27  59.9 min elapsed, ~119.7 min left
+  [circuits (large)] 10/27  75.3 min elapsed, ~128.0 min left
+  [circuits (large)] 11/27  78.0 min elapsed, ~113.4 min left
+  [circuits (large)] 12/27  81.2 min elapsed, ~101.4 min left
+  [circuits (large)] 13/27  94.4 min elapsed, ~101.6 min left
+  [circuits (large)] 14/27  103.8 min elapsed, ~96.4 min left
+  [circuits (large)] 15/27  104.0 min elapsed, ~83.2 min left
+  [circuits (large)] 16/27  111.5 min elapsed, ~76.6 min left
+  [circuits (large)] 17/27  111.8 min elapsed, ~65.7 min left
+  [circuits (large)] 18/27  114.0 min elapsed, ~57.0 min left
+  [circuits (large)] 19/27  127.8 min elapsed, ~53.8 min left
+  [circuits (large)] 20/27  131.7 min elapsed, ~46.1 min left
+  [circuits (large)] 21/27  136.2 min elapsed, ~38.9 min left
+  [circuits (large)] 22/27  150.9 min elapsed, ~34.3 min left
+  [circuits (large)] 23/27  167.8 min elapsed, ~29.2 min left
+  [circuits (large)] 24/27  202.7 min elapsed, ~25.3 min left
+  [circuits (large)] 25/27  205.6 min elapsed, ~16.4 min left
+  [circuits (large)] 26/27  234.0 min elapsed, ~9.0 min left
+  [circuits (large)] 27/27  295.0 min elapsed, ~0.0 min left
+[density_ablation_sweep] Appended 648 rows to experiments/figures/density_ablation_sweep/density_ablation_sweep_split_std_rest.csv
+[density_ablation_sweep] split-merging CSV written; plot it with density_references (recount, floors, plot --matched density_ablation_sweep_split_std_rest.csv)

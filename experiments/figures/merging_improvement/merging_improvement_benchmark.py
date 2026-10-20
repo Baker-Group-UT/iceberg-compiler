@@ -7,7 +7,11 @@ Benchmark variant of merging_improvement.
 For each QASMbench proxy circuit, compare percent reductions (vs tight packing
 with merging disabled) between:
 1) tight naive packing with merging enabled
-2) merge-maximizing packing with merging enabled
+2) planned packing with merging enabled
+
+The packing row is planned by the `packing` package through `common.pack_program`;
+`packer/merge_packer.py`, which used to do it, is archived. Both place two logical
+qubits per patch, so the figure measures the same quantity as before.
 
 Grouped bars are shown per circuit at ceil(n/2) codes. Three stacked subplots
 show percent reductions for 1q gates, 2q gates, and circuit depth.
@@ -45,12 +49,11 @@ plt.rcParams.update(
     }
 )
 
-from evaluator.gate_count_stats import one_two_qubit_gate_totals
+from analysis.gate_count_stats import one_two_qubit_gate_totals
+from experiments.figures.merging_improvement.common import pack_program
 from experiments.shared.benchmark_circuits import load_proxy_circuits
-from packer.merge_packer import MergeMaximizingPacker
 from pipeline.config import PipelineConfig
 from pipeline.tasks.translate_permutation import translate_permutation
-from translator.passes import cancel_inverse_gates, commute_hadamards
 
 Perm = List[Tuple[int, int]]
 
@@ -105,23 +108,11 @@ def compute_metrics(
     return one_q, two_q, depth
 
 
-def preprocess_for_packing(
-    program_circuit: qiskit.QuantumCircuit, config: PipelineConfig
-) -> qiskit.QuantumCircuit:
-    processed = cancel_inverse_gates(program_circuit)
-    if config.translator_config.enable_h_commutation:
-        processed = commute_hadamards(processed)
-        processed = cancel_inverse_gates(processed)
-    return processed
-
-
 def run_experiment(
     circuits: Sequence[Tuple[str, qiskit.QuantumCircuit]],
     size_group: str,
     settings: BenchmarkSettings,
 ) -> pd.DataFrame:
-    packer = MergeMaximizingPacker()
-
     merging_enabled = PipelineConfig()
     merging_enabled.translator_config.enable_merging = True
     merging_enabled.translator_config.enable_h_commutation = True
@@ -138,8 +129,14 @@ def run_experiment(
         n_qubits = program_circuit.num_qubits
         target_codes = math.ceil(n_qubits / 2)
         tight_perm = tight_trivial_packing(n_qubits, target_codes)
-        processed_for_packing = preprocess_for_packing(program_circuit, merging_enabled)
-        packed_perm = packer.pack(processed_for_packing, num_codes=target_codes).permutation
+        packed_perm, commute = pack_program(program_circuit)
+        # Honour the planner's per-circuit commutation decision, and translate every
+        # row under it. When it comes back False the H-commutation row collapses onto
+        # the baseline and its segment is legitimately zero -- the shipped pipeline
+        # declined the pass on that circuit -- so the ablation stays cumulative
+        # instead of crediting a technique the compiler did not use.
+        merging_enabled.translator_config.enable_h_commutation = commute
+        merging_disabled.translator_config.enable_h_commutation = commute
         
         base_one_q, base_two_q, base_depth = compute_metrics(
             program_circuit, tight_perm, merging_disabled
@@ -200,7 +197,7 @@ def run_experiment(
                 "circuit_idx": circuit_idx,
                 "circuit_name": circuit_name,
                 "target_codes": target_codes,
-                "method": "merge_maximizing",
+                "method": "packed",
                 "pct_reduction_one_qubit_gates": packed_pct_one_q,
                 "pct_reduction_two_qubit_gates": packed_pct_two_q,
                 "pct_reduction_circuit_depth": packed_pct_depth,
@@ -212,7 +209,7 @@ def run_experiment(
 
 def print_metric_averages(df: pd.DataFrame) -> None:
     print("[merging_improvement_benchmark] Average percent reductions across loaded benchmark circuits")
-    for method in ["tight_merge", "merge_maximizing"]:
+    for method in ["tight_merge", "packed"]:
         method_df = df.loc[df["method"] == method]
         if method_df.empty:
             continue
@@ -221,7 +218,7 @@ def print_metric_averages(df: pd.DataFrame) -> None:
             avg = method_df[metric_column].astype(float).mean()
             metric_parts.append(f"{metric_label}={avg:.2f}%")
         print(f"  {method}: " + ", ".join(metric_parts))
-    aggregate_df = df.loc[df["method"] == "merge_maximizing"]
+    aggregate_df = df.loc[df["method"] == "packed"]
     if not aggregate_df.empty:
         aggregate_parts = []
         for _, (metric_column, metric_label) in METRICS.items():
@@ -233,7 +230,7 @@ def print_metric_averages(df: pd.DataFrame) -> None:
 def plot_results(df: pd.DataFrame, settings: BenchmarkSettings) -> None:
     methods = [
         ("tight_merge", "Tight (merge+H)", "#c7e9c0", "#238b45"),
-        ("merge_maximizing", "Merge-maximizing+H", "#c6dbef", "#2171b5"),
+        ("packed", "Packed+H", "#c6dbef", "#2171b5"),
     ]
     size_groups = ["small", "medium", "large"]
 
@@ -260,7 +257,7 @@ def plot_results(df: pd.DataFrame, settings: BenchmarkSettings) -> None:
                 )
                 .reset_index()
             )
-            sort_key = pivot["merge_maximizing"]
+            sort_key = pivot["packed"]
             pivot = pivot.assign(_sort=sort_key).sort_values("_sort")
             circuit_names = pivot["circuit_name"].tolist()
             positions = np.arange(len(circuit_names)) + current_x
@@ -316,7 +313,7 @@ def plot_results(df: pd.DataFrame, settings: BenchmarkSettings) -> None:
 
 def parse_args() -> BenchmarkSettings:
     parser = argparse.ArgumentParser(
-        description="Benchmark comparison of tight vs merge-maximizing packings."
+        description="Benchmark comparison of tight vs planned packings."
     )
     parser.add_argument(
         "--qasm-root",
@@ -348,7 +345,7 @@ def parse_args() -> BenchmarkSettings:
         "--drop-equal-packings",
         # default=True,
         action="store_true",
-        help="Skip circuits where tight_merge equals merge_maximizing for all metrics.",
+        help="Skip circuits where tight_merge equals packed for all metrics.",
     )
     parser.add_argument(
         "--output",

@@ -9,7 +9,11 @@ uniformly from the requested ranges. Each bucket is summarized by one stacked ba
 showing the average additive benefit from:
 1) H commutation
 2) additional merging
-3) additional merge-maximizing packing
+3) additional packing
+
+The packing row is planned by the `packing` package through `common.pack_program`;
+`packer/merge_packer.py`, which used to do it, is archived. Both place two logical
+qubits per patch, so the figure measures the same quantity as before.
 
 Run with:
 
@@ -45,12 +49,11 @@ plt.rcParams.update(
     }
 )
 
-from evaluator.gate_count_stats import one_two_qubit_gate_totals
+from analysis.gate_count_stats import one_two_qubit_gate_totals
+from experiments.figures.merging_improvement.common import pack_program
 from experiments.shared.random_circuits import random_gate_circuit
-from packer.merge_packer import MergeMaximizingPacker
 from pipeline.config import PipelineConfig
 from pipeline.tasks.translate_permutation import translate_permutation
-from translator.passes import cancel_inverse_gates, commute_hadamards
 
 Perm = List[Tuple[int, int]]
 
@@ -121,17 +124,6 @@ def compute_metrics(
     return one_q, two_q, depth
 
 
-def preprocess_for_packing(
-    program_circuit: qiskit.QuantumCircuit,
-    config: PipelineConfig,
-) -> qiskit.QuantumCircuit:
-    processed = cancel_inverse_gates(program_circuit)
-    if config.translator_config.enable_h_commutation:
-        processed = commute_hadamards(processed)
-        processed = cancel_inverse_gates(processed)
-    return processed
-
-
 def pct_reduction(reference: float, challenger: float) -> float:
     if reference <= 0:
         return 0.0
@@ -150,7 +142,6 @@ def sample_bucket_params(
 
 
 def run_experiment(settings: ExperimentSettings) -> pd.DataFrame:
-    packer = MergeMaximizingPacker()
     seed_rng = random.Random(settings.random_seed)
 
     baseline_cfg = PipelineConfig()
@@ -182,11 +173,14 @@ def run_experiment(settings: ExperimentSettings) -> pd.DataFrame:
 
             target_codes = math.ceil(n_qubits / 2)
             tight_perm = tight_trivial_packing(n_qubits, target_codes)
-            processed_for_packing = preprocess_for_packing(program_circuit, h_merge_cfg)
-            packed_perm = packer.pack(
-                processed_for_packing,
-                num_codes=target_codes,
-            ).permutation
+            packed_perm, commute = pack_program(program_circuit)
+            # Honour the planner's per-circuit commutation decision, and translate every
+            # row under it. When it comes back False the H-commutation row collapses onto
+            # the baseline and its segment is legitimately zero -- the shipped pipeline
+            # declined the pass on that circuit -- so the ablation stays cumulative
+            # instead of crediting a technique the compiler did not use.
+            h_only_cfg.translator_config.enable_h_commutation = commute
+            h_merge_cfg.translator_config.enable_h_commutation = commute
 
             base_one_q, base_two_q, base_depth = compute_metrics(
                 program_circuit,
@@ -408,7 +402,7 @@ def plot_results(df: pd.DataFrame, settings: ExperimentSettings) -> None:
 def parse_args() -> ExperimentSettings:
     parser = argparse.ArgumentParser(
         description=(
-            "Random-circuit ablation of H commutation, merging, and merge-maximizing packing."
+            "Random-circuit ablation of H commutation, merging, and packing."
         )
     )
     parser.add_argument(

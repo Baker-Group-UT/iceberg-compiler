@@ -1,0 +1,58 @@
+[exhaustive_front] logical optimisation: verified-routes-2; out results/optimality_front
+[exhaustive_front] 75 programs: 4q 29, 5q 24, 6q 22
+  [plan] 75 items across 12 workers
+  [plan] 3/75  0.0 min elapsed, ~0.4 min left
+  [plan] 6/75  0.0 min elapsed, ~0.2 min left
+  [plan] 9/75  0.0 min elapsed, ~0.1 min left
+  [plan] 12/75  0.0 min elapsed, ~0.1 min left
+  [plan] 15/75  0.0 min elapsed, ~0.1 min left
+  [plan] 18/75  0.0 min elapsed, ~0.1 min left
+  [plan] 21/75  0.0 min elapsed, ~0.0 min left
+  [plan] 24/75  0.0 min elapsed, ~0.0 min left
+  [plan] 27/75  0.0 min elapsed, ~0.0 min left
+  [plan] 30/75  0.0 min elapsed, ~0.0 min left
+  [plan] 33/75  0.0 min elapsed, ~0.0 min left
+  [plan] 36/75  0.0 min elapsed, ~0.0 min left
+  [plan] 39/75  0.0 min elapsed, ~0.0 min left
+  [plan] 42/75  0.0 min elapsed, ~0.0 min left
+  [plan] 45/75  0.0 min elapsed, ~0.0 min left
+  [plan] 48/75  0.0 min elapsed, ~0.0 min left
+  [plan] 51/75  0.0 min elapsed, ~0.0 min left
+  [plan] 54/75  0.0 min elapsed, ~0.0 min left
+  [plan] 57/75  0.0 min elapsed, ~0.0 min left
+  [plan] 60/75  0.0 min elapsed, ~0.0 min left
+  [plan] 63/75  0.0 min elapsed, ~0.0 min left
+  [plan] 66/75  0.0 min elapsed, ~0.0 min left
+  [plan] 69/75  0.0 min elapsed, ~0.0 min left
+  [plan] 72/75  0.0 min elapsed, ~0.0 min left
+  [plan] 75/75  0.0 min elapsed, ~0.0 min left
+[exhaustive_front] plans: 75; AQORN fell back to naive on 3
+[exhaustive_front] 150 parts, 150 to do
+  [measure] 150 items across 12 workers
+  [measure] item 16 failed: NotImplementedError('Unsupported gate for Stim: rz')
+  [measure] item 17 failed: NotImplementedError('Unsupported gate for Stim: rz')
+  [measure] 7/150  19.3 min elapsed, ~394.5 min left
+  [measure] 14/150  37.7 min elapsed, ~366.0 min left
+  [measure] 21/150  41.6 min elapsed, ~255.7 min left
+  [measure] 28/150  58.0 min elapsed, ~252.9 min left
+  [measure] 35/150  65.2 min elapsed, ~214.4 min left
+  [measure] 42/150  77.5 min elapsed, ~199.4 min left
+  [measure] 49/150  85.0 min elapsed, ~175.2 min left
+  [measure] 56/150  94.1 min elapsed, ~158.0 min left
+  [measure] 63/150  104.4 min elapsed, ~144.1 min left
+  [measure] 70/150  111.9 min elapsed, ~127.8 min left
+  [measure] 77/150  119.2 min elapsed, ~113.0 min left
+  [measure] 84/150  123.3 min elapsed, ~96.9 min left
+  [measure] 91/150  123.9 min elapsed, ~80.3 min left
+  [measure] 98/150  124.7 min elapsed, ~66.2 min left
+  [measure] 105/150  125.3 min elapsed, ~53.7 min left
+  [measure] 112/150  125.8 min elapsed, ~42.7 min left
+  [measure] 119/150  126.3 min elapsed, ~32.9 min left
+  [measure] 126/150  126.7 min elapsed, ~24.1 min left
+  [measure] 133/150  127.1 min elapsed, ~16.2 min left
+  [measure] 140/150  127.5 min elapsed, ~9.1 min left
+  [measure] 147/150  130.3 min elapsed, ~2.7 min left
+  [measure] 150/150  134.5 min elapsed, ~0.0 min left
+[exhaustive_front] 2 parts failed: ['rand:6q:06', 'rand:6q:06']
+[exhaustive_front] space.csv: 67632 placements of 75 programs, 66048 distinct circuits; AQORN's cost equals the planner's recorded value on 72/75
+exit 0

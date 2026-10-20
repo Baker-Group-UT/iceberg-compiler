@@ -1,0 +1,28 @@
+[8_optimality_vs_exhaustive] weighted work: regret above the exhaustive optimum (%)
+  config          space   AQORN regret   naive regret   AQORN optimal   naive optimal
+  4q, $k$=2         75          0.71%          6.84%             75%             20%
+  4q, $k$=4       1663          0.00%          0.00%            100%            100%   <- one patch: no packing decision
+  4q, $k$=6       7571          0.00%          0.00%            100%            100%   <- one patch: no packing decision
+  5q, $k$=2        311          3.16%         10.28%             25%              0%
+  6q, $k$=2       1383          4.82%          9.89%             30%             10%
+[8_optimality_vs_exhaustive] 2q gates: regret above the exhaustive optimum (%)
+  config          space   AQORN regret   naive regret   AQORN optimal   naive optimal
+  4q, $k$=2         75          0.68%          6.79%             80%             20%
+  4q, $k$=4       1663          0.00%          0.00%            100%            100%   <- one patch: no packing decision
+  4q, $k$=6       7571          0.00%          0.00%            100%            100%   <- one patch: no packing decision
+  5q, $k$=2        311          3.30%         10.59%             35%              0%
+  6q, $k$=2       1383          4.89%         10.10%             35%             15%
+[8_optimality_vs_exhaustive] depth: regret above the exhaustive optimum (%)
+  config          space   AQORN regret   naive regret   AQORN optimal   naive optimal
+  4q, $k$=2         75         19.80%         25.63%              5%              0%
+  4q, $k$=4       1663         57.02%         57.02%              0%              0%   <- one patch: no packing decision
+  4q, $k$=6       7571         50.84%         50.84%              0%              0%   <- one patch: no packing decision
+  5q, $k$=2        311         18.82%         30.22%              5%              0%
+  6q, $k$=2       1383         22.31%         35.43%              5%              0%
+[8_optimality_vs_exhaustive] on work, over the 3 configurations that pose a real packing decision: AQORN captures 68% of the headroom sequential packing leaves, and lands exactly on the optimum in 43% of circuits
+[8_optimality_vs_exhaustive] headroom against program width (naive regret above optimum)
+    4 qubits, k=2: 6.84%
+    5 qubits, k=2: 10.28%
+    6 qubits, k=2: 9.89%
+[8_optimality_vs_exhaustive] excluded as degenerate (one patch holds the whole program, so every placement is identical): 4q, $k$=4, 4q, $k$=6. The code-size question needs k=4 at 5+ qubits, whose space the generator refuses at 1.86 million permutations.
+[8_optimality_vs_exhaustive] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/experiments/figures/8_optimality_vs_exhaustive/8_optimality_vs_exhaustive_v2.svg

@@ -1,0 +1,87 @@
+started: 2026-10-08 23:14  branch v2-exact-patches e939d37, 0 dirty tracked files
+reuse: /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/experiments/figures/density_ablation_sweep/density_ablation_sweep_standard.csv
+
+  [circuits (small)] 29 items across 12 workers
+[density_ablation_sweep] Loaded 29 small circuits (standard configuration, matched patch counts, arms reused from density_ablation_sweep_standard.csv).
+  [circuits (small)] 1/29  0.1 min elapsed, ~3.4 min left
+  [circuits (small)] 2/29  0.1 min elapsed, ~2.0 min left
+  [circuits (small)] 3/29  0.2 min elapsed, ~1.7 min left
+  [circuits (small)] 4/29  0.2 min elapsed, ~1.2 min left
+  [circuits (small)] 5/29  0.2 min elapsed, ~1.0 min left
+  [circuits (small)] 6/29  0.2 min elapsed, ~0.9 min left
+  [circuits (small)] 7/29  0.2 min elapsed, ~0.7 min left
+  [circuits (small)] 8/29  0.3 min elapsed, ~0.8 min left
+  [circuits (small)] 9/29  0.3 min elapsed, ~0.7 min left
+  [circuits (small)] 10/29  0.4 min elapsed, ~0.8 min left
+  [circuits (small)] 11/29  0.5 min elapsed, ~0.9 min left
+  [circuits (small)] 12/29  0.5 min elapsed, ~0.8 min left
+  [circuits (small)] 13/29  0.6 min elapsed, ~0.8 min left
+  [circuits (small)] 14/29  0.6 min elapsed, ~0.7 min left
+  [circuits (small)] 15/29  0.7 min elapsed, ~0.6 min left
+  [circuits (small)] 16/29  0.8 min elapsed, ~0.6 min left
+  [circuits (small)] 17/29  0.9 min elapsed, ~0.6 min left
+  [circuits (small)] 18/29  0.9 min elapsed, ~0.6 min left
+  [circuits (small)] 19/29  1.0 min elapsed, ~0.5 min left
+  [circuits (small)] 20/29  1.0 min elapsed, ~0.5 min left
+  [circuits (small)] 21/29  1.0 min elapsed, ~0.4 min left
+  [circuits (small)] 22/29  1.1 min elapsed, ~0.4 min left
+  [circuits (small)] 23/29  1.5 min elapsed, ~0.4 min left
+  [circuits (small)] 24/29  1.8 min elapsed, ~0.4 min left
+  [circuits (small)] 25/29  1.8 min elapsed, ~0.3 min left
+  [circuits (small)] 26/29  1.8 min elapsed, ~0.2 min left
+  [circuits (small)] 27/29  2.1 min elapsed, ~0.2 min left
+  [circuits (small)] 28/29  2.5 min elapsed, ~0.1 min left
+  [circuits (small)] 29/29  2.8 min elapsed, ~0.0 min left
+  [circuits (medium)] 15 items across 12 workers
+[density_ablation_sweep] Wrote 288 rows to new /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/.claude/worktrees/exact-patches/experiments/figures/density_ablation_sweep/density_ablation_sweep_matched.csv
+[density_ablation_sweep] Loaded 15 medium circuits (standard configuration, matched patch counts, arms reused from density_ablation_sweep_standard.csv).
+  [circuits (medium)] 1/15  2.0 min elapsed, ~27.5 min left
+  [circuits (medium)] 2/15  2.1 min elapsed, ~13.6 min left
+  [circuits (medium)] 3/15  2.4 min elapsed, ~9.5 min left
+  [circuits (medium)] 4/15  2.7 min elapsed, ~7.3 min left
+  [circuits (medium)] 5/15  3.4 min elapsed, ~6.8 min left
+  [circuits (medium)] 6/15  3.7 min elapsed, ~5.6 min left
+  [circuits (medium)] 7/15  3.7 min elapsed, ~4.3 min left
+  [circuits (medium)] 8/15  4.2 min elapsed, ~3.6 min left
+  [circuits (medium)] 9/15  5.1 min elapsed, ~3.4 min left
+  [circuits (medium)] 10/15  5.3 min elapsed, ~2.6 min left
+  [circuits (medium)] 11/15  6.2 min elapsed, ~2.3 min left
+  [circuits (medium)] 12/15  6.4 min elapsed, ~1.6 min left
+  [circuits (medium)] 13/15  6.5 min elapsed, ~1.0 min left
+  [circuits (medium)] 14/15  6.9 min elapsed, ~0.5 min left
+  [circuits (medium)] 15/15  7.9 min elapsed, ~0.0 min left
+  [circuits (large)] 27 items across 12 workers
+[density_ablation_sweep] Appended 270 rows to /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/.claude/worktrees/exact-patches/experiments/figures/density_ablation_sweep/density_ablation_sweep_matched.csv
+[density_ablation_sweep] Loaded 27 large circuits (standard configuration, matched patch counts, arms reused from density_ablation_sweep_standard.csv).
+  [circuits (large)] 1/27  3.5 min elapsed, ~91.0 min left
+  [circuits (large)] 2/27  4.9 min elapsed, ~61.0 min left
+  [circuits (large)] 3/27  6.6 min elapsed, ~52.6 min left
+  [circuits (large)] 4/27  8.0 min elapsed, ~46.0 min left
+  [circuits (large)] 5/27  10.2 min elapsed, ~44.7 min left
+  [circuits (large)] 6/27  10.7 min elapsed, ~37.3 min left
+  [circuits (large)] 7/27  12.3 min elapsed, ~35.2 min left
+  [circuits (large)] 8/27  14.7 min elapsed, ~35.0 min left
+  [circuits (large)] 9/27  15.1 min elapsed, ~30.3 min left
+  [circuits (large)] 10/27  20.3 min elapsed, ~34.6 min left
+  [circuits (large)] 11/27  20.4 min elapsed, ~29.7 min left
+  [circuits (large)] 12/27  20.9 min elapsed, ~26.1 min left
+  [circuits (large)] 13/27  26.6 min elapsed, ~28.7 min left
+  [circuits (large)] 14/27  27.5 min elapsed, ~25.5 min left
+  [circuits (large)] 15/27  29.9 min elapsed, ~23.9 min left
+  [circuits (large)] 16/27  30.2 min elapsed, ~20.8 min left
+  [circuits (large)] 17/27  33.7 min elapsed, ~19.8 min left
+  [circuits (large)] 18/27  33.9 min elapsed, ~16.9 min left
+  [circuits (large)] 19/27  35.8 min elapsed, ~15.1 min left
+  [circuits (large)] 20/27  35.9 min elapsed, ~12.6 min left
+  [circuits (large)] 21/27  35.9 min elapsed, ~10.3 min left
+  [circuits (large)] 22/27  45.8 min elapsed, ~10.4 min left
+  [circuits (large)] 23/27  54.2 min elapsed, ~9.4 min left
+  [circuits (large)] 24/27  54.8 min elapsed, ~6.9 min left
+  [circuits (large)] 25/27  56.2 min elapsed, ~4.5 min left
+  [circuits (large)] 26/27  61.5 min elapsed, ~2.4 min left
+  [circuits (large)] 27/27  80.1 min elapsed, ~0.0 min left
+[density_ablation_sweep] Appended 486 rows to /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/.claude/worktrees/exact-patches/experiments/figures/density_ablation_sweep/density_ablation_sweep_matched.csv
+[density_ablation_sweep] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/results/figures/density_ablation_sweep_matched.svg
+[density_ablation_sweep] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/results/figures/density_ablation_sweep_matched.pdf
+
+finished: 2026-10-09 00:45  exit 0

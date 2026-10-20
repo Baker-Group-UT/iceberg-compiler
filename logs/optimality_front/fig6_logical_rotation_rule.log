@@ -1,0 +1,57 @@
+10-10 01:37 start v2-logical-opt-pass 1f83c4f, 0 dirty tracked files
+[ablation_standard] logical optimisation: verified-routes-2
+  [ablation_standard] 71 items across 10 workers
+[ablation_standard] gate: adder_n10 reproduces Fig 6 exactly (calibration, baseline, all five panels)
+[ablation_standard] gate: bell_n4 reproduces Fig 6 exactly (calibration, baseline, all five panels)
+[ablation_standard] gate: logical optimisation on -- recorded plans not used, every circuit is planned on its optimised program
+[ablation_standard] Configuration(name='standard', asap_order=True, transversal_merging=True): 71 circuits, recorded plans for 0
+  [ablation_standard] 3/71  15.0 min elapsed, ~340.0 min left
+  [ablation_standard] 6/71  25.1 min elapsed, ~272.3 min left
+  [ablation_standard] 9/71  29.5 min elapsed, ~203.0 min left
+  [ablation_standard] 12/71  33.0 min elapsed, ~162.5 min left
+  [ablation_standard] 15/71  34.9 min elapsed, ~130.4 min left
+  [ablation_standard] 18/71  36.0 min elapsed, ~106.0 min left
+  [ablation_standard] 21/71  37.9 min elapsed, ~90.3 min left
+  [ablation_standard] 24/71  40.0 min elapsed, ~78.3 min left
+  [ablation_standard] 27/71  40.4 min elapsed, ~65.9 min left
+  [ablation_standard] 30/71  41.4 min elapsed, ~56.5 min left
+  [ablation_standard] 33/71  41.8 min elapsed, ~48.2 min left
+  [ablation_standard] 36/71  42.6 min elapsed, ~41.4 min left
+  [ablation_standard] 39/71  42.9 min elapsed, ~35.2 min left
+  [ablation_standard] 42/71  43.2 min elapsed, ~29.8 min left
+  [ablation_standard] 45/71  43.5 min elapsed, ~25.1 min left
+  [ablation_standard] 48/71  43.6 min elapsed, ~20.9 min left
+  [ablation_standard] 51/71  43.9 min elapsed, ~17.2 min left
+  [ablation_standard] 54/71  43.9 min elapsed, ~13.8 min left
+  [ablation_standard] 57/71  44.1 min elapsed, ~10.8 min left
+  [ablation_standard] 60/71  44.2 min elapsed, ~8.1 min left
+  [ablation_standard] 63/71  44.3 min elapsed, ~5.6 min left
+  [ablation_standard] 66/71  44.4 min elapsed, ~3.4 min left
+  [ablation_standard] 69/71  45.0 min elapsed, ~1.3 min left
+  [ablation_standard] 71/71  46.8 min elapsed, ~0.0 min left
+[ablation_standard] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/.claude/worktrees/logical-opt-pass/experiments/figures/ablation_standard/ablation_standard_logical_v2.csv
+[ablation_standard] caption convention, cumulative after each stage (71 circuits, TVD on 61):
+     1q: +h_commutation 9.6, +merging 8.8, +packing 10.4
+     2q: +h_commutation 5.7, +merging 11.9, +packing 14.0
+  depth: +h_commutation 8.8, +merging 14.8, +packing 18.3
+    LSR: +h_commutation 8.8, +merging 22.3, +packing 24.0
+    TVD: +h_commutation 12.6, +merging 21.4, +packing 33.3
+   small (29): 1q 9.5, 2q 19.1, depth 24.0, LSR 26.7, TVD 29.8
+  medium (15): 1q 10.8, 2q 10.9, depth 19.6, LSR 20.3, TVD 35.1
+   large (27): 1q 11.1, 2q 10.2, depth 11.4, LSR 23.1, TVD 37.2
+[ablation_standard] alpha mean 4.5769, baseline LSR mean 0.0727, shots mean 299614; plans {'planned': 71}
+[merging_improvement_benchmark_stylized_simulated] Plot averages (matching the bars)
+  small:
+    plotted total: #1q gates=16.10% (1.19×), #2q gates=19.13% (1.24×), depth=24.02% (1.32×), LSR=28.63% (1.29×), TVD=31.66% (1.46×)
+  medium:
+    plotted total: #1q gates=13.87% (1.16×), #2q gates=11.03% (1.12×), depth=19.62% (1.24×), LSR=24.48% (1.24×), TVD=35.13% (1.54×)
+  large:
+    plotted total: #1q gates=11.69% (1.13×), #2q gates=10.54% (1.12×), depth=20.86% (1.26×), LSR=31.52% (1.32×), TVD=37.23% (1.59×)
+  corpus overall: #1q gates=13.95% (1.16×), #2q gates=14.15% (1.16×), depth=21.89% (1.28×), LSR=28.85% (1.29×), TVD=34.13% (1.52×)
+    circuits: small=29, medium=15, large=27, total=71
+  calibration averages: alpha=4.5769, pilot_lsr=0.0723, repetitions=299614
+[merging_improvement_benchmark_stylized_simulated] Saved plot to /var/folders/wg/x2lp9rgn2nnd1qlsjh51lwqr0000gn/T/tmpvjmjnshg/draft.svg
+[ablation_standard] saved /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/results/figures/ablation_standard_logical_v2.svg
+[ablation_standard] saved /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/results/figures/ablation_standard_logical_v2.pdf
+[ablation_standard] saved /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/.claude/worktrees/logical-opt-pass/experiments/figures/ablation_standard/ablation_standard_logical_v2.svg
+10-10 02:25 exit 0

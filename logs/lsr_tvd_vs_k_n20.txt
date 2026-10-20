@@ -1,0 +1,11 @@
+  [circuit x k] 50 items across 4 workers
+[lsr_tvd_vs_k] wrote 100 rows to experiments/figures/lsr_tvd_vs_k/lsr_tvd_vs_k_n20.csv
+[lsr_tvd_vs_k] mean over circuits
+  k=2   AQORN packing: LSR=0.3353 TVD=0.2165   naive packing: LSR=0.3146 TVD=0.2220   [10 circuits, 157842 reps avg, commutation chosen 10/10]
+  k=4   AQORN packing: LSR=0.3846 TVD=0.2215   naive packing: LSR=0.3333 TVD=0.2281   [10 circuits, 151976 reps avg, commutation chosen 10/10]
+  k=6   AQORN packing: LSR=0.3858 TVD=0.2239   naive packing: LSR=0.3213 TVD=0.2362   [10 circuits, 146597 reps avg, commutation chosen 10/10]
+  k=8   AQORN packing: LSR=0.3722 TVD=0.2378   naive packing: LSR=0.3018 TVD=0.2543   [10 circuits, 143339 reps avg, commutation chosen 10/10]
+  k=10  AQORN packing: LSR=0.3557 TVD=0.2737   naive packing: LSR=0.2971 TVD=0.2914   [10 circuits, 124399 reps avg, commutation chosen 10/10]
+[lsr_tvd_vs_k] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/results/figures/lsr_tvd_vs_k_n20.svg
+[lsr_tvd_vs_k] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/results/figures/lsr_tvd_vs_k_n20.pdf
+[lsr_tvd_vs_k] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/experiments/figures/lsr_tvd_vs_k/lsr_tvd_vs_k_n20.svg

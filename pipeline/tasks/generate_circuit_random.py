@@ -17,7 +17,9 @@ def generate_random_circuit(program_circuit: qiskit.QuantumCircuit, config: Pipe
     Returns a finalized RunRecord and saves it via RunRepository.
     """
     q = program_circuit.num_qubits
-    code_sets = generate_uniform_code_sets(q)
+    # Code size comes from the translator config, so one knob selects the
+    # [[n, n-2, 2]] code for the whole pipeline.
+    code_sets = generate_uniform_code_sets(q, n=config.translator_config.n_code)
     permutation = random_permutation_from_circuit(
         circuit=program_circuit,
         code_sizes=code_sets,

@@ -1,0 +1,13 @@
+[exhaustive_front] logical optimisation: verified-routes-2; out results/optimality_front
+[exhaustive_front] 75 programs: 4q 29, 5q 24, 6q 22
+[exhaustive_front] plans: 75; AQORN fell back to naive on 3
+[exhaustive_front] 6 parts, 6 to do
+  [measure] 6 items across 2 workers
+  [measure] 1/6  18.1 min elapsed, ~90.4 min left
+  [measure] 2/6  28.3 min elapsed, ~56.5 min left
+  [measure] 3/6  28.3 min elapsed, ~28.3 min left
+  [measure] 4/6  34.9 min elapsed, ~17.4 min left
+  [measure] 5/6  45.4 min elapsed, ~9.1 min left
+  [measure] 6/6  53.9 min elapsed, ~0.0 min left
+[exhaustive_front] measured ['rand:5q:19', 'rand:6q:06', 'rand:6q:12'] only; run without --redo / --programs to combine
+exit 0

@@ -1,0 +1,9 @@
+[density_references] 359 conversions for 405 arm-points; 75 need none
+[density_references] 480 arm-points, 405 recounted; the all-lane count equals the sweep's on 405/405; failed: none
+[density_references] wrote experiments/figures/density_ablation_sweep/density_ablation_sweep_split_recount.csv
+[density_references] floors for 29 circuits (failed: none); support of at most 1 bit on 18; TVD at least 2x its floor at every point on 25/29
+[density_references] wrote experiments/figures/density_ablation_sweep/density_ablation_sweep_split_floors.csv
+[density_references] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/results/figures/density_ablation_split.svg
+[density_references] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/results/figures/density_ablation_split.pdf
+[density_references] wrote experiments/figures/density_ablation_sweep/density_ablation_sweep_split_summary.csv
+exit 0

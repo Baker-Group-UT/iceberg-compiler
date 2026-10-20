@@ -20,6 +20,11 @@ Simulation uses a per-circuit baseline calibration:
   * a second pilot at corrected alpha estimates the final selection rate
   * final repetitions are chosen from target_kept_shots / estimated_sel_rate
 
+The packing row comes from the `packing` package via `common.pack_program`, not from
+`packer/merge_packer.py`, which is archived. Both place two logical qubits per patch, so
+the figure measures the same thing it always did; see `common.pack_program` for what the
+call had to change to say.
+
 Run with:
 
     python -m experiments.figures.merging_improvement.merging_improvement_benchmark_stylized_simulated
@@ -38,26 +43,60 @@ from typing import Dict, List, Sequence, Tuple
 os.environ.setdefault("MPLBACKEND", "Agg")
 
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
 import numpy as np
 import pandas as pd
 import qiskit
-from tqdm.auto import tqdm
 
-from evaluator.gate_count_stats import one_two_qubit_gate_totals
+from analysis.gate_count_stats import one_two_qubit_gate_totals
+from experiments.figures.merging_improvement.common import pack_program
 from experiments.shared.benchmark_circuits import load_proxy_circuits
-from packer.merge_packer import MergeMaximizingPacker
+from experiments.shared.figures import (
+    factor_from_pct,
+    stacked_percent,
+    stamp_provenance,
+)
+from experiments.shared.simulation import SimSettings, noise_profile_for
+from experiments.shared.parallel import add_jobs_argument, parallel_map
 from pipeline.config import PipelineConfig
 from pipeline.tasks.scan_specific import run_specific_scan
 from pipeline.tasks.translate_permutation import translate_permutation
 from simulator.config_presets import ScaledSimulator
-from translator.passes import cancel_inverse_gates, commute_hadamards
 
 Perm = List[Tuple[int, int]]
 
+#: This figure's size ladder is its own, and deliberately *not* the document's 10/9/8pt.
+#: The canvas is 22 inches and `evaluation.tex` places it at `.95\linewidth` in a `figure*`,
+#: so LaTeX shrinks everything to 30.9% -- 24pt here prints at about 7.4pt. Scaling the
+#: ladder up to compensate was tried and reverted: 71 circuits share the x axis at roughly
+#: 16.5pt per slot, so at 45 degrees those labels cannot exceed about 12pt whatever the rest
+#: of the figure does, and raising only the labels around them left the figure visibly out
+#: of proportion. The ladder below is internally consistent, which matters more here than
+#: agreeing with the body text; the real fix is a wider figure, not a bigger number.
+AXIS_PT = 24
+
 plt.rcParams.update(
     {
-        "font.family": "Helvetica",
-        "font.sans-serif": "Helvetica",
+        # Keep text as real `<text>` elements in the SVG instead of outlining it into
+        # paths. matplotlib's default `svg.fonttype` is "path", which is why this figure's
+        # SVG contained zero text elements and could not be edited in Inkscape or searched
+        # for a label. Every other figure gets this from `experiments/shared/aqorn.mplstyle`;
+        # this one keeps its own canvas and size ladder, so it needs the key spelled out.
+        # `pdf.fonttype: 42` embeds TrueType rather than Type 3, which IEEE PDF eXpress
+        # rejects in the final version.
+        "svg.fonttype": "none",
+        "pdf.fonttype": 42,
+        # Times, matching the paper's body font and `aqorn.mplstyle`. This figure drew in
+        # Helvetica while every other one drew in Times. Same fallback chain as the shared
+        # style, so a machine without Times New Roman degrades to a metric-compatible clone
+        # rather than substituting something arbitrary. Sizes stay on this figure's own
+        # ladder: it draws on a 22-inch canvas rather than at final size, so the shared
+        # 10/9/8pt tiers would not mean what they mean elsewhere.
+        "font.family": "serif",
+        "font.serif": [
+            "Times New Roman", "Nimbus Roman No9 L", "Nimbus Roman", "Times",
+            "DejaVu Serif",
+        ],
         "font.size": 16,
         "axes.titlesize": 16,
         "axes.labelsize": 16,
@@ -80,6 +119,48 @@ METRICS = {
 }
 
 
+def as_factor(metric_column: str, cumulative_pct: float) -> float:
+    """
+    Cumulative percentage -> the multiplier the *prose* quotes, not the axis.
+
+    The axis is in percent (see `plot_results`), but the paper reports headline numbers as
+    factors -- "1.5x shallower" rather than "34% shallower" -- so `print_metric_averages`
+    reports both. Direction comes from the column name, which is where this project's sign
+    convention already lives: `pct_reduction_*` is lower-is-better, `pct_improvement_*` is
+    not. The arithmetic is in `factor_from_pct`.
+    """
+    if not np.isfinite(cumulative_pct):
+        return 1.0
+    return factor_from_pct(
+        cumulative_pct, reduction=metric_column.startswith("pct_reduction_")
+    )
+
+
+#: Stage order, bottom of the stack upwards. Each is cumulative on the one before it.
+COMPONENT_ORDER = ("h_commutation", "merging", "packing")
+
+
+#: How the summary bar averages: "bars" (mean of the clipped per-circuit bars, the default)
+#: or "mean" (unclipped per-stage means, the numbers the prose quotes).
+AVERAGE_BAR = "bars"
+
+
+def corpus_boundaries(frame: pd.DataFrame, metric_column: str) -> np.ndarray:
+    """One row of cumulative percentage boundaries per circuit, in `COMPONENT_ORDER`."""
+    if frame.empty:
+        return np.empty((0, len(COMPONENT_ORDER) + 1))
+    pivot = frame.pivot_table(
+        index="circuit_name", columns="component", values=metric_column, aggfunc="mean",
+    )
+    for component in COMPONENT_ORDER:
+        if component not in pivot.columns:
+            pivot[component] = 0.0
+    pivot = pivot[list(COMPONENT_ORDER)].fillna(0.0).astype(float)
+    if pivot.empty:
+        return np.empty((0, len(COMPONENT_ORDER) + 1))
+    return np.array([stacked_percent(row.tolist()) for _, row in pivot.iterrows()])
+
+
 @dataclass
 class BenchmarkSettings:
     qasm_root: Path = Path("benchmarks/qasmbench")
@@ -89,7 +170,8 @@ class BenchmarkSettings:
     drop_equal_packings: bool = False
     alpha_reference: float = 0.1
     reference_gate_count: float = 200.0
-    target_selection_rate: float = 0.12
+    #: Kept in step with `SimSettings.target_selection_rate`; see the note there.
+    target_selection_rate: float = 0.06
     pilot_repetitions: int = 4_000
     target_kept_shots: int = 20_000
     min_repetitions: int = 20_000
@@ -117,6 +199,8 @@ class BenchmarkSettings:
     )
     from_csv: Path | None = None
     show_plot: bool = False
+    #: Worker processes for the circuit sweep. None takes `parallel.DEFAULT_JOBS`.
+    jobs: int | None = None
 
 
 DEFAULT_SETTINGS = BenchmarkSettings()
@@ -143,17 +227,6 @@ def tight_trivial_packing(num_qubits: int, n_codes: int) -> Perm:
         code = min(i // patch_capacity, n_codes - 1)
         perm.append((code, i % patch_capacity))
     return perm
-
-
-def preprocess_for_packing(
-    program_circuit: qiskit.QuantumCircuit,
-    config: PipelineConfig,
-) -> qiskit.QuantumCircuit:
-    processed = cancel_inverse_gates(program_circuit)
-    if config.translator_config.enable_h_commutation:
-        processed = commute_hadamards(processed)
-        processed = cancel_inverse_gates(processed)
-    return processed
 
 
 def ensure_measurements(circuit: qiskit.QuantumCircuit) -> qiskit.QuantumCircuit:
@@ -250,12 +323,35 @@ def repetitions_from_selection_rate(
     return int(np.clip(reps, settings.min_repetitions, settings.max_repetitions))
 
 
-def run_experiment(
-    circuits: Sequence[Tuple[str, qiskit.QuantumCircuit, qiskit.QuantumCircuit]],
-    size_group: str,
-    settings: BenchmarkSettings,
-) -> pd.DataFrame:
-    packer = MergeMaximizingPacker()
+def _run_circuit(job) -> List[Dict[str, int | float | str]]:
+    """
+    One benchmark circuit: four translated arms, a two-pilot calibration, four simulations.
+
+    Module-level, and taking everything it needs as an argument, because `parallel_map`
+    spawns rather than forks and a closure cannot cross that boundary. Returns this
+    circuit's rows -- three, one per pipeline stage -- or an empty list where the serial
+    loop hit `continue` under `--drop-equal-packings`.
+
+    **The three translate configs are built here rather than once for the whole sweep.**
+    The serial version hoisted them above the loop and then mutated
+    `enable_h_commutation` on two of them inside it, which is correct only because every
+    iteration wrote the field before reading it. That is exactly the shared mutable state
+    that does not survive concurrency, and rebuilding three dataclasses per circuit costs
+    nothing next to the shots below.
+
+    `circuit_idx` stays the index *within its size group*, because it feeds the seed
+    derivation (`seed * 1_000_003 + circuit_idx * 17 + n`). Numbering circuits globally
+    instead would silently reseed every simulation and stop this reproducing the CSV
+    already on disk.
+    """
+    (
+        settings,
+        size_group,
+        circuit_idx,
+        circuit_name,
+        resource_circuit,
+        simulation_circuit,
+    ) = job
 
     baseline_translate_cfg = PipelineConfig()
     baseline_translate_cfg.translator_config.enable_merging = False
@@ -271,247 +367,335 @@ def run_experiment(
 
     rows: List[Dict[str, int | float | str]] = []
 
-    for circuit_idx, (circuit_name, resource_circuit, simulation_circuit) in tqdm(
-        list(enumerate(circuits)),
-        desc=f"circuits ({size_group})",
-    ):
-        resource_program_circuit = ensure_measurements(resource_circuit)
-        simulation_program_circuit = ensure_measurements(simulation_circuit)
-        n_qubits = resource_program_circuit.num_qubits
-        target_codes = math.ceil(n_qubits / 2)
-        tight_perm = tight_trivial_packing(n_qubits, target_codes)
-        processed_for_packing = preprocess_for_packing(
-            resource_program_circuit, h_merge_translate_cfg
-        )
-        packed_perm = packer.pack(processed_for_packing, num_codes=target_codes).permutation
-
-        base_one_q, base_two_q, base_depth = compute_translation_metrics(
-            resource_program_circuit, tight_perm, baseline_translate_cfg
-        )
-        h_only_one_q, h_only_two_q, h_only_depth = compute_translation_metrics(
-            resource_program_circuit, tight_perm, h_only_translate_cfg
-        )
-        h_merge_one_q, h_merge_two_q, h_merge_depth = compute_translation_metrics(
-            resource_program_circuit, tight_perm, h_merge_translate_cfg
-        )
-        packed_one_q, packed_two_q, packed_depth = compute_translation_metrics(
-            resource_program_circuit, packed_perm, h_merge_translate_cfg
-        )
-
-        baseline_gate_count = max(1, base_one_q + base_two_q)
-        alpha_initial = calibrated_alpha_from_gate_count(baseline_gate_count, settings)
-
-        pilot_baseline_cfg = build_pipeline_config(
-            settings,
-            alpha=alpha_initial,
-            repetitions=settings.pilot_repetitions,
-            seed=settings.seed * 1_000_003 + circuit_idx * 17 + 1,
-            enable_h_commutation=False,
-            enable_merging=False,
-        )
-        pilot_metrics_initial = evaluate_variant(
-            simulation_program_circuit, tight_perm, pilot_baseline_cfg
-        )
-
-        alpha_final = corrected_alpha(
-            alpha_initial,
-            pilot_metrics_initial["logical_selection_rate"],
-            settings.target_selection_rate,
-        )
-
-        pilot_verify_cfg = build_pipeline_config(
-            settings,
-            alpha=alpha_final,
-            repetitions=settings.pilot_repetitions,
-            seed=settings.seed * 1_000_003 + circuit_idx * 17 + 2,
-            enable_h_commutation=False,
-            enable_merging=False,
-        )
-        pilot_metrics_final = evaluate_variant(
-            simulation_program_circuit, tight_perm, pilot_verify_cfg
-        )
-        final_repetitions = repetitions_from_selection_rate(
-            pilot_metrics_final["logical_selection_rate"],
-            settings,
-        )
-
-        baseline_sim_cfg = build_pipeline_config(
-            settings,
-            alpha=alpha_final,
-            repetitions=final_repetitions,
-            seed=settings.seed * 1_000_003 + circuit_idx * 17 + 3,
-            enable_h_commutation=False,
-            enable_merging=False,
-        )
-        h_only_sim_cfg = build_pipeline_config(
-            settings,
-            alpha=alpha_final,
-            repetitions=final_repetitions,
-            seed=settings.seed * 1_000_003 + circuit_idx * 17 + 4,
-            enable_h_commutation=True,
-            enable_merging=False,
-        )
-        h_merge_sim_cfg = build_pipeline_config(
-            settings,
-            alpha=alpha_final,
-            repetitions=final_repetitions,
-            seed=settings.seed * 1_000_003 + circuit_idx * 17 + 5,
-            enable_h_commutation=True,
-            enable_merging=True,
-        )
-        packed_sim_cfg = build_pipeline_config(
-            settings,
-            alpha=alpha_final,
-            repetitions=final_repetitions,
-            seed=settings.seed * 1_000_003 + circuit_idx * 17 + 6,
-            enable_h_commutation=True,
-            enable_merging=True,
-        )
-
-        baseline_sim = evaluate_variant(simulation_program_circuit, tight_perm, baseline_sim_cfg)
-        h_only_sim = evaluate_variant(simulation_program_circuit, tight_perm, h_only_sim_cfg)
-        h_merge_sim = evaluate_variant(simulation_program_circuit, tight_perm, h_merge_sim_cfg)
-        packed_sim = evaluate_variant(simulation_program_circuit, packed_perm, packed_sim_cfg)
-
-        h_cum_pct_one_q = pct_reduction(base_one_q, h_only_one_q)
-        h_cum_pct_two_q = pct_reduction(base_two_q, h_only_two_q)
-        h_cum_pct_depth = pct_reduction(base_depth, h_only_depth)
-
-        h_merge_cum_pct_one_q = pct_reduction(base_one_q, h_merge_one_q)
-        h_merge_cum_pct_two_q = pct_reduction(base_two_q, h_merge_two_q)
-        h_merge_cum_pct_depth = pct_reduction(base_depth, h_merge_depth)
-
-        packed_cum_pct_one_q = pct_reduction(base_one_q, packed_one_q)
-        packed_cum_pct_two_q = pct_reduction(base_two_q, packed_two_q)
-        packed_cum_pct_depth = pct_reduction(base_depth, packed_depth)
-
-        h_cum_lsr = pct_improvement(
-            baseline_sim["logical_selection_rate"],
-            h_only_sim["logical_selection_rate"],
-        )
-        h_merge_cum_lsr = pct_improvement(
-            baseline_sim["logical_selection_rate"],
-            h_merge_sim["logical_selection_rate"],
-        )
-        packed_cum_lsr = pct_improvement(
-            baseline_sim["logical_selection_rate"],
-            packed_sim["logical_selection_rate"],
-        )
-
-        h_cum_tvd = pct_reduction(
-            baseline_sim["logical_total_variation_distance"],
-            h_only_sim["logical_total_variation_distance"],
-        )
-        h_merge_cum_tvd = pct_reduction(
-            baseline_sim["logical_total_variation_distance"],
-            h_merge_sim["logical_total_variation_distance"],
-        )
-        packed_cum_tvd = pct_reduction(
-            baseline_sim["logical_total_variation_distance"],
-            packed_sim["logical_total_variation_distance"],
-        )
-
-        component_payloads = [
-            {
-                "component": "h_commutation",
-                "pct_reduction_one_qubit_gates": h_cum_pct_one_q,
-                "pct_reduction_two_qubit_gates": h_cum_pct_two_q,
-                "pct_reduction_circuit_depth": h_cum_pct_depth,
-                "pct_improvement_logical_selection_rate": h_cum_lsr,
-                "pct_reduction_logical_total_variation_distance": h_cum_tvd,
-            },
-            {
-                "component": "merging",
-                "pct_reduction_one_qubit_gates": h_merge_cum_pct_one_q - h_cum_pct_one_q,
-                "pct_reduction_two_qubit_gates": h_merge_cum_pct_two_q - h_cum_pct_two_q,
-                "pct_reduction_circuit_depth": h_merge_cum_pct_depth - h_cum_pct_depth,
-                "pct_improvement_logical_selection_rate": h_merge_cum_lsr - h_cum_lsr,
-                "pct_reduction_logical_total_variation_distance": h_merge_cum_tvd - h_cum_tvd,
-            },
-            {
-                "component": "packing",
-                "pct_reduction_one_qubit_gates": packed_cum_pct_one_q - h_merge_cum_pct_one_q,
-                "pct_reduction_two_qubit_gates": packed_cum_pct_two_q - h_merge_cum_pct_two_q,
-                "pct_reduction_circuit_depth": packed_cum_pct_depth - h_merge_cum_pct_depth,
-                "pct_improvement_logical_selection_rate": packed_cum_lsr - h_merge_cum_lsr,
-                "pct_reduction_logical_total_variation_distance": packed_cum_tvd - h_merge_cum_tvd,
-            },
-        ]
-
-        if settings.drop_equal_packings:
-            if (
-                h_only_one_q == packed_one_q
-                and h_only_two_q == packed_two_q
-                and h_only_depth == packed_depth
-                and abs(h_only_sim["logical_selection_rate"] - packed_sim["logical_selection_rate"]) <= 1e-12
-                and abs(
-                    h_only_sim["logical_total_variation_distance"]
-                    - packed_sim["logical_total_variation_distance"]
-                )
-                <= 1e-12
-            ):
-                continue
-
-        for payload in component_payloads:
-            rows.append(
-                {
-                    "size_group": size_group,
-                    "circuit_idx": circuit_idx,
-                    "circuit_name": circuit_name,
-                    "num_qubits": n_qubits,
-                    "target_codes": target_codes,
-                    "baseline_gate_count": baseline_gate_count,
-                    "alpha_initial": alpha_initial,
-                    "alpha_final": alpha_final,
-                    "pilot_initial_lsr": pilot_metrics_initial["logical_selection_rate"],
-                    "pilot_final_lsr": pilot_metrics_final["logical_selection_rate"],
-                    "final_repetitions": final_repetitions,
-                    "baseline_lsr": baseline_sim["logical_selection_rate"],
-                    "baseline_tvd": baseline_sim["logical_total_variation_distance"],
-                    **payload,
-                }
+    resource_program_circuit = ensure_measurements(resource_circuit)
+    simulation_program_circuit = ensure_measurements(simulation_circuit)
+    n_qubits = resource_program_circuit.num_qubits
+    target_codes = math.ceil(n_qubits / 2)
+    tight_perm = tight_trivial_packing(n_qubits, target_codes)
+    # Bug B6: hand the planner the machine the simulator will actually charge for. Without
+    # this the placement is chosen against movement_cost = idle_cost = 0 while `_sim_config`
+    # below switches both channels on, so the packing arm was scored on a placement
+    # optimised for different hardware. The profile mirrors the same four flags.
+    packed_perm, commute = pack_program(
+        resource_program_circuit,
+        noise=noise_profile_for(
+            SimSettings(
+                distance_noise=settings.distance_noise,
+                distance_scalar=settings.distance_scalar,
+                idle_noise=settings.idle_noise,
+                idle_time_scalar=settings.idle_scalar,
+                stim=settings.stim,
+                shot_progress=False,
             )
+        ),
+    )
+    # Honour the planner's per-circuit commutation decision, and translate every
+    # row under it. When it comes back False the H-commutation row collapses onto
+    # the baseline and its segment is legitimately zero -- the shipped pipeline
+    # declined the pass on that circuit -- so the ablation stays cumulative
+    # instead of crediting a technique the compiler did not use.
+    h_only_translate_cfg.translator_config.enable_h_commutation = commute
+    h_merge_translate_cfg.translator_config.enable_h_commutation = commute
 
+    base_one_q, base_two_q, base_depth = compute_translation_metrics(
+        resource_program_circuit, tight_perm, baseline_translate_cfg
+    )
+    h_only_one_q, h_only_two_q, h_only_depth = compute_translation_metrics(
+        resource_program_circuit, tight_perm, h_only_translate_cfg
+    )
+    h_merge_one_q, h_merge_two_q, h_merge_depth = compute_translation_metrics(
+        resource_program_circuit, tight_perm, h_merge_translate_cfg
+    )
+    packed_one_q, packed_two_q, packed_depth = compute_translation_metrics(
+        resource_program_circuit, packed_perm, h_merge_translate_cfg
+    )
+
+    baseline_gate_count = max(1, base_one_q + base_two_q)
+    alpha_initial = calibrated_alpha_from_gate_count(baseline_gate_count, settings)
+
+    pilot_baseline_cfg = build_pipeline_config(
+        settings,
+        alpha=alpha_initial,
+        repetitions=settings.pilot_repetitions,
+        seed=settings.seed * 1_000_003 + circuit_idx * 17 + 1,
+        enable_h_commutation=False,
+        enable_merging=False,
+    )
+    pilot_metrics_initial = evaluate_variant(
+        simulation_program_circuit, tight_perm, pilot_baseline_cfg
+    )
+
+    alpha_final = corrected_alpha(
+        alpha_initial,
+        pilot_metrics_initial["logical_selection_rate"],
+        settings.target_selection_rate,
+    )
+
+    pilot_verify_cfg = build_pipeline_config(
+        settings,
+        alpha=alpha_final,
+        repetitions=settings.pilot_repetitions,
+        seed=settings.seed * 1_000_003 + circuit_idx * 17 + 2,
+        enable_h_commutation=False,
+        enable_merging=False,
+    )
+    pilot_metrics_final = evaluate_variant(
+        simulation_program_circuit, tight_perm, pilot_verify_cfg
+    )
+    final_repetitions = repetitions_from_selection_rate(
+        pilot_metrics_final["logical_selection_rate"],
+        settings,
+    )
+
+    baseline_sim_cfg = build_pipeline_config(
+        settings,
+        alpha=alpha_final,
+        repetitions=final_repetitions,
+        seed=settings.seed * 1_000_003 + circuit_idx * 17 + 3,
+        enable_h_commutation=False,
+        enable_merging=False,
+    )
+    h_only_sim_cfg = build_pipeline_config(
+        settings,
+        alpha=alpha_final,
+        repetitions=final_repetitions,
+        seed=settings.seed * 1_000_003 + circuit_idx * 17 + 4,
+        enable_h_commutation=commute,
+        enable_merging=False,
+    )
+    h_merge_sim_cfg = build_pipeline_config(
+        settings,
+        alpha=alpha_final,
+        repetitions=final_repetitions,
+        seed=settings.seed * 1_000_003 + circuit_idx * 17 + 5,
+        enable_h_commutation=commute,
+        enable_merging=True,
+    )
+    packed_sim_cfg = build_pipeline_config(
+        settings,
+        alpha=alpha_final,
+        repetitions=final_repetitions,
+        seed=settings.seed * 1_000_003 + circuit_idx * 17 + 6,
+        enable_h_commutation=commute,
+        enable_merging=True,
+    )
+
+    baseline_sim = evaluate_variant(simulation_program_circuit, tight_perm, baseline_sim_cfg)
+    h_only_sim = evaluate_variant(simulation_program_circuit, tight_perm, h_only_sim_cfg)
+    h_merge_sim = evaluate_variant(simulation_program_circuit, tight_perm, h_merge_sim_cfg)
+    packed_sim = evaluate_variant(simulation_program_circuit, packed_perm, packed_sim_cfg)
+
+    h_cum_pct_one_q = pct_reduction(base_one_q, h_only_one_q)
+    h_cum_pct_two_q = pct_reduction(base_two_q, h_only_two_q)
+    h_cum_pct_depth = pct_reduction(base_depth, h_only_depth)
+
+    h_merge_cum_pct_one_q = pct_reduction(base_one_q, h_merge_one_q)
+    h_merge_cum_pct_two_q = pct_reduction(base_two_q, h_merge_two_q)
+    h_merge_cum_pct_depth = pct_reduction(base_depth, h_merge_depth)
+
+    packed_cum_pct_one_q = pct_reduction(base_one_q, packed_one_q)
+    packed_cum_pct_two_q = pct_reduction(base_two_q, packed_two_q)
+    packed_cum_pct_depth = pct_reduction(base_depth, packed_depth)
+
+    h_cum_lsr = pct_improvement(
+        baseline_sim["logical_selection_rate"],
+        h_only_sim["logical_selection_rate"],
+    )
+    h_merge_cum_lsr = pct_improvement(
+        baseline_sim["logical_selection_rate"],
+        h_merge_sim["logical_selection_rate"],
+    )
+    packed_cum_lsr = pct_improvement(
+        baseline_sim["logical_selection_rate"],
+        packed_sim["logical_selection_rate"],
+    )
+
+    h_cum_tvd = pct_reduction(
+        baseline_sim["logical_total_variation_distance"],
+        h_only_sim["logical_total_variation_distance"],
+    )
+    h_merge_cum_tvd = pct_reduction(
+        baseline_sim["logical_total_variation_distance"],
+        h_merge_sim["logical_total_variation_distance"],
+    )
+    packed_cum_tvd = pct_reduction(
+        baseline_sim["logical_total_variation_distance"],
+        packed_sim["logical_total_variation_distance"],
+    )
+
+    component_payloads = [
+        {
+            "component": "h_commutation",
+            "pct_reduction_one_qubit_gates": h_cum_pct_one_q,
+            "pct_reduction_two_qubit_gates": h_cum_pct_two_q,
+            "pct_reduction_circuit_depth": h_cum_pct_depth,
+            "pct_improvement_logical_selection_rate": h_cum_lsr,
+            "pct_reduction_logical_total_variation_distance": h_cum_tvd,
+        },
+        {
+            "component": "merging",
+            "pct_reduction_one_qubit_gates": h_merge_cum_pct_one_q - h_cum_pct_one_q,
+            "pct_reduction_two_qubit_gates": h_merge_cum_pct_two_q - h_cum_pct_two_q,
+            "pct_reduction_circuit_depth": h_merge_cum_pct_depth - h_cum_pct_depth,
+            "pct_improvement_logical_selection_rate": h_merge_cum_lsr - h_cum_lsr,
+            "pct_reduction_logical_total_variation_distance": h_merge_cum_tvd - h_cum_tvd,
+        },
+        {
+            "component": "packing",
+            "pct_reduction_one_qubit_gates": packed_cum_pct_one_q - h_merge_cum_pct_one_q,
+            "pct_reduction_two_qubit_gates": packed_cum_pct_two_q - h_merge_cum_pct_two_q,
+            "pct_reduction_circuit_depth": packed_cum_pct_depth - h_merge_cum_pct_depth,
+            "pct_improvement_logical_selection_rate": packed_cum_lsr - h_merge_cum_lsr,
+            "pct_reduction_logical_total_variation_distance": packed_cum_tvd - h_merge_cum_tvd,
+        },
+    ]
+
+    if settings.drop_equal_packings:
+        if (
+            h_only_one_q == packed_one_q
+            and h_only_two_q == packed_two_q
+            and h_only_depth == packed_depth
+            and abs(h_only_sim["logical_selection_rate"] - packed_sim["logical_selection_rate"]) <= 1e-12
+            and abs(
+                h_only_sim["logical_total_variation_distance"]
+                - packed_sim["logical_total_variation_distance"]
+            )
+            <= 1e-12
+        ):
+            return []
+
+    for payload in component_payloads:
+        rows.append(
+            {
+                "size_group": size_group,
+                "circuit_idx": circuit_idx,
+                "circuit_name": circuit_name,
+                "num_qubits": n_qubits,
+                "target_codes": target_codes,
+                "baseline_gate_count": baseline_gate_count,
+                "alpha_initial": alpha_initial,
+                "alpha_final": alpha_final,
+                "pilot_initial_lsr": pilot_metrics_initial["logical_selection_rate"],
+                "pilot_final_lsr": pilot_metrics_final["logical_selection_rate"],
+                "final_repetitions": final_repetitions,
+                "baseline_lsr": baseline_sim["logical_selection_rate"],
+                "baseline_tvd": baseline_sim["logical_total_variation_distance"],
+                **payload,
+            }
+        )
+
+    return rows
+
+
+#: Size groups in the order the figure draws them, which is also the canonical row order
+#: of the CSV. Scheduling order is different -- see `run_experiment`.
+GROUP_ORDER: Tuple[str, ...] = ("small", "medium", "large")
+
+
+def run_experiment(settings: BenchmarkSettings) -> pd.DataFrame:
+    """
+    Every size group in one pool.
+
+    **The three groups are flattened into a single work list** rather than parallelised
+    one group at a time. Circuit cost here is extremely uneven -- the large group runs to
+    140 qubits and several thousand gates while small finishes almost immediately -- so a
+    barrier between groups would leave most of the machine idle behind the last few
+    circuits of `large`. One pool lets the small circuits backfill slots that the large
+    ones have not finished holding.
+
+    **Work is scheduled longest-first**, by descending qubit count. That is the standard
+    heuristic for a pool with a long tail: start the expensive items while there are still
+    cheap ones left to fill the gaps with. Scheduling last would leave a 140-qubit circuit
+    starting on an otherwise-empty machine at the very end of the run.
+
+    Rows are restored to canonical (group, index) order afterwards, so the CSV is
+    directly comparable against a serial run rather than ordered by whichever worker
+    happened to finish first.
+    """
+    jobs: List[Tuple] = []
+    for size_group in GROUP_ORDER:
+        circuits = _load_group_circuits(settings.qasm_root, size_group, settings)
+        if not circuits:
+            print(
+                "[merging_improvement_benchmark_stylized_simulated] "
+                f"No circuits loaded for {size_group}."
+            )
+            continue
+        for circuit_idx, (name, resource, simulation) in enumerate(circuits):
+            jobs.append((settings, size_group, circuit_idx, name, resource, simulation))
+
+    if not jobs:
+        raise ValueError(f"No proxy circuits loaded from {settings.qasm_root}")
+
+    print(
+        "[merging_improvement_benchmark_stylized_simulated] "
+        f"{len(jobs)} circuits across {len(GROUP_ORDER)} size groups"
+    )
+
+    schedule = sorted(range(len(jobs)), key=lambda index: -jobs[index][4].num_qubits)
+    produced = parallel_map(
+        _run_circuit,
+        [jobs[index] for index in schedule],
+        jobs=settings.jobs,
+        label="circuits",
+    )
+
+    batches: List[object] = [None] * len(jobs)
+    for slot, canonical in enumerate(schedule):
+        batches[canonical] = produced[slot]
+    rows = [row for batch in batches if batch for row in batch]
     return pd.DataFrame(rows)
 
 
 def print_metric_averages(df: pd.DataFrame) -> None:
-    print("[merging_improvement_benchmark_stylized_simulated] Plot averages (matching clipped bar values)")
+    """
+    Console summary of exactly what the figure draws, per size group and overall.
+
+    Percentages first, matching the axis: each is the mean over circuits of the total the
+    bar draws, which is the height of the summary bar. The factor in brackets is the same
+    number in the convention the paper's prose uses -- "1.5x shallower" rather than "34%
+    shallower" -- converted from the mean rather than averaged separately, so the two lines
+    can never disagree.
+
+    The corpus line is a direct mean over every circuit rather than a size-weighted blend
+    of the three group means; the two agree to three decimals and the direct one is the
+    number to quote.
+    """
+    print("[merging_improvement_benchmark_stylized_simulated] Plot averages (matching the bars)")
     size_groups = ["small", "medium", "large"]
-    group_totals: Dict[str, Dict[str, float]] = {}
     group_counts: Dict[str, int] = {}
+
+    def summarise(frame: pd.DataFrame) -> Tuple[List[str], int]:
+        parts: List[str] = []
+        for _, (metric_column, metric_label) in METRICS.items():
+            # Same guard, third aggregation path. See `TVD_SATURATION`.
+            scoped = frame
+            if metric_column == "pct_reduction_logical_total_variation_distance":
+                scoped = frame.loc[_tvd_is_resolved(frame)]
+            rows = corpus_boundaries(scoped, metric_column)
+            if rows.size == 0:
+                parts.append(f"{metric_label}=n/a")
+                continue
+            mean = float(rows.mean(axis=0)[-1])
+            parts.append(
+                f"{metric_label}={mean:.2f}% ({as_factor(metric_column, mean):.2f}×)"
+            )
+        return parts, int(frame["circuit_name"].nunique())
+
     for size_group in size_groups:
         group_df = df.loc[df["size_group"] == size_group]
         if group_df.empty:
             continue
-        group_counts[size_group] = int(group_df["circuit_name"].nunique())
+        parts, count = summarise(group_df)
+        group_counts[size_group] = count
         print(f"  {size_group}:")
-        metric_parts = []
-        metric_totals: Dict[str, float] = {}
-        for _, (metric_column, metric_label) in METRICS.items():
-            total = 0.0
-            for component in ["h_commutation", "merging", "packing"]:
-                component_df = group_df.loc[group_df["component"] == component, metric_column]
-                if not component_df.empty:
-                    total += float(component_df.astype(float).clip(lower=0.0).mean())
-            metric_totals[metric_label] = total
-            metric_parts.append(f"{metric_label}={total:.2f}%")
-        print("    plotted total: " + ", ".join(metric_parts))
-        group_totals[size_group] = metric_totals
+        print("    plotted total: " + ", ".join(parts))
 
-    total_count = sum(group_counts.values())
-    if total_count > 0:
-        weighted_metric_parts = []
-        for _, (_, metric_label) in METRICS.items():
-            weighted_total = sum(
-                group_totals[size_group][metric_label] * group_counts[size_group]
-                for size_group in size_groups
-                if size_group in group_totals
-            ) / float(total_count)
-            weighted_metric_parts.append(f"{metric_label}={weighted_total:.2f}%")
-        count_parts = [f"{size_group}={group_counts[size_group]}" for size_group in size_groups if size_group in group_counts]
-        print("  weighted overall: " + ", ".join(weighted_metric_parts))
-        print("    weights: " + ", ".join(count_parts) + f", total={total_count}")
+    if group_counts:
+        parts, _ = summarise(df)
+        count_parts = [f"{group}={group_counts[group]}" for group in size_groups if group in group_counts]
+        print("  corpus overall: " + ", ".join(parts))
+        print("    circuits: " + ", ".join(count_parts) + f", total={sum(group_counts.values())}")
 
     if not df.empty:
         print(
@@ -522,6 +706,29 @@ def print_metric_averages(df: pd.DataFrame) -> None:
         )
 
 
+#: Above this baseline TVD the measurement carries no information, and the row must be
+#: withheld from the TVD metric.
+#:
+#: TVD is bounded by the sampling floor `1 - N/S`, where `S` is the output distribution's
+#: support and `N` the accepted shots. On a wide circuit the support outruns any affordable
+#: shot count and *both* arms score ~1.0, so their difference is exactly zero -- not "no
+#: improvement", but "no measurement". Five circuits here do it, all ising at n >= 26:
+#: `ising_n26` at 0.9997 and `n34`, `n42`, `n66`, `n98` at 1.000000. Averaging those zeros
+#: into the TVD row pulled every component down by about 7% relative (h_commutation
+#: +13.77 -> +14.82, merging +8.61 -> +9.26, packing +2.98 -> +3.21).
+#:
+#: Withheld from **TVD only**. Their gate counts and depth are exact translation properties
+#: and their selection rate is a binomial over ~150k shots, so those rows stay.
+TVD_SATURATION = 0.95
+
+
+def _tvd_is_resolved(df: pd.DataFrame) -> pd.Series:
+    """Per-row mask: is this circuit's TVD measurable at all? See `TVD_SATURATION`."""
+    if "baseline_tvd" not in df.columns:
+        return pd.Series(True, index=df.index)
+    return df["baseline_tvd"].astype(float) <= TVD_SATURATION
+
+
 def build_plot_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     rows: List[Dict[str, float | str]] = []
     for size_group in ["small", "medium", "large"]:
@@ -529,7 +736,21 @@ def build_plot_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         if group_df.empty:
             continue
         for metric_key, (metric_column, metric_label) in METRICS.items():
-            metric_group = group_df[["circuit_name", "component", metric_column]].copy()
+            # Saturated circuits contribute a hard zero to TVD that is an absence of
+            # measurement, not an absence of improvement. Drop them from that metric only.
+            scoped = group_df
+            if metric_column == "pct_reduction_logical_total_variation_distance":
+                scoped = group_df.loc[_tvd_is_resolved(group_df)]
+                withheld = sorted(
+                    set(group_df["circuit_name"]) - set(scoped["circuit_name"])
+                )
+                if withheld:
+                    print(f"[merging_improvement_benchmark_stylized_simulated] TVD "
+                          f"withheld for {len(withheld)} saturated {size_group} circuit(s) "
+                          f"(baseline TVD > {TVD_SATURATION}): {', '.join(withheld)}")
+                if scoped.empty:
+                    continue
+            metric_group = scoped[["circuit_name", "component", metric_column]].copy()
             pivot = (
                 metric_group.pivot_table(
                     index="circuit_name",
@@ -610,12 +831,25 @@ def plot_results(df: pd.DataFrame, settings: BenchmarkSettings) -> None:
         all_positions: List[float] = []
         all_circuit_labels: List[str] = []
         current_x = 0.0
+        highest = 0.0
 
         for size_group in size_groups:
             ordered_circuits = ordered_circuits_by_group.get(size_group, [])
             if not ordered_circuits:
                 continue
             group_df = df.loc[df["size_group"] == size_group]
+            # Saturated circuits carry a hard zero that is an absence of measurement, not
+            # an absence of improvement. See `TVD_SATURATION`. This path re-aggregates
+            # independently of `build_plot_dataframe`, so the guard has to be repeated --
+            # fixing only that one left the rendered figure unchanged.
+            if metric_column == "pct_reduction_logical_total_variation_distance":
+                # Filter the *data*, never `ordered_circuits`: the x positions come from
+                # that list, and with `sharex=True` the last axis drawn -- TVD, being last
+                # in METRICS -- sets the shared x limit for every row. Shrinking it here
+                # pulled the limit inwards and pushed the other four rows' average bars off
+                # the canvas. A withheld circuit keeps its slot and simply draws no bar,
+                # which is also the honest rendering: a gap, not a zero.
+                group_df = group_df.loc[_tvd_is_resolved(group_df)]
             pivot = (
                 group_df.pivot_table(
                     index="circuit_name",
@@ -628,29 +862,37 @@ def plot_results(df: pd.DataFrame, settings: BenchmarkSettings) -> None:
             for component, _, _ in components:
                 if component not in pivot.columns:
                     pivot[component] = 0.0
-                pivot[component] = pivot[component].fillna(0.0).astype(float).clip(lower=0.0)
+                # Deliberately *not* clipped per stage. `stacked_percent` clips the running
+                # total instead, which is what keeps each bar's height equal to what the
+                # circuit actually reached; see that function on what the old per-stage
+                # clip did to `ising_n98`.
+                pivot[component] = pivot[component].fillna(0.0).astype(float)
             pivot = (
                 pivot.set_index("circuit_name")
                 .reindex(ordered_circuits)
                 .fillna(0.0)
                 .reset_index()
             )
+            boundaries = np.array(
+                [
+                    stacked_percent([row[component] for component, _, _ in components])
+                    for _, row in pivot.iterrows()
+                ]
+            )
 
             positions = np.arange(len(ordered_circuits)) * bar_step + current_x
-            running_bottom = np.zeros(len(ordered_circuits), dtype=float)
-            for component, label, color in components:
-                values = pivot[component].astype(float).to_numpy()
+            for index, (component, label, color) in enumerate(components):
                 ax.bar(
                     positions,
-                    values,
+                    boundaries[:, index + 1] - boundaries[:, index],
                     width=bar_width,
-                    bottom=running_bottom,
+                    bottom=boundaries[:, index],
                     color=color,
                     edgecolor="white",
                     alpha=0.85,
                     label=label,
                 )
-                running_bottom += values
+            highest = max(highest, float(boundaries[:, -1].max()))
 
             all_positions.extend(positions.tolist())
             all_circuit_labels.extend(ordered_circuits)
@@ -658,27 +900,37 @@ def plot_results(df: pd.DataFrame, settings: BenchmarkSettings) -> None:
 
         avg_x = current_x + 1.0
         avg_width = 5 * bar_width
-        avg_bottom = 0.0
-        for component, label, color in components:
-            avg_value = (
-                df.loc[df["component"] == component, metric_column]
-                .astype(float)
-                .clip(lower=0.0)
-                .mean()
-            )
-            if np.isnan(avg_value):
-                avg_value = 0.0
+        avg_source = df
+        if metric_column == "pct_reduction_logical_total_variation_distance":
+            avg_source = df.loc[_tvd_is_resolved(df)]
+        # Arithmetic mean of the per-circuit boundaries. Boundaries are cumulative and
+        # the mean is linear, so each segment is the mean of that stage's segments and the
+        # top is the mean of the totals -- the summary bar is exactly the average of the
+        # bars behind it, with no separate aggregation path to drift out of step.
+        if AVERAGE_BAR == "mean":
+            # The corpus mean the prose quotes (10-11): each stage's per-circuit delta
+            # averaged unclipped, then stacked once, so the bar's top is the mean net change
+            # including the circuits that got worse. The default ("bars") is the mean of the
+            # clipped per-circuit bars, which reads higher wherever some circuits regress.
+            stage = avg_source.pivot_table(index="circuit_name", columns="component",
+                                           values=metric_column, aggfunc="mean")
+            means = [float(stage[c].fillna(0.0).mean()) if c in stage.columns else 0.0
+                     for c in COMPONENT_ORDER]
+            avg_boundaries = np.array(stacked_percent(means))
+        else:
+            avg_boundaries = corpus_boundaries(avg_source, metric_column).mean(axis=0)
+        for index, (component, label, color) in enumerate(components):
             ax.bar(
                 avg_x,
-                avg_value,
+                avg_boundaries[index + 1] - avg_boundaries[index],
                 width=avg_width,
-                bottom=avg_bottom,
+                bottom=avg_boundaries[index],
                 color=color,
                 edgecolor="white",
                 alpha=0.95,
                 label=label,
             )
-            avg_bottom += avg_value
+        highest = max(highest, float(avg_boundaries[-1]))
 
         ax.axvline(current_x - gap / 2.0, color="#bdbdbd", linestyle=":", linewidth=1.0)
         left_gap_to_avg = (avg_x - avg_width / 2.0) - (current_x - gap / 2.0)
@@ -688,7 +940,15 @@ def plot_results(df: pd.DataFrame, settings: BenchmarkSettings) -> None:
         all_positions.append(avg_x)
         all_circuit_labels.append("average")
 
-        ax.set_ylabel(metric_label, fontsize=24)
+        ax.set_ylabel(metric_label, fontsize=AXIS_PT)
+        # Percent, linear, and that is deliberate for *this* figure. A factor axis was
+        # tried: percent compresses the spread and factors expand it, and here the spread
+        # is the problem. `ising_n98` depth is 90.1% against a 27% median -- 3.3x on a
+        # linear percent axis, but 10.1x against 1.37x as factors, which needs a log axis,
+        # which cannot carry evenly spaced round gridlines. The paper still quotes factors
+        # in prose; `print_metric_averages` reports both.
+        ax.set_ylim(bottom=0.0, top=highest * 1.06)
+        ax.yaxis.set_major_locator(MaxNLocator(nbins=5, steps=[1, 2, 2.5, 5, 10]))
         ax.axhline(0.0, color="#636363", linestyle="--", linewidth=1.0)
         ax.grid(True, axis="y", linestyle="--", linewidth=0.4)
         for spine in ["top", "right"]:
@@ -703,12 +963,12 @@ def plot_results(df: pd.DataFrame, settings: BenchmarkSettings) -> None:
         ax.tick_params(axis="x", which="major", bottom=False, labelbottom=False)
         ax.tick_params(axis="x", which="minor", pad=5)
 
-    axes[-1].set_xlabel("Benchmark circuit (grouped by size)", fontsize=24)
+    axes[-1].set_xlabel("Benchmark circuit (grouped by size)", fontsize=AXIS_PT)
 
     handles, labels = axes[0].get_legend_handles_labels()
     unique = dict(zip(labels, handles))
     axes[0].legend(unique.values(), unique.keys(), loc="best", frameon=False)
-    fig.supylabel("Percent improvement / reduction", fontsize=24)
+    fig.supylabel("Percent improvement / reduction", fontsize=AXIS_PT)
     fig.tight_layout(rect=(0.03, 0.0, 1.0, 1.0))
 
     settings.output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -808,6 +1068,7 @@ def parse_args() -> BenchmarkSettings:
         default=DEFAULT_SETTINGS.seed,
         help="Base seed for calibration and final simulations.",
     )
+    add_jobs_argument(parser)
     parser.add_argument(
         "--no-stim",
         action="store_true",
@@ -890,6 +1151,7 @@ def parse_args() -> BenchmarkSettings:
         plot_csv_path=args.plot_csv,
         from_csv=args.from_csv,
         show_plot=not args.no_show,
+        jobs=args.jobs,
     )
 
 
@@ -950,23 +1212,13 @@ def main() -> None:
         plot_results(df, settings)
         return
 
-    all_rows: List[pd.DataFrame] = []
-    for group in ["small", "medium", "large"]:
-        circuits = _load_group_circuits(settings.qasm_root, group, settings)
-        if not circuits:
-            print(
-                "[merging_improvement_benchmark_stylized_simulated] "
-                f"No circuits loaded for {group}."
-            )
-            continue
-        group_df = run_experiment(circuits, group, settings)
-        all_rows.append(group_df)
-
-    if not all_rows:
-        raise ValueError(f"No proxy circuits loaded from {settings.qasm_root}")
-
-    df = pd.concat(all_rows, ignore_index=True)
+    df = run_experiment(settings)
+    if df.empty:
+        raise ValueError("every circuit failed -- no rows produced")
     settings.raw_csv_path.parent.mkdir(parents=True, exist_ok=True)
+    # Stamp the cost model. This figure now passes a noise profile to the planner
+    # (Bug B6), so its placements DO move with the cost model version.
+    df = stamp_provenance(df)
     df.to_csv(settings.raw_csv_path, index=False)
     print(
         "[merging_improvement_benchmark_stylized_simulated] "

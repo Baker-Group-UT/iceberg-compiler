@@ -1,0 +1,34 @@
+  [circuits (small)] 29 items across 12 workers
+[density_ablation_sweep] Loaded 29 small circuits (standard configuration, matched patch counts, merging split into single- and two-qubit steps, arms reused from density_ablation_sweep_split_solo.csv).
+  [circuits (small)] 1/29  0.1 min elapsed, ~3.5 min left
+  [circuits (small)] 2/29  0.1 min elapsed, ~2.0 min left
+  [circuits (small)] 3/29  0.2 min elapsed, ~1.7 min left
+  [circuits (small)] 4/29  0.2 min elapsed, ~1.2 min left
+  [circuits (small)] 5/29  0.2 min elapsed, ~1.0 min left
+  [circuits (small)] 6/29  0.2 min elapsed, ~0.8 min left
+  [circuits (small)] 7/29  0.2 min elapsed, ~0.7 min left
+  [circuits (small)] 8/29  0.3 min elapsed, ~0.9 min left
+  [circuits (small)] 9/29  0.3 min elapsed, ~0.7 min left
+  [circuits (small)] 10/29  0.5 min elapsed, ~0.9 min left
+  [circuits (small)] 11/29  0.5 min elapsed, ~0.9 min left
+  [circuits (small)] 12/29  0.6 min elapsed, ~0.8 min left
+  [circuits (small)] 13/29  0.6 min elapsed, ~0.8 min left
+  [circuits (small)] 14/29  0.7 min elapsed, ~0.7 min left
+  [circuits (small)] 15/29  0.7 min elapsed, ~0.7 min left
+  [circuits (small)] 16/29  0.8 min elapsed, ~0.6 min left
+  [circuits (small)] 17/29  0.9 min elapsed, ~0.7 min left
+  [circuits (small)] 18/29  1.0 min elapsed, ~0.6 min left
+  [circuits (small)] 19/29  1.0 min elapsed, ~0.5 min left
+  [circuits (small)] 20/29  1.0 min elapsed, ~0.5 min left
+  [circuits (small)] 21/29  1.1 min elapsed, ~0.4 min left
+  [circuits (small)] 22/29  1.1 min elapsed, ~0.4 min left
+  [circuits (small)] 23/29  1.5 min elapsed, ~0.4 min left
+  [circuits (small)] 24/29  1.8 min elapsed, ~0.4 min left
+  [circuits (small)] 25/29  1.8 min elapsed, ~0.3 min left
+  [circuits (small)] 26/29  1.8 min elapsed, ~0.2 min left
+  [circuits (small)] 27/29  2.1 min elapsed, ~0.2 min left
+  [circuits (small)] 28/29  2.6 min elapsed, ~0.1 min left
+  [circuits (small)] 29/29  2.9 min elapsed, ~0.0 min left
+[density_ablation_sweep] Wrote 384 rows to new experiments/figures/density_ablation_sweep/density_ablation_sweep_split_std_small.csv
+[density_ablation_sweep] split-merging CSV written; plot it with density_references (recount, floors, plot --matched density_ablation_sweep_split_std_small.csv)
+../../../venv/bin/python -m  --standard --matched-patches --split-merging      1163.17s user 6.38s system 670% cpu 2:54.44 total

@@ -1,0 +1,18 @@
+00:46 sweep finished
+matched CSV: 71 circuits, 1044 rows
+00:46 recount
+[density_references] 1114 conversions for 1248 arm-points; 144 need none
+[density_references] 1392 arm-points, 1248 recounted; the all-lane count equals the sweep's on 1248/1248; failed: none
+[density_references] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/.claude/worktrees/exact-patches/experiments/figures/density_ablation_sweep/density_ablation_sweep_matched_recount.csv
+02:15 floors
+[density_references] floors for 36 circuits (n <= 18), 0 arm-points without one; median floor / TVD 0.02
+[density_references] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/.claude/worktrees/exact-patches/experiments/figures/density_ablation_sweep/density_ablation_sweep_matched_floors.csv
+02:16 plot
+[density_references] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/results/figures/density_ablation_matched.svg
+[density_references] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/results/figures/density_ablation_matched.pdf
+[density_references] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/results/figures/density_vs_naive_tight.svg
+[density_references] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/results/figures/density_vs_naive_tight.pdf
+[density_references] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/results/figures/density_vs_naive_sparse.svg
+[density_references] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/results/figures/density_vs_naive_sparse.pdf
+[density_references] wrote /Users/cordputer/Documents/Claude/Projects/AQORN Revisions/iceberg-compiler/.claude/worktrees/exact-patches/experiments/figures/density_ablation_sweep/density_ablation_sweep_matched_summary.csv
+02:16 done

@@ -10,26 +10,27 @@ import pandas as pd
 from typing import List
 
 from pipeline.config                    import PipelineConfig
-from pipeline.analysis.postselection    import postselect_against_reference
-from pipeline.analysis.result_row       import result_to_row
-from pipeline.analysis.print_df         import print_df_table
+from analysis.result_types     import ScanResult
+from analysis.postselection    import postselect_against_reference
+from analysis.result_row       import result_to_row
+from analysis.print_df         import print_df_table
 from permutations.code_sets             import generate_uniform_code_sets
 from permutations.generator             import random_permutation_from_circuit
 from translator.core                    import Translator
 from simulator.simulator                import simulate_batch
-from repository.run_builder             import RunBuilder
-from repository.repository              import RunRepository
 
 REPEAT_LIMIT = 2500
 
 def run_random_scan(program_circuit: qiskit.QuantumCircuit, m: int = 100, config: PipelineConfig = PipelineConfig(), added_perms: List[List[tuple]] = None):
     """
     Runs a permutation scan for m random permutations of the provided logical circuit using the given config.
-    Returns a finalized RunRecord and saves it via RunRepository.
+    Returns a ScanResult holding the per-permutation DataFrame.
     """
     # Step 1: Generate permutation set
     q = program_circuit.num_qubits  # Assumes 1 logical qubit per qubit
-    code_sets = generate_uniform_code_sets(q)
+    # Code size comes from the translator config, so one knob selects the
+    # [[n, n-2, 2]] code for the whole pipeline.
+    code_sets = generate_uniform_code_sets(q, n=config.translator_config.n_code)
     failures = 0
     permutations = []
     rng = random.Random(config.seed)
@@ -72,18 +73,7 @@ def run_random_scan(program_circuit: qiskit.QuantumCircuit, m: int = 100, config
     rows = [result_to_row(sim_res, config) for sim_res in simulation_results]
     df = pd.DataFrame(rows)
 
-    # Step 6: Build and save run record
-    builder = RunBuilder(
-        circuit=program_circuit,
-        circuit_name="r",
-        repetitions=config.sim_config.repetitions,
-    )
-
-    builder.attach_dataframe(df)
-    builder.attach_results([res.to_dict() for res in simulation_results])
-    record = builder.finalize()
-    if config.save:
-        RunRepository(config.save_dir).save_run(record)
+    record = ScanResult.of(df, [res.to_dict() for res in simulation_results])
     if config.verbose:
         print_df_table(df)
 

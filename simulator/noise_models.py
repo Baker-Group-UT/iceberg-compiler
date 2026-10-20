@@ -8,47 +8,141 @@ Predefined Qiskit Aer noise models for use with the Simulator.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Dict, Optional
+from typing import Dict, Optional
 
 from qiskit_aer.noise import (
     NoiseModel,
-    QuantumError,
     ReadoutError,
     depolarizing_error,
     thermal_relaxation_error,
 )
 
+#: Single-qubit gates a *translated* circuit can contain. The paper-accurate models used
+#: to list ["x", "sx", "rz", "h"], which left `s` and `z` completely noiseless -- 6 of 28
+#: single-qubit gates in one translated Clifford program got no error at all, while `sx`
+#: in that list never appears. Encoded circuits are full of `s` and `z`, because that is
+#: what the logical Pauli and phase gadgets are built from, so those two omissions made
+#: every simulated number optimistic. Every model here now shares this one list.
+TRANSLATED_ONE_QUBIT_OPS = ["x", "y", "z", "h", "s", "sdg", "sx", "sxdg", "rx", "rz"]
+
+
+#: A rubidium tweezer-array machine -- the architecture this compiler targets, and the
+#: default everywhere since `simulator.transport` landed.
+#:
+#: The dominant difference against the superconducting set below is T2: 1.5 s against
+#: 341 us, a factor of ~4400, while the two-qubit gate only slows 88 ns to 500 ns. Idle
+#: per layer therefore falls about three orders of magnitude, which relocates the whole
+#: idle/distance balance -- expect this to move results more than the transport model does.
+#:
+#: T2 = 1.5 s assumes dynamical decoupling on the hyperfine qubit. Without it T2 is
+#: milliseconds and nothing survives a circuit of this depth, so it is an assumption about
+#: the machine rather than a knob to sweep.
+#:
+#: Readout is slow and batched: one 3 ms image covers the whole array, so a detection round
+#: costs `meas_time` once no matter how many qubits it reads. This pipeline does one round
+#: at the end.
+#:
+#: **The single-qubit gate is slower than the two-qubit gate, and that is not a typo.** It
+#: is a real inversion on this platform and it catches everyone. A two-qubit gate is a
+#: Rydberg blockade pulse -- the interaction is enormous, so the gate is fast, a few hundred
+#: ns. A single-qubit gate is a Raman transition driven through a tightly focused addressing
+#: beam, which is weak by comparison and takes ~1 us. Superconducting hardware has the
+#: opposite ordering (32 ns against 88 ns in `SUPERCONDUCTING`), which is where the
+#: expectation comes from.
+NEUTRAL_ATOM = {
+    "T1": 10.0,
+    "T2": 1.5,
+    "one_qubit_gate_time": 1e-6,
+    "two_qubit_gate_time": 0.5e-6,
+    "one_qubit_error": 2e-4,
+    "two_qubit_error": 3e-3,
+    "meas_time": 3e-3,
+    "readout_error": 3e-3,
+}
+
+#: Infidelity per atom per carriage at alpha = 1, from heating and imperfect handoff.
+#: Lives outside `NEUTRAL_ATOM` because the Aer dicts predate movement; it is the
+#: baseline that `ScaledNoiseModel` multiplies by alpha like every other error rate.
+BASE_MOVE_ERROR = 1e-3
+
+#: The calibration that was default before the neutral-atom model: T1/T2 of 314/341 us
+#: against an 88 ns two-qubit gate, which is a **superconducting** machine and cannot move
+#: atoms at all. Kept so every number this repo published before the switch stays
+#: reproducible -- `StimNoiseParameters.superconducting()`.
+SUPERCONDUCTING = {
+    "T1": 314.29e-6,
+    "T2": 340.61e-6,
+    "one_qubit_gate_time": 32e-9,
+    "two_qubit_gate_time": 88e-9,
+    "one_qubit_error": 1.623e-4,
+    "two_qubit_error": 3.5e-3,
+    "meas_time": 2584e-9,
+    "readout_error": 3.906e-3,
+}
+
+#: Table 2 of the paper, which `ScaledNoiseModel(alpha=1.0)` reproduced exactly before the
+#: switch. Retained for the same reason as `SUPERCONDUCTING`.
+PAPER_TABLE_2 = {
+    "T1": 100e-6,
+    "T2": 80e-6,
+    "one_qubit_gate_time": 50e-9,
+    "two_qubit_gate_time": 300e-9,
+    "one_qubit_error": 1e-3,
+    "two_qubit_error": 5e-3,
+    "meas_time": 1e-6,
+    "readout_error": 0.02,
+}
+
 
 @dataclass
 class StimNoiseParameters:
+    """
+    Hardware rates and times. Defaults are `NEUTRAL_ATOM`.
 
-    p1, p2 = 1.623e-4, 3.5e-3
-    p_meas = 3.906e-3
-    T1, T2 = 314.29e-6, 340.61e-6
-    t_1q, t_2q = 32e-9, 88e-9
+    Two named alternatives exist for reproducing pre-transport-model numbers:
+    `superconducting()` and `paper_table_2()`.
+    """
 
-    T1: float = 314.29e-6
-    T2: float = 340.61e-6
-    one_qubit_gate_time: float = 32e-9
-    two_qubit_gate_time: float = 88e-9
-    one_qubit_error: float = 1.623e-4
-    two_qubit_error: float = 3.5e-3
-    meas_time: float = 2584e-9
-    readout_error: float = 3.906e-3
-    idle_time_scalar: float = 0.0
+    T1: float = NEUTRAL_ATOM["T1"]
+    T2: float = NEUTRAL_ATOM["T2"]
+    one_qubit_gate_time: float = NEUTRAL_ATOM["one_qubit_gate_time"]
+    two_qubit_gate_time: float = NEUTRAL_ATOM["two_qubit_gate_time"]
+    one_qubit_error: float = NEUTRAL_ATOM["one_qubit_error"]
+    two_qubit_error: float = NEUTRAL_ATOM["two_qubit_error"]
+    meas_time: float = NEUTRAL_ATOM["meas_time"]
+    readout_error: float = NEUTRAL_ATOM["readout_error"]
+    idle_time_scalar: float = 1.0
 
+    #: Geometry, in the units `simulator.transport.Geometry` expects. Defaults match that
+    #: module's constants; they live here too so a run can carry one parameter object.
+    atom_pitch: float = 3e-6
+    blockade_radius: float = 8e-6
+    #: ~1 us of flight per um travelled. See `simulator.transport.MOVEMENT_SPEED`.
+    movement_speed: float = 1.0
+    patch_gutter: int = 2
 
-@dataclass
-class StimParameterScaling:
-    T1: float = 1 # 0.118848
-    T2: float = 1 # 0.736701
-    one_qubit_gate_time: float = 1 # 0.137947
-    two_qubit_gate_time: float = 1 # 0.151854
-    one_qubit_error: float = 1 # 0.856380
-    two_qubit_error: float = 1 # 0.75098
-    meas_time: float = 1 # 0.176850
-    readout_error: float = 1 # 0.279562
-    idle_time_scalar: float = 1
+    #: Infidelity per atom per carriage, from heating and imperfect handoff. Unlike the
+    #: dephasing charged over flight time this does *not* shrink as T2 improves, so it is
+    #: the term that keeps movement visible on a well-decoupled machine -- flight dephasing
+    #: alone is a few tenths of a percent of the budget at T2 = 1.5 s. Charged only to the
+    #: atoms actually carried; atoms flown *over* are not modelled. Error-based, so
+    #: `ScaledNoiseModel` scales it with alpha like p1/p2/p_meas.
+    move_error: float = BASE_MOVE_ERROR
+
+    @classmethod
+    def neutral_atom(cls, **overrides) -> "StimNoiseParameters":
+        """The defaults, named explicitly. Kept so call sites can be self-documenting."""
+        return cls(**{**NEUTRAL_ATOM, **overrides})
+
+    @classmethod
+    def superconducting(cls, **overrides) -> "StimNoiseParameters":
+        """The pre-transport-model defaults. Atoms cannot move; `move_error` is off."""
+        return cls(**{**SUPERCONDUCTING, "move_error": 0.0, **overrides})
+
+    @classmethod
+    def paper_table_2(cls, **overrides) -> "StimNoiseParameters":
+        """What `ScaledNoiseModel(alpha=1.0)` used to mean."""
+        return cls(**{**PAPER_TABLE_2, "move_error": 0.0, **overrides})
 
 
 def _attach_stim_params(model: NoiseModel, params: StimNoiseParameters) -> NoiseModel:
@@ -63,23 +157,6 @@ def stim_params_from_noise_model(model: Optional[NoiseModel]) -> StimNoiseParame
             return params
     return StimNoiseParameters()
 
-
-def apply_stim_scaling(
-    params: StimNoiseParameters, scaling: Optional[StimParameterScaling]
-) -> StimNoiseParameters:
-    if scaling is None:
-        return params
-    return StimNoiseParameters(
-        T1=params.T1 * scaling.T1,
-        T2=params.T2 * scaling.T2,
-        one_qubit_gate_time=params.one_qubit_gate_time * scaling.one_qubit_gate_time,
-        two_qubit_gate_time=params.two_qubit_gate_time * scaling.two_qubit_gate_time,
-        one_qubit_error=params.one_qubit_error * scaling.one_qubit_error,
-        two_qubit_error=params.two_qubit_error * scaling.two_qubit_error,
-        meas_time=params.meas_time * scaling.meas_time,
-        readout_error=params.readout_error * scaling.readout_error,
-        idle_time_scalar=params.idle_time_scalar * scaling.idle_time_scalar,
-    )
 
 # ---------- utils ----------
 
@@ -105,56 +182,19 @@ def noise_model_to_dict(model: NoiseModel) -> Dict:
 # ---------- presets ----------
 
 
-def DefaultNoiseModel() -> NoiseModel:
-    nm = NoiseModel()
-
-    oneq_ops = ["x", "z", "s", "rz", "h"]
-    twoq_ops = ["cx", "cz"]
-
-    # Old Defaults
-    # p1, p2 = 1e-3, 5e-3
-    # p_meas = 0.02
-    T1, T2 = 100e-6, 80e-6
-    # t_1q, t_2q = 50e-9, 300e-9
-    # IBM Pittsburgh
-    p1, p2 = 1.623e-4, 3.5e-3
-    p_meas = 3.906e-3
-    # T1, T2 = 300e-6, 350e-6
-    t_1q, t_2q = 32e-9, 88e-9
-
-    dep1 = depolarizing_error(p1, 1)
-    thr1 = thermal_relaxation_error(T1, T2, t_1q)
-    err1 = dep1.compose(thr1)
-    nm.add_all_qubit_quantum_error(err1, oneq_ops)
-
-    dep2 = depolarizing_error(p2, 2)
-    thr2 = thermal_relaxation_error(T1, T2, t_2q).tensor(
-        thermal_relaxation_error(T1, T2, t_2q)
-    )
-    err2 = dep2.compose(thr2)
-    nm.add_all_qubit_quantum_error(err2, twoq_ops)
-
-    ro = ReadoutError([[1 - p_meas, p_meas], [p_meas, 1 - p_meas]])
-    nm.add_all_qubit_readout_error(ro)
-
-    params = StimNoiseParameters(
-        T1=T1,
-        T2=T2,
-        one_qubit_gate_time=t_1q,
-        two_qubit_gate_time=t_2q,
-        one_qubit_error=p1,
-        two_qubit_error=p2,
-        meas_time=1e-6,
-        readout_error=p_meas,
-    )
-
-    return _attach_stim_params(nm, params)
-
-
 def StochasticNoiseModel() -> NoiseModel:
+    """
+    A deliberately harsh machine, for stress-testing rather than for quoting.
+
+    Rates are an order of magnitude worse than `NEUTRAL_ATOM` on purpose -- this is what
+    `StochasticSimulator` installs when a test wants errors to actually show up in a few
+    hundred shots. The *times* are the neutral-atom ones, so it is the same architecture
+    run badly rather than a different machine; it used to carry superconducting timings,
+    which meant a "stress" run also silently changed the idle/transport balance.
+    """
     nm = NoiseModel()
-    oneq_ops = ["x", "sx", "rz", "h"]
-    twoq_ops = ["cx", "cz"]
+    oneq_ops = list(TRANSLATED_ONE_QUBIT_OPS)
+    twoq_ops = ["cx", "cz", "swap"]
 
     p1, p2 = 5e-3, 2e-2
     p_meas = 0.05
@@ -166,14 +206,12 @@ def StochasticNoiseModel() -> NoiseModel:
     nm.add_all_qubit_readout_error(ro)
 
     params = StimNoiseParameters(
-        T1=100e-6,
-        T2=80e-6,
-        one_qubit_gate_time=50e-9,
-        two_qubit_gate_time=300e-9,
         one_qubit_error=p1,
         two_qubit_error=p2,
-        meas_time=1e-6,
         readout_error=p_meas,
+        # Same machine run badly: every *error* is an order of magnitude worse,
+        # including the handling error; the times stay neutral-atom.
+        move_error=10 * BASE_MOVE_ERROR,
     )
 
     return _attach_stim_params(nm, params)
@@ -182,13 +220,15 @@ def StochasticNoiseModel() -> NoiseModel:
 def ScaledNoiseModel(
     alpha: float,
     *,
-    base_p1: float = 1e-3,
-    base_p2: float = 5e-3,
-    base_p_meas: float = 0.02,
-    base_T1: float = 100e-6,
-    base_T2: float = 80e-6,
-    t_1q: float = 50e-9,
-    t_2q: float = 300e-9,
+    base_p1: float = NEUTRAL_ATOM["one_qubit_error"],
+    base_p2: float = NEUTRAL_ATOM["two_qubit_error"],
+    base_p_meas: float = NEUTRAL_ATOM["readout_error"],
+    base_T1: float = NEUTRAL_ATOM["T1"],
+    base_T2: float = NEUTRAL_ATOM["T2"],
+    t_1q: float = NEUTRAL_ATOM["one_qubit_gate_time"],
+    t_2q: float = NEUTRAL_ATOM["two_qubit_gate_time"],
+    t_meas: float = NEUTRAL_ATOM["meas_time"],
+    base_move_error: float = BASE_MOVE_ERROR,
     scale_readout: bool = True,
     oneq_ops: Optional[list[str]] = None,
     twoq_ops: Optional[list[str]] = None,
@@ -197,8 +237,26 @@ def ScaledNoiseModel(
     Rebuild a Qiskit Aer NoiseModel whose severity increases with `alpha`.
 
     alpha = 0  -> noiseless (empty model)
-    alpha = 1  -> equivalent to DefaultNoiseModel()
+    alpha = 1  -> the baseline hardware, which is now `NEUTRAL_ATOM`
     alpha > 1  -> linearly increases depolarizing + readout errors and shortens T1/T2.
+
+    **Everything error-based scales with alpha, including `move_error`.** It did not
+    always: `move_error` used to sit at its 1e-3 default at every alpha, which broke the
+    per-circuit calibration in `experiments.shared.simulation` — selection rate is
+    modelled there as exponential in alpha, and a constant term makes it flatten instead.
+    On large benchmark circuits the movement term dominated at the small calibrated
+    alphas, the log-space correction stalled, and baselines landed at LSR ~0.55-0.64
+    against a 0.12 target — which compressed every relative improvement built on them.
+    Times and geometry (gate times, T-times aside, movement speed, pitch) are machine
+    shape, not error, and do not scale.
+
+    **The baseline moved.** `alpha = 1` used to be the paper's Table 2 exactly, and every
+    preset in `simulator.config_presets` calls this with `alpha=1.0`, so this one default
+    change relocates every simulation in the repo. That is intended -- the compiler models
+    a neutral-atom machine and Table 2 is a superconducting one, which cannot move atoms
+    at all -- but it means alpha solved by `experiments.shared.simulation` against the old
+    baseline no longer means the same thing. Pass `**PAPER_TABLE_2`-derived values, or use
+    `StimNoiseParameters.paper_table_2()`, to reproduce a pre-switch number.
 
     Args:
         alpha: Non-negative scalar controlling noise severity.
@@ -211,7 +269,9 @@ def ScaledNoiseModel(
     """
     if alpha <= 0:
         # Return an explicitly noiseless model, but still attach stim params so the
-        # Stim backend doesn't fall back to nonzero default parameters.
+        # Stim backend doesn't fall back to nonzero default parameters. `move_error`
+        # is zeroed explicitly: it used to ride through on its dataclass default, so a
+        # "noiseless" run with a layout still depolarized every carried atom at 1e-3.
         nm = NoiseModel()
         params = StimNoiseParameters(
             T1=float("inf"),
@@ -222,13 +282,17 @@ def ScaledNoiseModel(
             two_qubit_error=0.0,
             meas_time=0.0,
             readout_error=0.0,
+            move_error=0.0,
         )
         return _attach_stim_params(nm, params)
 
     if oneq_ops is None:
-        oneq_ops = ["x", "sx", "rz", "h"]
+        oneq_ops = list(TRANSLATED_ONE_QUBIT_OPS)
     if twoq_ops is None:
-        twoq_ops = ["cx", "cz"]
+        # `swap` is charged like a gate here. The Stim backend prices it as an atom
+        # exchange (movement) instead; Aer has no movement channel, and free swaps made
+        # every logical H and every routing swap costless.
+        twoq_ops = ["cx", "cz", "swap"]
 
     # Scale probabilities linearly and clamp to reasonable maxima
     # (kept conservative to avoid singular matrices or non-CP maps).
@@ -273,83 +337,9 @@ def ScaledNoiseModel(
         two_qubit_gate_time=t_2q,
         one_qubit_error=p1,
         two_qubit_error=p2,
-        meas_time=1e-6,
+        meas_time=t_meas,
         readout_error=p_meas,
-    )
-
-    return _attach_stim_params(nm, params)
-
-
-def DistanceDependentNoiseModel(
-    *,
-    layout: Dict[int, tuple[int, int]] = None,
-    distance_scalar: float = 1,
-    distance_function: Callable[
-        [float, float, float, float],
-        Callable[[tuple[int, int], tuple[int, int]], QuantumError],
-    ] = None,
-    p1: float = 1e-3,
-    p2: float = 5e-3,
-    p_meas: float = 0.02,
-    T1: float = 100e-6,
-    T2: float = 80e-6,
-    t_1q: float = 50e-9,
-    t_2q: float = 300e-9,
-    oneq_ops: Optional[list[str]] = None,
-    twoq_ops: Optional[list[str]] = None,
-) -> NoiseModel:
-    """
-    Build a Qiskit Aer NoiseModel with two-qubit errors dependent on qubit distance.
-    Args:
-        layout: Mapping of qubit index to (x, y) position.
-        distance_function: Function that takes T1, T2, t_2q, p2 and returns a function
-            which takes two positions and returns a QuantumError for those qubits.
-        p1, p2: Depolarizing error probabilities for 1q and 2q gates.
-        p_meas: Readout error probability.
-        T1, T2: Relaxation and dephasing times.
-        t_1q, t_2q: Gate times for 1q and 2q gates.
-        oneq_ops, twoq_ops: Gate name lists to attach 1q/2q errors to.
-    """
-    if layout is None:
-        raise ValueError("DistanceDependentNoiseModel requires a qubit layout.")
-
-    if twoq_ops is None:
-        twoq_ops = ["cx", "cz"]
-    if oneq_ops is None:
-        oneq_ops = ["x", "sx", "rz", "h"]
-
-    if distance_function is None:
-        distance_function = distance_noise_function
-
-    nm = NoiseModel()
-
-    dep1 = depolarizing_error(p1, 1)
-    thr1 = thermal_relaxation_error(T1, T2, t_1q)
-    err1 = dep1.compose(thr1)
-    nm.add_all_qubit_quantum_error(err1, oneq_ops)
-
-    df = distance_function(T1, T2, t_2q, p2, distance_scalar)
-    for q1 in layout:
-        for q2 in layout:
-            if q1 >= q2:
-                continue
-            pos1 = layout[q1]
-            pos2 = layout[q2]
-            err2 = df(pos1, pos2)
-            nm.add_quantum_error(err2, twoq_ops, [q1, q2])
-
-    ro = ReadoutError([[1 - p_meas, p_meas], [p_meas, 1 - p_meas]])
-    nm.add_all_qubit_readout_error(ro)
-
-    params = StimNoiseParameters(
-        T1=T1,
-        T2=T2,
-        one_qubit_gate_time=t_1q,
-        two_qubit_gate_time=t_2q,
-        one_qubit_error=p1,
-        two_qubit_error=p2,
-        meas_time=1e-6,
-        readout_error=p_meas,
+        move_error=min(base_move_error * alpha, 1.0),
     )
 
     return _attach_stim_params(nm, params)
@@ -357,31 +347,3 @@ def DistanceDependentNoiseModel(
 
 def manhattan_distance(pos1: tuple[int, int], pos2: tuple[int, int]) -> float:
     return abs(pos1[0] - pos2[0]) + abs(pos1[1] - pos2[1])
-
-
-def distance_noise_function(
-    T1: float,
-    T2: float,
-    t_2q: float,
-    p2: float,
-    distance_scalar: float = 1,
-    dist: Callable[[tuple[int, int], tuple[int, int]], float] = manhattan_distance,
-    movement_speed: float = 0.5,
-) -> Callable[[tuple[int, int], tuple[int, int]], QuantumError]:
-    """
-    Returns a function that computes a QuantumError based on Manhattan distance.
-    The error probability increases with distance.
-    """
-
-    def error_function(pos1: tuple[int, int], pos2: tuple[int, int]) -> QuantumError:
-        distance = dist(pos1, pos2) * 1e-8 * distance_scalar
-        time_to_move = 2 * distance / movement_speed
-        time_2q = t_2q + time_to_move
-        # print(distance, time_to_move, time_2q, p2)
-        dep2 = depolarizing_error(p2, 2)
-        thr2 = thermal_relaxation_error(T1, T2, time_2q).tensor(
-            thermal_relaxation_error(T1, T2, time_2q)
-        )
-        return dep2.compose(thr2)
-
-    return error_function
